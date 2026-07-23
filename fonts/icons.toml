@@ -1,0 +1,13 @@
+module = "ui::icon"
+
+[icons]
+list = "list"
+plus = "plus"
+info = "info"
+settings = "settings"
+refresh = "refresh-cw"
+sort = "arrow-up-down"
+play = "play"
+pause = "pause"
+trash = "trash-2"
+eraser = "eraser"
