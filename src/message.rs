@@ -42,6 +42,11 @@ pub enum Message {
 
     ThemeModeChanged(ThemeMode),
     LocaleChanged(Locale),
+
+    CheckAria2Update,
+    RetryAria2Fetch,
+    RestartEngine,
+    RestoreAutoCheck,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -6,7 +6,18 @@ use crate::i18n::{Fluent, Locale, Tr};
 use crate::message::{Message, SettingKey};
 use crate::ui::theme;
 
-pub fn view<'a>(fluent: &'a Fluent, dark: bool, settings: &'a Settings) -> Element<'a, Message> {
+#[allow(clippy::too_many_arguments)]
+pub fn view<'a>(
+    fluent: &'a Fluent,
+    dark: bool,
+    settings: &'a Settings,
+    aria2_version: Option<&'a str>,
+    aria2_check_msg: Option<&'a str>,
+    auto_check_disabled: bool,
+    aria2_status: Option<(&'a str, &'a str)>,
+    aria2_fetch_error: Option<&'a str>,
+    update_pending: Option<&'a str>,
+) -> Element<'a, Message> {
     let text_primary = if dark {
         theme::TEXT_PRIMARY
     } else {
@@ -155,6 +166,98 @@ pub fn view<'a>(fluent: &'a Fluent, dark: bool, settings: &'a Settings) -> Eleme
         .push(locale_group)
         .push(locale_options);
 
+    let mut engine_rows: Vec<Element<Message>> = Vec::new();
+
+    let version_text = match aria2_version {
+        Some(v) => format!("aria2-next v{v}"),
+        None => "aria2-next (--)".to_string(),
+    };
+    engine_rows.push(
+        row![]
+            .push(
+                text(fluent.get(Tr::Aria2Version))
+                    .size(13)
+                    .width(Length::Fixed(180.0))
+                    .color(text_primary),
+            )
+            .push(text(version_text).size(13).color(text_secondary))
+            .align_y(Alignment::Center)
+            .into(),
+    );
+
+    if let Some((stage, message)) = aria2_status {
+        let status_color = if stage == "update-downloading" || stage == "update-verifying" {
+            theme::ACCENT
+        } else if stage == "ready" {
+            theme::PROGRESS
+        } else {
+            text_secondary
+        };
+        engine_rows.push(text(message).size(12).color(status_color).into());
+    }
+
+    if let Some(err) = aria2_fetch_error {
+        engine_rows.push(text(err).size(12).color(theme::ERROR).into());
+    }
+
+    let mut btn_row = row![].spacing(12);
+
+    if let Some(pending) = update_pending {
+        btn_row = btn_row.push(
+            button(text(fluent.get(Tr::RestartToUpdate)).size(12))
+                .on_press(Message::RestartEngine)
+                .padding([6, 12])
+                .style(button::primary),
+        );
+        btn_row = btn_row.push(
+            text(format!(
+                "v{pending} - {}",
+                fluent.get(Tr::PendingUpdateHint)
+            ))
+            .size(12)
+            .color(text_secondary),
+        );
+    } else if aria2_fetch_error.is_some() {
+        btn_row = btn_row.push(
+            button(text(fluent.get(Tr::Retry)).size(12))
+                .on_press(Message::RetryAria2Fetch)
+                .padding([6, 12])
+                .style(button::secondary),
+        );
+    } else {
+        btn_row = btn_row.push(
+            button(text(fluent.get(Tr::CheckUpdate)).size(12))
+                .on_press(Message::CheckAria2Update)
+                .padding([6, 12])
+                .style(button::secondary),
+        );
+    }
+
+    if auto_check_disabled {
+        btn_row = btn_row.push(
+            button(text(fluent.get(Tr::RestoreAutoCheck)).size(12))
+                .on_press(Message::RestoreAutoCheck)
+                .padding([6, 12])
+                .style(button::secondary),
+        );
+    }
+
+    if let Some(msg) = aria2_check_msg {
+        btn_row = btn_row.push(text(msg).size(12).color(text_secondary));
+    }
+
+    engine_rows.push(btn_row.into());
+
+    let mut engine_col = column![].spacing(8);
+    for elem in engine_rows {
+        engine_col = engine_col.push(elem);
+    }
+
+    let engine = column![]
+        .spacing(12)
+        .push(group_title(fluent, Tr::Engine))
+        .push(engine_col);
+
     let apply = button(text(fluent.get(Tr::Apply)).size(14))
         .on_press(Message::ApplySettings)
         .padding([10, 24])
@@ -165,6 +268,7 @@ pub fn view<'a>(fluent: &'a Fluent, dark: bool, settings: &'a Settings) -> Eleme
         .push(general)
         .push(speed)
         .push(appearance)
+        .push(engine)
         .push(
             row![]
                 .push(iced::widget::Space::new().width(Length::Fill))

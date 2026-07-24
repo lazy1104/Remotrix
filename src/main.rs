@@ -1,12 +1,14 @@
 #![allow(dead_code)]
 
 mod app;
+mod aria2_fetcher;
 mod config;
 mod engine;
 mod i18n;
 mod message;
 mod task;
 mod ui;
+mod updater;
 
 fn main() -> iced::Result {
     let _log_guard = init_tracing();
@@ -41,7 +43,7 @@ fn init_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
     let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info,remotrix=debug,aria2_core=debug"));
+        .unwrap_or_else(|_| EnvFilter::new("info,remotrix=debug,aria2_ws=debug"));
 
     match crate::config::log_dir() {
         Some(dir) => {

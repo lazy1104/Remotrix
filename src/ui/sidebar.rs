@@ -5,7 +5,12 @@ use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, Page};
 use crate::ui::theme;
 
-pub fn view<'a>(fluent: &'a Fluent, dark: bool, page: Page) -> Element<'a, Message> {
+pub fn view<'a>(
+    fluent: &'a Fluent,
+    dark: bool,
+    page: Page,
+    logo_handle: &'a iced::widget::image::Handle,
+) -> Element<'a, Message> {
     let bg_sidebar = if dark {
         theme::BG_SIDEBAR
     } else {
@@ -17,9 +22,8 @@ pub fn view<'a>(fluent: &'a Fluent, dark: bool, page: Page) -> Element<'a, Messa
         theme::TEXT_PRIMARY_LIGHT
     };
 
-    let icon_bytes: &[u8] = include_bytes!("../../assets/icon.png");
     let logo = container(
-        image(image::Handle::from_bytes(icon_bytes))
+        image(logo_handle.clone())
             .width(Length::Fixed(28.0))
             .height(Length::Fixed(28.0)),
     )

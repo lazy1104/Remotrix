@@ -10,7 +10,7 @@ name = "remotrix"
 path = "src/main.rs"
 
 [dependencies]
-aria2-core = "0.2.3"
+aria2-ws = "0.5"
 iced = { version = "0.14", features = ["tokio", "advanced", "image"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
@@ -24,9 +24,10 @@ rfd = "0.15"
 image = "0.24"
 dark-light = "1.1"
 fluent-templates = "0.14.0"
-
-[patch.crates-io]
-rsa = { path = "vendor/rsa" }
+futures = "0.3"
+base64 = "0.22"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+sha2 = "0.10"
 
 [build-dependencies]
 iced_lucide = "0.1"

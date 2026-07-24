@@ -1,67 +1,96 @@
 # Remotrix — AI Agent Context
 
 ## Project Overview
-Rust-native desktop download manager inspired by Motrix.app. Built with `iced` GUI framework and `aria2-core` download engine.
+Rust-native desktop download manager inspired by Motrix.app. Built with `iced` GUI framework and **aria2-next sidecar** (via `aria2-ws` RPC client).
 
 | Component | Choice | Rationale |
 |---|---|---|
-| GUI | `iced 0.13` (+tokio feature) | Pure Rust, widget-based, dark theme support |
-| Engine | `aria2-core 0.2.3` | Rust rewrite of aria2, tokio-based |
-| Async | `tokio 1.x` full features | Shared with aria2-core runtime |
+| GUI | `iced 0.14` (+tokio feature) | Pure Rust, widget-based, dark theme support |
+| Engine | `aria2-next` sidecar + `aria2-ws 0.5` | C++ aria2 fork with JSON-RPC over WebSocket; spawned as subprocess |
+| Async | `tokio 1.x` full features | Shared runtime for engine and UI |
 | File dialog | `rfd 0.15` | Native OS file picker |
 | Config dirs | `directories 5` | XDG/user data paths |
 
-## Architecture Decision: Dual Event Loop
+## Architecture: aria2-next sidecar
 - **iced UI loop** runs on the main thread
-- **tokio runtime** runs `aria2-core::DownloadEngine` on a background thread
-- Communication via `tokio::sync::mpsc` channels (unbounded for simplicity)
-- **GUI → Engine**: `iced::Command::run` sends `EngineCmd` via `mpsc::Sender`
-- **Engine → GUI**: `iced::Subscription` polls `mpsc::Receiver` for `EngineEvent`
+- **tokio runtime** manages the aria2-next subprocess + WebSocket RPC + progress polling
+- Communication via `tokio::sync::mpsc` channels (unbounded)
+- **GUI → Engine**: `EngineCmd` via `mpsc::Sender`
+- **Engine → GUI**: `EngineEvent` via `mpsc::Receiver`, consumed by `iced::Subscription`
+- `aria2_fetcher::ensure_aria2_next()` fetches the aria2-next binary at runtime from GitHub Releases (first launch), caches in `<exe_dir>/aria2/` (falls back to `<data_dir>/aria2/`)
+- Engine degrades gracefully on fetch/spawn failure (no exit), retryable via `RetryAria2Fetch`
+- Update check → background stage download → write `.pending-update` → next restart/engine restart applies pending update
+- Task persistence via aria2 `--save-session`/`--input-file`
+- `src/updater.rs` provides reusable `fetch_latest_release` / `ReleaseInfo` for both aria2 and future app updates
 
 ```rust
 // --- Channel Protocol (must match between engine.rs and message.rs) ---
 enum EngineCmd {
-    AddDownload { urls: Vec<String>, options: DownloadOptions, save_dir: PathBuf },
+    AddDownload { urls: Vec<String>, save_dir: PathBuf, split: u16 },
     Pause(String), Resume(String), Remove(String),
-    SetOption(String, String), Shutdown,
+    PauseAll, ResumeAll, RemoveAll, Snapshot,
+    SetSpeedLimit { download: Option<u64>, upload: Option<u64> },
+    Shutdown,
+    CheckAria2Update,
+    RetryAria2Fetch,
+    RestartEngine,
 }
 enum EngineEvent {
+    Added { gid: String, name: String },
     Progress { gid: String, downloaded: u64, total: u64, speed: u64, status: String },
-    Complete(String), Error(String, String), Added(String), Removed(String),
-    EngineReady, EngineStopped,
+    Removed(String), EngineReady, EngineStopped,
+    Aria2Status { stage: String, message: String },
+    Aria2Version { version: String },
+    Aria2CheckResult { current: String, latest: Option<String> },
+    Aria2UpdateApplied { version: String },
+    Aria2UpdateFailed { error: String },
+    Aria2FetchFailed { error: String },
+    Aria2UpdateStaged { version: String },
+    EngineDegraded { reason: String },
 }
 ```
 
-## aria2-core API Reference
-- `aria2_core::config::ConfigManager` — global settings (dir, split, speed limits)
-- `aria2_core::request::request_group_man::RequestGroupMan` — task manager (add/pause/resume/remove tasks)
-- `aria2_core::request::request_group::DownloadOptions` — per-task options (split, max connections, etc.)
-- `aria2_core::request::request_group::GID` — task identifier (use `.value()` for string)
-- `aria2_core::config::OptionValue` — enum: `Str(String)` or `Int(i64)`
+## aria2-ws API Reference
+- `aria2_ws::Client::connect(url, token)` — connect to WebSocket RPC; token is `Option<&str>` (rpc-secret)
+- `add_uri(uris, options, position, callbacks)` → `Result<String>` (GID)
+- `pause(gid)`, `unpause(gid)`, `remove(gid)`, `force_remove(gid)`, `shutdown()` → `Result<()>`
+- `tell_status(gid)` → `Result<Status>` with fields: `gid`, `status` (TaskStatus enum), `total_length`, `completed_length`, `download_speed` (all `u64`), `dir`, `files`, `bittorrent`
+- `tell_active()` → `Result<Vec<Status>>`, `tell_waiting(offset, num)`, `tell_stopped(offset, num)`
+- `change_global_option(options: TaskOptions)` for global speed limits
+- `subscribe_notifications()` → `broadcast::Receiver<Notification>` (Start/Pause/Complete/Error/Stop/BtComplete)
+- `TaskStatus` variants: `Active`, `Waiting`, `Paused`, `Complete`, `Error`, `Removed`
+- `TaskOptions`: header, split, all_proxy, dir, out, gid, continue, auto_file_renaming, max_download_limit, max_connection_per_server, max_tries, timeout, extra_options (Map)
+- `Status.status` is `aria2_ws::response::TaskStatus` — serialized as lowercase string matching standard aria2 status strings
 
 Quick start pattern:
 ```rust
-let mut config = ConfigManager::new();
-config.set_global_option("dir", OptionValue::Str("./downloads".into())).await?;
-let man = RequestGroupMan::new();
-let opts = DownloadOptions { split: Some(4), ..Default::default() };
-let gid = man.add_group(vec!["http://...".into()], opts).await?;
+use aria2_ws::{Client, TaskOptions};
+let client = Client::connect("ws://127.0.0.1:6800/jsonrpc", Some("secret")).await?;
+let opts = TaskOptions { split: Some(4), ..Default::default() };
+let gid = client.add_uri(vec!["http://..."], Some(opts), None, None).await?;
+let status = client.tell_status(&gid).await?;
 ```
 
 ## Cargo.toml Dependencies
 ```toml
 [package] name = "remotrix" version = "0.1.0" edition = "2021"
 [dependencies]
-aria2-core = "0.2.3"
-iced = { version = "0.13", features = ["tokio"] }
+aria2-ws = "0.5"
+iced = { version = "0.14", features = ["tokio", "advanced", "image"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-anyhow = "1"
 tracing = "0.1"
-tracing-subscriber = "0.3"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 directories = "5"
 rfd = "0.15"
+base64 = "0.22"
+futures = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+sha2 = "0.10"
+
+[build-dependencies]
+iced_lucide = "0.1"
 ```
 
 ## Code Conventions
@@ -69,7 +98,7 @@ rfd = "0.15"
 - **UI pattern**: Each page is a `fn` returning `iced::Element<'_, Message, Theme>`; no widget OOP wrappers
 - **Theme**: Custom `Theme` struct (not iced built-in themes) with Motrix-dark palette (defined in `ui/theme.rs`)
 - **Naming**: `snake_case` for fns/vars, `PascalCase` for types/enums, `SCREAMING_SNAKE` for constants
-- **Error handling**: Use `anyhow::Result` in engine layer, map to `Message::Error(String)` for UI
+- **Error handling**: Use `String` errors in engine layer, map to `EngineEvent::EngineStopped` for fatal
 - **No comments** in source code unless explaining a non-obvious design decision
 - **Imports**: Group as `std` → external crates → `crate::` (blank-line separated)
 
@@ -88,30 +117,27 @@ const TEXT_SECONDARY: Color = Color::from_rgb(0.63, 0.63, 0.69); // #A0A0B0
 const BORDER: Color = Color::from_rgb(0.18, 0.18, 0.27);        // #2D2D44
 ```
 
-## Project Status & Next Steps
-- [Phase 1] Workspace scaffolding + `Cargo.toml` → create `src/main.rs`, `src/engine.rs`, `src/app.rs`
-- [Phase 1] Implement `EngineBridge` with tokio runtime + mpsc channels
-- [Phase 2] Build iced UI: `theme.rs`, `sidebar.rs`, `task_list.rs`, `add_dialog.rs`, `settings_page.rs`
-- [Phase 2] Wire `app.rs` with `update()` → `view()` → `subscription()`
-- [Phase 3] Connect UI ↔ Engine via Command/Subscription
-- [Phase 4] Polish: icon, i18n, file dialogs
-
 ## Build / Check Commands
 ```bash
-cargo build                    # debug build
+cargo build                    # debug build (downloads aria2-next binary)
 cargo build --release          # release build
 cargo run --                   # run app
-cargo test --workspace         # all tests
 cargo clippy --workspace       # lint (no warnings allowed)
 cargo fmt --check              # formatting check
 ```
 
-## Logo (Pending Designer)
-Style: Motrix diamond + Rust gear + iced rounded. Element: letter "R". Colors: `#E05A33` (Rust orange-red) + `#4A90D9` (Motrix blue). Output: 1024×1024 PNG, 256×256 ICO, SVG source. Place in `assets/icon.png`.
+## Build Process (build.rs)
+- Build-time only generates the icon module (`iced_lucide::build`)
+- **No network access** during build — offline `cargo build` always succeeds
+- aria2-next binary is fetched at **runtime** by `aria2_fetcher::ensure_aria2_next()`:
+  - First launch: downloads from GitHub Releases (`AnInsomniacy/aria2-next`) to `<exe_dir>/aria2/`
+  - Falls back to `<data_dir>/aria2/` when exe dir is not writable
+  - Cached across runs with `.installed` version/sha256 tracking
+  - Supports `ARIA2_BIN` env var to skip download entirely
+- Update workflow: `updater::fetch_latest_release()` → background stage download → write `.pending-update` → next restart/engine restart applies pending update
 
 ## Risks to Watch
-- `iced` "tokio" feature may have rough edges → fallback: wrap `Runtime::block_on` in `Command::perform`
-- `aria2-core` is pre-1.0 (v0.2.3) → pin exact version, isolate behind `EngineBridge` trait
+- `aria2-next` GitHub Releases may be temporarily unavailable → `ensure_aria2_next()` error at runtime with clear message; `ARIA2_BIN` env var fallback or manual binary placement
 - Large task lists may lag iced → use `scrollable` + cap visible items
 - No system tray support in iced → defer or use `tray-icon` crate separately
-- `rsa` vendor (`vendor/rsa`) remains necessary: aria2-core → aria2-protocol → russh 0.59 locks `rsa = "0.10.0-rc.12"` (pre-release exact match, Cargo won't auto-upgrade). Upstream `rc.18` has the fix natively, but russh 0.59 pins `rc.12`. One-line patch in `vendor/rsa/src/encoding.rs:230` adapts `pkcs8::Error::KeyMalformed` → `KeyMalformed(KeyError::Invalid)`. Removing vendor would require patching russh to 0.62, which is disproportionate. Keep vendor as-is; reassess when aria2-core upgrades to more recent russh.
+- `Secret` passed as CLI argument visible in `ps` on debug builds — acceptable (random per-session, local only)

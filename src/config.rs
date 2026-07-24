@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -12,12 +13,12 @@ pub struct Settings {
     pub download_limit_kb: u64,
     pub upload_limit_kb: u64,
     pub split: u16,
-    pub enable_dht: bool,
-    pub bt_listen_port: u16,
     #[serde(default)]
     pub theme_mode: ThemeMode,
     #[serde(default)]
     pub locale: Locale,
+    #[serde(default)]
+    pub update: UpdatePrefs,
 }
 
 impl Default for Settings {
@@ -31,11 +32,55 @@ impl Default for Settings {
             download_limit_kb: 0,
             upload_limit_kb: 0,
             split: 16,
-            enable_dht: true,
-            bt_listen_port: 6881,
             theme_mode: ThemeMode::System,
             locale: Locale::default(),
+            update: UpdatePrefs::default(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UpdatePrefs {
+    #[serde(default)]
+    pub components: HashMap<String, ComponentUpdatePrefs>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ComponentUpdatePrefs {
+    #[serde(default)]
+    pub ignored: bool,
+    #[serde(default)]
+    pub skipped: Vec<String>,
+}
+
+impl UpdatePrefs {
+    pub fn should_auto_check(&self, component: &str) -> bool {
+        self.components
+            .get(component)
+            .map(|c| !c.ignored)
+            .unwrap_or(true)
+    }
+
+    pub fn is_skipped(&self, component: &str, version: &str) -> bool {
+        self.components
+            .get(component)
+            .map(|c| c.skipped.contains(&version.to_string()))
+            .unwrap_or(false)
+    }
+
+    pub fn skip_version(&mut self, component: &str, version: &str) {
+        self.components
+            .entry(component.to_string())
+            .or_default()
+            .skipped
+            .push(version.to_string());
+    }
+
+    pub fn set_ignored(&mut self, component: &str, ignored: bool) {
+        self.components
+            .entry(component.to_string())
+            .or_default()
+            .ignored = ignored;
     }
 }
 
@@ -72,11 +117,45 @@ pub fn save(settings: &Settings) {
     }
 }
 
+pub fn exe_dir() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()?
+        .parent()
+        .map(ToOwned::to_owned)
+}
+
+fn aria2_dir() -> Option<PathBuf> {
+    if let Some(exe) = exe_dir() {
+        let dir = exe.join("aria2");
+        if let Ok(true) = std::fs::create_dir_all(&dir)
+            .and_then(|_| {
+                let test = dir.join(".wtest");
+                std::fs::write(&test, "").and_then(|_| std::fs::remove_file(&test))
+            })
+            .map(|_| true)
+        {
+            return Some(dir);
+        }
+    }
+    let proj = directories::ProjectDirs::from("dev", "remotrix", "Remotrix")?;
+    let dir = proj.data_dir().join("aria2");
+    let _ = std::fs::create_dir_all(&dir);
+    Some(dir)
+}
+
 pub fn log_dir() -> Option<PathBuf> {
     let proj = directories::ProjectDirs::from("dev", "remotrix", "Remotrix")?;
     let dir = proj.data_dir().join("logs");
     let _ = std::fs::create_dir_all(&dir);
     Some(dir)
+}
+
+pub fn session_dir() -> Option<PathBuf> {
+    aria2_dir()
+}
+
+pub fn aria2_bin_dir() -> Option<PathBuf> {
+    aria2_dir()
 }
 
 pub fn announce() {

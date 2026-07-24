@@ -5,7 +5,11 @@ use crate::i18n::{Fluent, Tr};
 use crate::message::Message;
 use crate::ui::theme;
 
-pub fn view<'a>(fluent: &'a Fluent, dark: bool) -> Element<'a, Message> {
+pub fn view<'a>(
+    fluent: &'a Fluent,
+    dark: bool,
+    aria2_version: Option<&'a str>,
+) -> Element<'a, Message> {
     let text_primary = if dark {
         theme::TEXT_PRIMARY
     } else {
@@ -22,6 +26,11 @@ pub fn view<'a>(fluent: &'a Fluent, dark: bool) -> Element<'a, Message> {
         theme::BG_CARD_LIGHT
     };
 
+    let engine_text = match aria2_version {
+        Some(v) => format!("Engine: aria2-next v{v}"),
+        None => "Engine: aria2-next (--)".to_string(),
+    };
+
     let panel = container(
         column![]
             .spacing(16)
@@ -30,13 +39,13 @@ pub fn view<'a>(fluent: &'a Fluent, dark: bool) -> Element<'a, Message> {
                     .size(20)
                     .color(text_primary),
             )
-            .push(text("Remotrix 0.1.0").size(14).color(text_secondary))
             .push(
-                text("Engine: aria2-core 0.2.3")
-                    .size(13)
+                text(format!("Remotrix {}", env!("CARGO_PKG_VERSION")))
+                    .size(14)
                     .color(text_secondary),
             )
-            .push(text("GUI: iced 0.13").size(13).color(text_secondary))
+            .push(text(engine_text).size(13).color(text_secondary))
+            .push(text("GUI: iced 0.14").size(13).color(text_secondary))
             .push(iced::widget::Space::new().height(Length::Fixed(8.0)))
             .push(
                 row![]

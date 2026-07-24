@@ -118,6 +118,21 @@ pub enum Tr {
     SortByStatus,
     AboutTitle,
     CloseAbout,
+    Engine,
+    Aria2Version,
+    CheckUpdate,
+    RestoreAutoCheck,
+    AutoCheckDisabled,
+    UpToDate,
+    UpdatedTo,
+    DownloadingAria2,
+    VerifyingAria2,
+    Aria2Ready,
+    UpdateFailed,
+    Retry,
+    RestartToUpdate,
+    UpdateDownloading,
+    PendingUpdateHint,
 }
 
 impl Tr {
@@ -184,6 +199,21 @@ impl Tr {
             Tr::SortByStatus => "sort-by-status",
             Tr::AboutTitle => "about-title",
             Tr::CloseAbout => "close-about",
+            Tr::Engine => "engine",
+            Tr::Aria2Version => "aria2-version",
+            Tr::CheckUpdate => "check-update",
+            Tr::RestoreAutoCheck => "restore-auto-check",
+            Tr::AutoCheckDisabled => "auto-check-disabled",
+            Tr::UpToDate => "up-to-date",
+            Tr::UpdatedTo => "updated-to",
+            Tr::DownloadingAria2 => "downloading-aria2",
+            Tr::VerifyingAria2 => "verifying-aria2",
+            Tr::Aria2Ready => "aria2-ready",
+            Tr::UpdateFailed => "update-failed",
+            Tr::Retry => "retry",
+            Tr::RestartToUpdate => "restart-to-update",
+            Tr::UpdateDownloading => "update-downloading",
+            Tr::PendingUpdateHint => "pending-update-hint",
         }
     }
 }

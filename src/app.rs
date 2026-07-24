@@ -20,7 +20,6 @@ use crate::ui::add_dialog::AddDialogState;
 use crate::ui::category_bar::Counts;
 use crate::ui::icons::{CATEGORY_W, SIDEBAR_W};
 use crate::ui::theme::{self, ThemeMode};
-
 pub struct Remotrix {
     page: Page,
     task_filter: TaskFilter,
@@ -41,6 +40,12 @@ pub struct Remotrix {
     sort_combo_state: combo_box::State<SortField>,
     sort_field: SortField,
     sort_order: SortOrder,
+    aria2_version: Option<String>,
+    aria2_check_msg: Option<String>,
+    update_pending: Option<String>,
+    aria2_status: Option<(String, String)>,
+    aria2_fetch_error: Option<String>,
+    logo_handle: iced::widget::image::Handle,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
@@ -53,6 +58,8 @@ pub fn init() -> (Remotrix, Task<Message>) {
     let fluent = Fluent::new(settings.locale);
 
     let dark = theme::resolve_dark(settings.theme_mode, None);
+    let logo_handle =
+        iced::widget::image::Handle::from_bytes(&include_bytes!("../assets/icon.png")[..]);
 
     let sort_options = vec![
         SortField::AddedTime,
@@ -81,6 +88,12 @@ pub fn init() -> (Remotrix, Task<Message>) {
         window_id: None,
         sort_field: SortField::AddedTime,
         sort_order: SortOrder::Desc,
+        aria2_version: None,
+        aria2_check_msg: None,
+        update_pending: None,
+        aria2_status: None,
+        aria2_fetch_error: None,
+        logo_handle,
     };
 
     (state, Task::none())
@@ -292,6 +305,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::Engine(event) => match event {
             EngineEvent::EngineReady => {
                 tracing::info!("engine ready");
+                state.aria2_fetch_error = None;
             }
             EngineEvent::EngineStopped => {
                 tracing::info!("engine stopped");
@@ -329,6 +343,53 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 tracing::info!(?gid, "ui: task removed");
                 state.tasks.remove(&gid);
                 state.task_order.retain(|g| g != &gid);
+            }
+            EngineEvent::Aria2Version { version } => {
+                tracing::info!(?version, "aria2 version received");
+                state.aria2_version = Some(version.clone());
+                state.aria2_check_msg = None;
+                if state.settings.update.should_auto_check("aria2-next")
+                    && state
+                        .handle
+                        .cmd_tx
+                        .send(EngineCmd::CheckAria2Update)
+                        .is_err()
+                {
+                    tracing::warn!("auto-check update cmd send failed");
+                }
+            }
+            EngineEvent::Aria2CheckResult { current, latest: _ } => {
+                state.aria2_check_msg = Some(format!(
+                    "{} v{current}",
+                    state.fluent.get(crate::i18n::Tr::UpToDate)
+                ));
+            }
+            EngineEvent::Aria2UpdateApplied { version } => {
+                state.update_pending = None;
+                state.aria2_version = Some(version.clone());
+                state.aria2_check_msg = Some(format!(
+                    "{} v{version}",
+                    state.fluent.get(crate::i18n::Tr::UpdatedTo)
+                ));
+            }
+            EngineEvent::Aria2UpdateFailed { error } => {
+                state.aria2_check_msg = Some(error);
+            }
+            EngineEvent::Aria2UpdateStaged { version } => {
+                state.update_pending = Some(version);
+                state.aria2_check_msg = None;
+            }
+            EngineEvent::Aria2FetchFailed { error } => {
+                state.aria2_fetch_error = Some(error);
+            }
+            EngineEvent::EngineDegraded { reason } => {
+                state.aria2_fetch_error = Some(reason);
+            }
+            EngineEvent::Aria2Status { stage, message } => {
+                if stage == "ready" {
+                    state.aria2_fetch_error = None;
+                }
+                state.aria2_status = Some((stage, message));
             }
         },
         Message::WindowOpened(id) => {
@@ -383,6 +444,37 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.fluent = Fluent::new(locale);
             config::save(&state.settings);
         }
+        Message::CheckAria2Update => {
+            state.aria2_check_msg = None;
+            if state
+                .handle
+                .cmd_tx
+                .send(EngineCmd::CheckAria2Update)
+                .is_err()
+            {
+                tracing::warn!("check update cmd send failed");
+            }
+        }
+        Message::RetryAria2Fetch => {
+            state.aria2_fetch_error = None;
+            if state
+                .handle
+                .cmd_tx
+                .send(EngineCmd::RetryAria2Fetch)
+                .is_err()
+            {
+                tracing::warn!("retry fetch cmd send failed");
+            }
+        }
+        Message::RestartEngine => {
+            if state.handle.cmd_tx.send(EngineCmd::RestartEngine).is_err() {
+                tracing::warn!("restart engine cmd send failed");
+            }
+        }
+        Message::RestoreAutoCheck => {
+            state.settings.update.set_ignored("aria2-next", false);
+            config::save(&state.settings);
+        }
     }
     Task::none()
 }
@@ -408,7 +500,8 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
     };
 
     let titlebar = crate::ui::title_bar::view(state.dark, state.maximized);
-    let left_col = crate::ui::sidebar::view(&state.fluent, state.dark, state.page);
+    let left_col =
+        crate::ui::sidebar::view(&state.fluent, state.dark, state.page, &state.logo_handle);
 
     let mid_col = crate::ui::category_bar::view(
         &state.fluent,
@@ -438,9 +531,20 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             let sorted = crate::ui::sort::sort_tasks(&filtered, state.sort_field, state.sort_order);
             crate::ui::task_list::view(&state.fluent, state.dark, &sorted, &state.sort_combo_state)
         }
-        Page::Settings => {
-            crate::ui::settings_page::view(&state.fluent, state.dark, &state.settings)
-        }
+        Page::Settings => crate::ui::settings_page::view(
+            &state.fluent,
+            state.dark,
+            &state.settings,
+            state.aria2_version.as_deref(),
+            state.aria2_check_msg.as_deref(),
+            !state.settings.update.should_auto_check("aria2-next"),
+            state
+                .aria2_status
+                .as_ref()
+                .map(|(s, m)| (s.as_str(), m.as_str())),
+            state.aria2_fetch_error.as_deref(),
+            state.update_pending.as_deref(),
+        ),
     };
 
     let bg_primary = if state.dark {
@@ -496,7 +600,11 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
     if state.about_dialog_visible {
         stacked = stack![
             stacked,
-            crate::ui::about_dialog::view(&state.fluent, state.dark),
+            crate::ui::about_dialog::view(
+                &state.fluent,
+                state.dark,
+                state.aria2_version.as_deref()
+            ),
         ]
         .width(Length::Fill)
         .height(Length::Fill)

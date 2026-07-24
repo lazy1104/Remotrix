@@ -1,16 +1,15 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
 
-use aria2_core::engine::download_command::DownloadCommand;
-use aria2_core::engine::download_engine::DownloadEngine;
-use aria2_core::request::request_group::DownloadOptions;
-use aria2_core::request::request_group::DownloadStatus;
-use aria2_core::request::request_group::GroupId;
-use aria2_core::request::request_group_man::RequestGroupMan;
-
+use aria2_ws::response::TaskStatus as Aria2TaskStatus;
+use aria2_ws::{Client, Event, Map, Notification, TaskOptions};
+use tokio::io::AsyncBufReadExt;
+use tokio::process::{Child, Command};
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use tokio::time::{interval, Duration};
+
+use crate::aria2_fetcher;
 
 #[derive(Debug, Clone)]
 pub enum EngineCmd {
@@ -31,6 +30,9 @@ pub enum EngineCmd {
         upload: Option<u64>,
     },
     Shutdown,
+    CheckAria2Update,
+    RetryAria2Fetch,
+    RestartEngine,
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +51,32 @@ pub enum EngineEvent {
     Removed(String),
     EngineReady,
     EngineStopped,
+    Aria2Status {
+        stage: String,
+        message: String,
+    },
+    Aria2Version {
+        version: String,
+    },
+    Aria2CheckResult {
+        current: String,
+        latest: Option<String>,
+    },
+    Aria2UpdateApplied {
+        version: String,
+    },
+    Aria2UpdateFailed {
+        error: String,
+    },
+    Aria2FetchFailed {
+        error: String,
+    },
+    Aria2UpdateStaged {
+        version: String,
+    },
+    EngineDegraded {
+        reason: String,
+    },
 }
 
 pub type CmdTx = mpsc::UnboundedSender<EngineCmd>;
@@ -70,225 +98,125 @@ pub fn spawn_engine() -> (EngineHandle, EventRx) {
     (EngineHandle { cmd_tx }, event_rx)
 }
 
-async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
-    let man: Arc<RequestGroupMan> = Arc::new(RequestGroupMan::new());
-
-    let mut engine = DownloadEngine::new(250);
-    engine.set_keep_alive(true);
-
-    let sender = engine.command_sender();
-    let _ = event_tx.send(EngineEvent::EngineReady);
-
-    tokio::spawn(async move {
-        if let Err(e) = engine.run().await {
-            tracing::error!(error = ?e, "download engine exited with error");
-        }
-    });
-
-    let man_clone = man.clone();
-    let event_tx_clone = event_tx.clone();
-    tokio::spawn(run_progress_poller(man_clone, event_tx_clone));
-
-    let mut last_status: HashMap<String, String> = HashMap::new();
-
-    while let Some(cmd) = cmd_rx.recv().await {
-        match cmd {
-            EngineCmd::AddDownload {
-                urls,
-                save_dir,
-                split,
-            } => {
-                tracing::info!(?urls, ?save_dir, split, "engine: add download");
-                if let Some(uri) = urls.first() {
-                    let dir = save_dir.to_string_lossy().to_string();
-                    let opts = DownloadOptions {
-                        split: Some(split),
-                        max_connection_per_server: Some(split.max(1)),
-                        dir: Some(dir.clone()),
-                        ..Default::default()
-                    };
-
-                    let gid = man.add_group(urls.clone(), opts.clone()).await.ok();
-                    if let Some(gid) = gid {
-                        let group = man.group_by_id(gid);
-                        if let Some(g) = group {
-                            let cmd =
-                                DownloadCommand::new_with_group(g, uri, &opts, Some(&dir), None);
-                            match cmd {
-                                Ok(cmd) => {
-                                    if sender.send(Box::new(cmd)).is_err() {
-                                        tracing::warn!(
-                                            "engine: download command channel full/closed"
-                                        );
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::warn!(error = ?e, "engine: build download command failed");
-                                }
-                            }
-                        }
-                        let name = basename(uri).unwrap_or_else(|| gid.to_hex_string());
-                        if event_tx
-                            .send(EngineEvent::Added {
-                                gid: gid.to_hex_string(),
-                                name,
-                            })
-                            .is_err()
-                        {
-                            tracing::warn!("engine: event channel send failed (Added)");
-                        }
-                    } else {
-                        tracing::warn!("engine: add_group returned None");
-                    }
-                }
-            }
-            EngineCmd::Pause(gid_hex) => {
-                tracing::info!(?gid_hex, "engine: pause");
-                if let Some(gid) = GroupId::from_hex_string(&gid_hex) {
-                    let _ = man.pause_group(gid).await;
-                    last_status.insert(gid_hex.clone(), "paused".to_string());
-                } else {
-                    tracing::warn!(?gid_hex, "engine: pause invalid gid");
-                }
-            }
-            EngineCmd::Resume(gid_hex) => {
-                tracing::info!(?gid_hex, "engine: resume");
-                if let Some(gid) = GroupId::from_hex_string(&gid_hex) {
-                    let _ = man.unpause_group(gid).await;
-                    last_status.insert(gid_hex.clone(), "waiting".to_string());
-                } else {
-                    tracing::warn!(?gid_hex, "engine: resume invalid gid");
-                }
-            }
-            EngineCmd::Remove(gid_hex) => {
-                tracing::info!(?gid_hex, "engine: remove");
-                if let Some(gid) = GroupId::from_hex_string(&gid_hex) {
-                    let _ = man.remove_group(gid).await;
-                    let _ = event_tx.send(EngineEvent::Removed(gid_hex));
-                } else {
-                    tracing::warn!(?gid_hex, "engine: remove invalid gid");
-                }
-            }
-            EngineCmd::PauseAll => {
-                tracing::info!("engine: pause all");
-                let snapshot = man.all_groups();
-                for (gid, _) in snapshot {
-                    let _ = man.pause_group(gid).await;
-                    last_status.insert(gid.to_hex_string(), "paused".to_string());
-                }
-            }
-            EngineCmd::ResumeAll => {
-                tracing::info!("engine: resume all");
-                let snapshot = man.all_groups();
-                for (gid, _) in snapshot {
-                    let _ = man.unpause_group(gid).await;
-                    last_status.insert(gid.to_hex_string(), "waiting".to_string());
-                }
-            }
-            EngineCmd::RemoveAll => {
-                tracing::info!("engine: remove all");
-                let snapshot = man.all_groups();
-                for (gid, _) in snapshot {
-                    let _ = man.remove_group(gid).await;
-                    let _ = event_tx.send(EngineEvent::Removed(gid.to_hex_string()));
-                }
-            }
-            EngineCmd::Snapshot => {
-                tracing::debug!("engine: snapshot");
-                let snapshot = man.all_groups();
-                for (gid, group) in snapshot {
-                    let gid_hex = gid.to_hex_string();
-                    let rg = group.read().await;
-                    let status = rg.status().await;
-                    let downloaded = rg.get_completed_length();
-                    let total = rg.get_total_length_atomic();
-                    let speed = rg.get_download_speed_cached();
-                    let status_str = match &status {
-                        DownloadStatus::Waiting => "waiting",
-                        DownloadStatus::Active => "active",
-                        DownloadStatus::Paused => "paused",
-                        DownloadStatus::Complete => "complete",
-                        DownloadStatus::Error(_) => "error",
-                        DownloadStatus::Removed => "removed",
-                    }
-                    .to_string();
-
-                    let _ = event_tx.send(EngineEvent::Progress {
-                        gid: gid_hex,
-                        downloaded,
-                        total,
-                        speed,
-                        status: status_str,
-                    });
-                }
-            }
-            EngineCmd::SetSpeedLimit { download, upload } => {
-                tracing::info!(?download, ?upload, "engine: set speed limit");
-                man.set_global_speed_limit(download, upload).await;
-            }
-            EngineCmd::Shutdown => {
-                tracing::info!("engine: shutdown");
-                let _ = event_tx.send(EngineEvent::EngineStopped);
-                break;
-            }
-        }
-    }
-
-    tracing::info!("engine supervisor stopped");
+struct Sidecar {
+    client: Client,
+    child: Option<Child>,
+    port: u16,
+    secret: String,
 }
 
-async fn run_progress_poller(man: Arc<RequestGroupMan>, event_tx: EventTx) {
-    let mut ticker = interval(Duration::from_millis(500));
-    let mut last_status: HashMap<String, String> = HashMap::new();
-    let mut first_seen: HashMap<String, bool> = HashMap::new();
+struct SidecarConfig {
+    session_path: PathBuf,
+    download_dir: PathBuf,
+}
 
-    loop {
-        ticker.tick().await;
-        let snapshot = man.all_groups();
-        for (gid, group) in snapshot {
-            let gid_hex = gid.to_hex_string();
-            let rg = group.read().await;
-            let status = rg.status().await;
-            let downloaded = rg.get_completed_length();
-            let total = rg.get_total_length_atomic();
-            let speed = rg.get_download_speed_cached();
-            let status_str = match &status {
-                DownloadStatus::Waiting => "waiting",
-                DownloadStatus::Active => "active",
-                DownloadStatus::Paused => "paused",
-                DownloadStatus::Complete => "complete",
-                DownloadStatus::Error(_) => "error",
-                DownloadStatus::Removed => "removed",
-            }
-            .to_string();
+fn find_free_port() -> Result<u16, std::io::Error> {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+    let addr = listener.local_addr()?;
+    Ok(addr.port())
+}
 
-            if !first_seen.contains_key(&gid_hex) {
-                first_seen.insert(gid_hex.clone(), true);
-                tracing::info!(?gid_hex, total, ?status_str, "task: first seen");
-            }
+fn generate_secret() -> String {
+    use std::time::SystemTime;
+    let nanos = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!("{:x}{:x}", nanos, std::process::id())
+}
 
-            if let Some(prev) = last_status.get(&gid_hex) {
-                if prev != &status_str {
-                    tracing::info!(
-                        ?gid_hex, from = prev, to = ?status_str, downloaded, total,
-                        "task: status changed"
-                    );
-                    if status_str == "error" || status_str == "removed" {
-                        tracing::warn!(?gid_hex, ?status_str, "task: error/removed");
-                    }
+fn pipe_lines<R: tokio::io::AsyncRead + Unpin + Send + 'static>(reader: R, target: &'static str) {
+    tokio::spawn(async move {
+        let reader = tokio::io::BufReader::new(reader);
+        let mut lines = reader.lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            tracing::debug!(target, "{line}");
+        }
+    });
+}
+
+impl Sidecar {
+    async fn spawn(bin_path: &Path, config: &SidecarConfig) -> Result<Self, String> {
+        let port = find_free_port().map_err(|e| format!("port allocation: {e}"))?;
+        let secret = generate_secret();
+
+        let session_file = config.session_path.join("session.txt");
+        if !session_file.exists() {
+            std::fs::write(&session_file, "").map_err(|e| format!("create session file: {e}"))?;
+        }
+        let session_str = session_file.to_string_lossy().to_string();
+
+        let dir_str = config.download_dir.to_string_lossy();
+        tracing::info!(port, session = %session_str, dir = %dir_str, "spawning aria2-next sidecar");
+
+        let mut child = Command::new(bin_path)
+            .arg("--enable-rpc")
+            .arg("--rpc-listen-all=false")
+            .arg("--rpc-listen-port")
+            .arg(port.to_string())
+            .arg("--rpc-secret")
+            .arg(&secret)
+            .arg("--input-file")
+            .arg(&session_str)
+            .arg("--save-session")
+            .arg(&session_str)
+            .arg("--save-session-interval")
+            .arg("60")
+            .arg("--dir")
+            .arg(&config.download_dir)
+            .arg("--continue=true")
+            .arg("--auto-file-renaming=true")
+            .arg("--allow-overwrite=false")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|e| format!("spawn aria2-next: {e}"))?;
+
+        if let Some(out) = child.stdout.take() {
+            pipe_lines(out, "aria2-stdout");
+        }
+        if let Some(err) = child.stderr.take() {
+            pipe_lines(err, "aria2-stderr");
+        }
+
+        let ws_url = format!("ws://127.0.0.1:{port}/jsonrpc");
+        let mut last_err = String::new();
+        for attempt in 1..=10 {
+            tokio::time::sleep(Duration::from_millis(500 * attempt as u64)).await;
+            match Client::connect(&ws_url, Some(&secret)).await {
+                Ok(client) => {
+                    tracing::info!(port, "aria2-ws connected");
+                    let _ = client.get_version().await.map(|v| {
+                        tracing::info!(enabled_features = ?v.enabled_features, version = ?v.version, "aria2-next version");
+                    });
+                    return Ok(Sidecar {
+                        client,
+                        child: Some(child),
+                        port,
+                        secret,
+                    });
+                }
+                Err(e) => {
+                    last_err = format!("connect attempt {attempt}: {e}");
+                    tracing::warn!("{last_err}");
                 }
             }
-
-            let _ = event_tx.send(EngineEvent::Progress {
-                gid: gid_hex.clone(),
-                downloaded,
-                total,
-                speed,
-                status: status_str.clone(),
-            });
-
-            last_status.insert(gid_hex, status_str);
         }
+        Err(format!(
+            "failed to connect aria2-ws after 10 attempts: {last_err}"
+        ))
+    }
+}
+
+fn status_to_string(status: &aria2_ws::response::TaskStatus) -> &'static str {
+    match status {
+        Aria2TaskStatus::Active => "active",
+        Aria2TaskStatus::Waiting => "waiting",
+        Aria2TaskStatus::Paused => "paused",
+        Aria2TaskStatus::Complete => "complete",
+        Aria2TaskStatus::Error => "error",
+        Aria2TaskStatus::Removed => "removed",
     }
 }
 
@@ -301,4 +229,424 @@ fn basename(uri: &str) -> Option<String> {
     } else {
         Some(seg.to_string())
     }
+}
+
+fn name_from_status(s: &aria2_ws::response::Status) -> String {
+    if let Some(file) = s.files.first() {
+        let path = std::path::Path::new(&file.path);
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            return name.to_string();
+        }
+    }
+    s.gid.clone()
+}
+
+async fn emit_progress(event_tx: &EventTx, s: &aria2_ws::response::Status) {
+    let _ = event_tx.send(EngineEvent::Progress {
+        gid: s.gid.clone(),
+        downloaded: s.completed_length,
+        total: s.total_length,
+        speed: s.download_speed,
+        status: status_to_string(&s.status).to_string(),
+    });
+}
+
+async fn fetch_all_tasks(client: &Client) -> Vec<aria2_ws::response::Status> {
+    let mut all = Vec::new();
+    if let Ok(list) = client.tell_active().await {
+        all.extend(list);
+    }
+    if let Ok(list) = client.tell_waiting(-1, 1000).await {
+        all.extend(list);
+    }
+    if let Ok(list) = client.tell_stopped(-1, 1000).await {
+        all.extend(list);
+    }
+    all
+}
+
+async fn sync_existing_tasks(client: &Client, event_tx: &EventTx) {
+    let all = fetch_all_tasks(client).await;
+    for s in &all {
+        let name = name_from_status(s);
+        let _ = event_tx.send(EngineEvent::Added {
+            gid: s.gid.clone(),
+            name,
+        });
+        emit_progress(event_tx, s).await;
+    }
+    if all.is_empty() {
+        tracing::info!("no existing tasks found during sync");
+    } else {
+        tracing::info!("synced {} existing tasks", all.len());
+    }
+}
+
+async fn handle_client_cmd(
+    client: &Client,
+    cmd: EngineCmd,
+    event_tx: &EventTx,
+) -> Result<(), String> {
+    match cmd {
+        EngineCmd::AddDownload {
+            urls,
+            save_dir,
+            split,
+        } => {
+            tracing::info!(?urls, ?save_dir, split, "add download");
+            let uri = match urls.first() {
+                Some(u) => u.clone(),
+                None => return Err("no URLs provided".into()),
+            };
+            let options = TaskOptions {
+                dir: Some(save_dir.to_string_lossy().to_string()),
+                split: Some(split as i32),
+                max_connection_per_server: Some((split as i32).max(1)),
+                ..Default::default()
+            };
+            let gid = client
+                .add_uri(urls, Some(options), None, None)
+                .await
+                .map_err(|e| format!("add_uri: {e}"))?;
+            let name = basename(&uri).unwrap_or_else(|| gid.clone());
+            let _ = event_tx.send(EngineEvent::Added { gid, name });
+        }
+        EngineCmd::Pause(gid) => {
+            tracing::info!(?gid, "pause");
+            let _ = client.pause(&gid).await;
+        }
+        EngineCmd::Resume(gid) => {
+            tracing::info!(?gid, "resume");
+            let _ = client.unpause(&gid).await;
+        }
+        EngineCmd::Remove(gid) => {
+            tracing::info!(?gid, "remove");
+            match client.remove(&gid).await {
+                Ok(_) => {
+                    let _ = event_tx.send(EngineEvent::Removed(gid));
+                }
+                Err(e) => {
+                    tracing::warn!(?gid, error = ?e, "remove failed, trying force_remove");
+                    let _ = client.force_remove(&gid).await;
+                    let _ = event_tx.send(EngineEvent::Removed(gid));
+                }
+            }
+        }
+        EngineCmd::PauseAll => {
+            tracing::info!("pause all");
+            let _ = client.pause_all().await;
+        }
+        EngineCmd::ResumeAll => {
+            tracing::info!("resume all");
+            let _ = client.unpause_all().await;
+        }
+        EngineCmd::RemoveAll => {
+            tracing::info!("remove all");
+            if let Ok(active) = client.tell_active().await {
+                for s in &active {
+                    let _ = client.remove(&s.gid).await;
+                    let _ = event_tx.send(EngineEvent::Removed(s.gid.clone()));
+                }
+            }
+        }
+        EngineCmd::Snapshot => {
+            tracing::debug!("snapshot");
+            for s in fetch_all_tasks(client).await {
+                let _ = event_tx.send(EngineEvent::Progress {
+                    gid: s.gid,
+                    downloaded: s.completed_length,
+                    total: s.total_length,
+                    speed: s.download_speed,
+                    status: status_to_string(&s.status).to_string(),
+                });
+            }
+        }
+        EngineCmd::SetSpeedLimit { download, upload } => {
+            tracing::info!(?download, ?upload, "set speed limit");
+            let mut extra = Map::new();
+            if let Some(dl) = download {
+                extra.insert(
+                    "max-overall-download-limit".into(),
+                    serde_json::json!(dl.to_string()),
+                );
+            }
+            if let Some(ul) = upload {
+                extra.insert(
+                    "max-overall-upload-limit".into(),
+                    serde_json::json!(ul.to_string()),
+                );
+            }
+            let options = TaskOptions {
+                extra_options: extra,
+                ..Default::default()
+            };
+            let _ = client.change_global_option(options).await;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn installed_version() -> String {
+    aria2_fetcher::installed_version().unwrap_or_default()
+}
+
+async fn handle_check_update(event_tx: &EventTx) {
+    tracing::info!("check aria2 update");
+    let current = installed_version();
+    let slug = crate::updater::platform_slug();
+    match crate::updater::fetch_latest_release("AnInsomniacy/aria2-next", slug).await {
+        Ok(release) => {
+            if release.version == current {
+                let _ = event_tx.send(EngineEvent::Aria2CheckResult {
+                    current,
+                    latest: None,
+                });
+            } else {
+                let settings = crate::config::load();
+                if settings.update.is_skipped("aria2-next", &release.version) {
+                    let _ = event_tx.send(EngineEvent::Aria2CheckResult {
+                        current,
+                        latest: None,
+                    });
+                } else {
+                    match crate::aria2_fetcher::stage_update_download(&release, event_tx).await {
+                        Ok(version) => {
+                            let _ = event_tx.send(EngineEvent::Aria2UpdateStaged { version });
+                        }
+                        Err(e) => {
+                            let _ = event_tx.send(EngineEvent::Aria2UpdateFailed { error: e });
+                        }
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!("update check failed: {e}");
+            let _ = event_tx.send(EngineEvent::Aria2CheckResult {
+                current,
+                latest: None,
+            });
+        }
+    }
+}
+
+async fn boot(
+    config: &SidecarConfig,
+    restart_tx: &mpsc::UnboundedSender<()>,
+    event_tx: &EventTx,
+) -> Result<(Sidecar, Option<String>), String> {
+    let (bin_path, applied) = crate::aria2_fetcher::ensure_aria2_next(event_tx).await?;
+    let mut sidecar = Sidecar::spawn(&bin_path, config).await?;
+
+    if let Some(mut child) = sidecar.child.take() {
+        let tx = restart_tx.clone();
+        tokio::spawn(async move {
+            let _ = child.wait().await;
+            tracing::warn!("aria2-next process exited");
+            let _ = tx.send(());
+        });
+    }
+
+    Ok((sidecar, applied))
+}
+
+fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>> {
+    let _ = event_tx.send(EngineEvent::EngineReady);
+    let _ = event_tx.send(EngineEvent::Aria2Version {
+        version: installed_version(),
+    });
+
+    let sync_client = sidecar.client.clone();
+    let sync_event_tx = event_tx.clone();
+    tokio::spawn(async move {
+        sync_existing_tasks(&sync_client, &sync_event_tx).await;
+    });
+
+    let mut handles = Vec::new();
+
+    let notif_client = sidecar.client.clone();
+    let notif_event_tx = event_tx.clone();
+    handles.push(tokio::spawn(async move {
+        let mut rx = notif_client.subscribe_notifications();
+        loop {
+            match rx.recv().await {
+                Ok(Notification::Aria2 { gid, event }) => match event {
+                    Event::Complete | Event::Error | Event::Stop | Event::BtComplete => {
+                        if let Ok(status) = notif_client.tell_status(&gid).await {
+                            emit_progress(&notif_event_tx, &status).await;
+                        }
+                    }
+                    _ => {}
+                },
+                Ok(Notification::WebSocketConnected) => {
+                    tracing::info!("aria2-ws reconnected");
+                }
+                Ok(Notification::WebsocketClosed) => {
+                    tracing::warn!("aria2-ws connection closed");
+                }
+                Err(_) => {
+                    break;
+                }
+            }
+        }
+    }));
+
+    let poll_client = sidecar.client.clone();
+    let poll_event_tx = event_tx.clone();
+    handles.push(tokio::spawn(async move {
+        let mut ticker = interval(Duration::from_millis(1000));
+        loop {
+            ticker.tick().await;
+            let active = match poll_client.tell_active().await {
+                Ok(list) => list,
+                Err(e) => {
+                    tracing::debug!("tell_active: {e}");
+                    continue;
+                }
+            };
+            for s in &active {
+                emit_progress(&poll_event_tx, s).await;
+            }
+        }
+    }));
+
+    handles
+}
+
+async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
+    let session_path = crate::config::session_dir().unwrap_or_else(|| PathBuf::from("."));
+    let download_dir = crate::config::load().download_dir;
+    let config = SidecarConfig {
+        session_path,
+        download_dir,
+    };
+
+    let (restart_tx, mut restart_rx) = mpsc::unbounded_channel::<()>();
+
+    let mut sidecar: Option<Sidecar> = None;
+    let mut poll_handles: Vec<JoinHandle<()>> = Vec::new();
+    let mut retry_count = 0;
+    const MAX_RETRIES: u32 = 3;
+
+    match boot(&config, &restart_tx, &event_tx).await {
+        Ok((s, applied)) => {
+            poll_handles = on_sidecar_ready(&s, &event_tx);
+            sidecar = Some(s);
+            retry_count = 0;
+            if let Some(v) = applied {
+                let _ = event_tx.send(EngineEvent::Aria2UpdateApplied { version: v });
+            }
+        }
+        Err(e) => {
+            tracing::error!("initial sidecar startup failed: {e}");
+            let _ = event_tx.send(EngineEvent::Aria2FetchFailed { error: e });
+        }
+    }
+
+    loop {
+        tokio::select! {
+            cmd = cmd_rx.recv() => {
+                let Some(cmd) = cmd else {
+                    tracing::info!("cmd channel closed");
+                    break;
+                };
+                match &cmd {
+                    EngineCmd::Shutdown => {
+                        if let Some(ref s) = sidecar {
+                            let _ = s.client.shutdown().await;
+                        }
+                        let _ = event_tx.send(EngineEvent::EngineStopped);
+                        break;
+                    }
+                    EngineCmd::CheckAria2Update => {
+                        handle_check_update(&event_tx).await;
+                    }
+                    EngineCmd::RetryAria2Fetch => {
+                        for h in poll_handles.drain(..) { h.abort(); }
+                        sidecar = None;
+                        match boot(&config, &restart_tx, &event_tx).await {
+                            Ok((s, applied)) => {
+                                poll_handles = on_sidecar_ready(&s, &event_tx);
+                                sidecar = Some(s);
+                                retry_count = 0;
+                                if let Some(v) = applied {
+                                    let _ = event_tx.send(EngineEvent::Aria2UpdateApplied { version: v });
+                                }
+                            }
+                            Err(e) => {
+                                let _ = event_tx.send(EngineEvent::Aria2FetchFailed { error: e });
+                            }
+                        }
+                    }
+                    EngineCmd::RestartEngine => {
+                        if let Some(ref s) = sidecar {
+                            for h in poll_handles.drain(..) { h.abort(); }
+                            let _ = s.client.shutdown().await;
+                            sidecar = None;
+                        } else {
+                            for h in poll_handles.drain(..) { h.abort(); }
+                            match boot(&config, &restart_tx, &event_tx).await {
+                                Ok((s, applied)) => {
+                                    poll_handles = on_sidecar_ready(&s, &event_tx);
+                                    sidecar = Some(s);
+                                    retry_count = 0;
+                                    if let Some(v) = applied {
+                                        let _ = event_tx.send(EngineEvent::Aria2UpdateApplied { version: v });
+                                    }
+                                }
+                                Err(e) => {
+                                    let _ = event_tx.send(EngineEvent::Aria2FetchFailed { error: e });
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        if let Some(ref s) = sidecar {
+                            if let Err(e) = handle_client_cmd(&s.client, cmd, &event_tx).await {
+                                tracing::error!("cmd error: {e}");
+                            }
+                        } else {
+                            let _ = event_tx.send(EngineEvent::EngineDegraded {
+                                reason: "aria2-next not available".to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+            _ = restart_rx.recv() => {
+                tracing::warn!("aria2-next exited, restarting...");
+                for h in poll_handles.drain(..) { h.abort(); }
+                sidecar = None;
+                retry_count += 1;
+                if retry_count > MAX_RETRIES {
+                    tracing::error!("sidecar restart failed after {MAX_RETRIES} attempts");
+                    let _ = event_tx.send(EngineEvent::Aria2FetchFailed {
+                        error: "aria2-next crashed repeatedly".to_string(),
+                    });
+                    continue;
+                }
+                match boot(&config, &restart_tx, &event_tx).await {
+                    Ok((s, applied)) => {
+                        poll_handles = on_sidecar_ready(&s, &event_tx);
+                        sidecar = Some(s);
+                        retry_count = 0;
+                        if let Some(v) = applied {
+                            let _ = event_tx.send(EngineEvent::Aria2UpdateApplied { version: v });
+                        }
+                        tracing::info!("aria2-next restarted successfully");
+                    }
+                    Err(e) => {
+                        tracing::warn!("restart attempt failed: {e}");
+                        let _ = event_tx.send(EngineEvent::Aria2FetchFailed { error: e });
+                    }
+                }
+            }
+        }
+    }
+
+    for h in poll_handles {
+        h.abort();
+    }
+    tracing::info!("engine supervisor stopped");
 }
