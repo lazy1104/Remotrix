@@ -1,5 +1,5 @@
 use iced::widget::{button, column, container, row, text};
-use iced::{Alignment, Color, Element, Length};
+use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, Page, SettingsCategory, TaskFilter};
@@ -13,35 +13,21 @@ pub struct Counts {
 
 pub fn view<'a>(
     fluent: &'a Fluent,
-    dark: bool,
+    _theme: &iced::Theme,
     page: Page,
     task_filter: TaskFilter,
     _settings_cat: SettingsCategory,
     counts: &Counts,
 ) -> Element<'a, Message> {
-    let text_primary = if dark {
-        theme::TEXT_PRIMARY
-    } else {
-        theme::TEXT_PRIMARY_LIGHT
-    };
-    let bg_card = if dark {
-        theme::BG_CARD
-    } else {
-        theme::BG_CARD_LIGHT
-    };
-
     let title_str = match page {
         Page::Tasks => fluent.get(Tr::TasksList),
         Page::Settings => fluent.get(Tr::Preferences),
     };
 
-    let title = text(title_str)
-        .size(16)
-        .font(iced::Font {
-            weight: iced::font::Weight::Bold,
-            ..Default::default()
-        })
-        .color(text_primary);
+    let title = text(title_str).size(16).font(iced::Font {
+        weight: iced::font::Weight::Bold,
+        ..Default::default()
+    });
 
     let items: Element<'a, Message> = match page {
         Page::Tasks => {
@@ -66,14 +52,7 @@ pub fn view<'a>(
                     .style(button::text);
 
                     if is_active {
-                        container(btn)
-                            .style(move |_theme| container::Style {
-                                background: Some(Color::from_rgba(0.29, 0.565, 0.851, 0.18).into()),
-                                text_color: Some(theme::ACCENT),
-                                border: iced::border::rounded(6),
-                                ..Default::default()
-                            })
-                            .into()
+                        container(btn).style(theme::style::active_filter).into()
                     } else {
                         container(btn).into()
                     }
@@ -112,14 +91,7 @@ pub fn view<'a>(
             .style(button::text);
 
             let item: Element<'a, Message> = if is_active {
-                container(btn)
-                    .style(move |_theme| container::Style {
-                        background: Some(Color::from_rgba(0.29, 0.565, 0.851, 0.18).into()),
-                        text_color: Some(theme::ACCENT),
-                        border: iced::border::rounded(6),
-                        ..Default::default()
-                    })
-                    .into()
+                container(btn).style(theme::style::active_filter).into()
             } else {
                 container(btn).into()
             };
@@ -138,10 +110,6 @@ pub fn view<'a>(
     .width(Length::Fill)
     .height(Length::Fill)
     .padding([20, 14])
-    .style(move |_theme| container::Style {
-        background: Some(bg_card.into()),
-        text_color: Some(text_primary),
-        ..Default::default()
-    })
+    .style(theme::style::category_background)
     .into()
 }

@@ -1,5 +1,5 @@
 use iced::widget::{button, column, container, image, text, tooltip};
-use iced::{Color, Element, Length};
+use iced::{Element, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, Page};
@@ -7,21 +7,10 @@ use crate::ui::theme;
 
 pub fn view<'a>(
     fluent: &'a Fluent,
-    dark: bool,
+    _theme: &iced::Theme,
     page: Page,
     logo_handle: &'a iced::widget::image::Handle,
 ) -> Element<'a, Message> {
-    let bg_sidebar = if dark {
-        theme::BG_SIDEBAR
-    } else {
-        theme::BG_SIDEBAR_LIGHT
-    };
-    let text_primary = if dark {
-        theme::TEXT_PRIMARY
-    } else {
-        theme::TEXT_PRIMARY_LIGHT
-    };
-
     let logo = container(
         image(logo_handle.clone())
             .width(Length::Fixed(28.0))
@@ -37,39 +26,11 @@ pub fn view<'a>(
                 .font(iced::Font::with_name("lucide"))
                 .size(20);
             let btn_content = container(glyph).center_x(Length::Fill).width(Length::Fill);
-            let btn = button(btn_content).on_press(msg);
-
-            #[allow(clippy::type_complexity)]
-            let style: Box<dyn Fn(&iced::Theme, button::Status) -> button::Style + 'a> = if active {
-                Box::new(
-                    move |_theme: &iced::Theme, _status: button::Status| -> button::Style {
-                        button::Style {
-                            background: Some(Color::from_rgba(0.29, 0.565, 0.851, 0.25).into()),
-                            text_color: theme::ACCENT,
-                            border: iced::border::rounded(6),
-                            ..Default::default()
-                        }
-                    },
-                )
-            } else {
-                let hover = Color::from_rgba(1.0, 1.0, 1.0, 0.08);
-                Box::new(
-                    move |_theme: &iced::Theme, status: button::Status| -> button::Style {
-                        let bg = match status {
-                            button::Status::Hovered | button::Status::Pressed => Some(hover.into()),
-                            _ => None,
-                        };
-                        button::Style {
-                            background: bg,
-                            text_color: text_primary,
-                            border: iced::border::rounded(6),
-                            ..Default::default()
-                        }
-                    },
-                )
-            };
-
-            let btn = btn.padding([10, 0]).width(Length::Fill).style(style);
+            let btn = button(btn_content)
+                .on_press(msg)
+                .padding([10, 0])
+                .width(Length::Fill)
+                .style(theme::style::button::sidebar_icon(active));
 
             tooltip(btn, text(tip), tooltip::Position::Right)
                 .style(container::rounded_box)
@@ -111,10 +72,6 @@ pub fn view<'a>(
         .width(Length::Fill)
         .height(Length::Fill)
         .padding([12, 0])
-        .style(move |_theme| container::Style {
-            background: Some(bg_sidebar.into()),
-            text_color: Some(text_primary),
-            ..Default::default()
-        })
+        .style(theme::style::sidebar_background)
         .into()
 }

@@ -45,23 +45,11 @@ impl AddDialogState {
     }
 }
 
-pub fn view<'a>(fluent: &'a Fluent, dark: bool, state: &'a AddDialogState) -> Element<'a, Message> {
-    let text_primary = if dark {
-        theme::TEXT_PRIMARY
-    } else {
-        theme::TEXT_PRIMARY_LIGHT
-    };
-    let text_secondary = if dark {
-        theme::TEXT_SECONDARY
-    } else {
-        theme::TEXT_SECONDARY_LIGHT
-    };
-    let bg_card = if dark {
-        theme::BG_CARD
-    } else {
-        theme::BG_CARD_LIGHT
-    };
-
+pub fn view<'a>(
+    fluent: &'a Fluent,
+    _theme: &iced::Theme,
+    state: &'a AddDialogState,
+) -> Element<'a, Message> {
     let placeholder = fluent.get(Tr::UrlPlaceholder);
     let url_input = text_input(&placeholder, state.url.as_str())
         .on_input(Message::AddUrlChanged)
@@ -72,7 +60,7 @@ pub fn view<'a>(fluent: &'a Fluent, dark: bool, state: &'a AddDialogState) -> El
         .push(
             text(fluent.get(Tr::OrTorrent))
                 .size(12)
-                .color(text_secondary),
+                .style(theme::style::text::secondary),
         )
         .push(iced::widget::Space::new().width(Length::Fill))
         .push(
@@ -89,8 +77,12 @@ pub fn view<'a>(fluent: &'a Fluent, dark: bool, state: &'a AddDialogState) -> El
     let save_row = row![]
         .push(
             column![]
-                .push(text(fluent.get(Tr::SaveTo)).size(12).color(text_secondary))
-                .push(text(save_dir_str.clone()).size(13).color(text_primary))
+                .push(
+                    text(fluent.get(Tr::SaveTo))
+                        .size(12)
+                        .style(theme::style::text::secondary),
+                )
+                .push(text(save_dir_str.clone()).size(13))
                 .spacing(2)
                 .width(Length::Fill),
         )
@@ -108,7 +100,7 @@ pub fn view<'a>(fluent: &'a Fluent, dark: bool, state: &'a AddDialogState) -> El
         .push(
             text(fluent.get(Tr::SplitConnections))
                 .size(12)
-                .color(text_secondary),
+                .style(theme::style::text::secondary),
         )
         .push(iced::widget::Space::new().width(Length::Fill))
         .push(
@@ -146,11 +138,7 @@ pub fn view<'a>(fluent: &'a Fluent, dark: bool, state: &'a AddDialogState) -> El
     let panel = container(
         column![]
             .spacing(14)
-            .push(
-                text(fluent.get(Tr::NewDownload))
-                    .size(20)
-                    .color(text_primary),
-            )
+            .push(text(fluent.get(Tr::NewDownload)).size(20))
             .push(url_input)
             .push(torrent_row)
             .push(save_row)
@@ -159,20 +147,13 @@ pub fn view<'a>(fluent: &'a Fluent, dark: bool, state: &'a AddDialogState) -> El
     )
     .width(Length::Fixed(520.0))
     .padding(28)
-    .style(move |_theme| container::Style {
-        background: Some(bg_card.into()),
-        border: iced::border::rounded(12),
-        ..Default::default()
-    });
+    .style(theme::style::card);
 
     container(panel)
         .center_x(Length::Fill)
         .center_y(Length::Fill)
         .width(Length::Fill)
         .height(Length::Fill)
-        .style(move |_theme| container::Style {
-            background: Some(theme::OVERLAY.into()),
-            ..Default::default()
-        })
+        .style(theme::style::overlay)
         .into()
 }

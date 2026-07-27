@@ -10,31 +10,10 @@ use crate::ui::theme;
 
 pub fn view<'a>(
     fluent: &'a Fluent,
-    dark: bool,
+    theme: &iced::Theme,
     tasks: &[DownloadTask],
     sort_combo_state: &'a combo_box::State<SortField>,
 ) -> Element<'a, Message> {
-    let text_primary = if dark {
-        theme::TEXT_PRIMARY
-    } else {
-        theme::TEXT_PRIMARY_LIGHT
-    };
-    let text_secondary = if dark {
-        theme::TEXT_SECONDARY
-    } else {
-        theme::TEXT_SECONDARY_LIGHT
-    };
-    let bg_card = if dark {
-        theme::BG_CARD
-    } else {
-        theme::BG_CARD_LIGHT
-    };
-    let progress_track = if dark {
-        theme::BG_PRIMARY
-    } else {
-        theme::BORDER_LIGHT
-    };
-
     let combo_w = combo_box::ComboBox::new(
         sort_combo_state,
         "",
@@ -97,11 +76,15 @@ pub fn view<'a>(
         let empty = container(
             column![]
                 .spacing(8)
-                .push(text(fluent.get(Tr::NoTasks)).size(18).color(text_secondary))
+                .push(
+                    text(fluent.get(Tr::NoTasks))
+                        .size(18)
+                        .style(theme::style::text::secondary),
+                )
                 .push(
                     text(fluent.get(Tr::NoTasksHint))
                         .size(13)
-                        .color(text_secondary),
+                        .style(theme::style::text::secondary),
                 ),
         )
         .center_x(Length::Fill)
@@ -118,14 +101,7 @@ pub fn view<'a>(
     let mut list = column![].spacing(10);
 
     for t in tasks {
-        list = list.push(task_card(
-            fluent,
-            t,
-            text_primary,
-            text_secondary,
-            bg_card,
-            progress_track,
-        ));
+        list = list.push(task_card(fluent, theme, t));
     }
 
     let body = scrollable(column![].spacing(10).push(list)).height(Length::Fill);
@@ -137,17 +113,14 @@ pub fn view<'a>(
         .into()
 }
 
-#[allow(clippy::too_many_arguments)]
 fn task_card<'a>(
     fluent: &'a Fluent,
+    theme: &iced::Theme,
     t: &DownloadTask,
-    text_primary: iced::Color,
-    text_secondary: iced::Color,
-    bg_card: iced::Color,
-    progress_track: iced::Color,
 ) -> Element<'a, Message> {
+    let text_secondary = theme::text_secondary(theme);
     let pct = t.progress_pct();
-    let name = text(t.name.clone()).size(15).color(text_primary);
+    let name = text(t.name.clone()).size(15);
 
     let meta_left = format!(
         "{} / {}",
@@ -185,15 +158,19 @@ fn task_card<'a>(
         _ => text_secondary,
     };
 
-    let sep1 = text("  ·  ").size(12).color(text_secondary);
-    let sep2 = text("  ·  ").size(12).color(text_secondary);
+    let sep1 = text("  ·  ").size(12).style(theme::style::text::secondary);
+    let sep2 = text("  ·  ").size(12).style(theme::style::text::secondary);
 
     let meta = row![]
-        .push(text(meta_left).size(12).color(text_secondary))
+        .push(
+            text(meta_left)
+                .size(12)
+                .style(theme::style::text::secondary),
+        )
         .push(iced::widget::Space::new().width(Length::Fill))
         .push(text(speed_text).size(12).color(theme::SPEED))
         .push(sep1)
-        .push(text(eta_text).size(12).color(text_secondary))
+        .push(text(eta_text).size(12).style(theme::style::text::secondary))
         .push(sep2)
         .push(text(status_str).size(12).color(status_color))
         .align_y(Alignment::Center)
@@ -206,11 +183,7 @@ fn task_card<'a>(
     };
     let bar = progress_bar(0.0..=100.0, pct)
         .girth(Length::Fixed(8.0))
-        .style(move |_theme| iced::widget::progress_bar::Style {
-            background: iced::Background::Color(progress_track),
-            bar: iced::Background::Color(bar_color),
-            border: iced::border::rounded(4),
-        });
+        .style(theme::style::progress::task(bar_color));
 
     let mut actions = row![].spacing(8);
     match t.status {
@@ -242,7 +215,7 @@ fn task_card<'a>(
     }
     let pct_text = format!("{:.1}%", pct);
     actions = actions.push(iced::widget::Space::new().width(Length::Fill));
-    actions = actions.push(text(pct_text).size(12).color(text_secondary));
+    actions = actions.push(text(pct_text).size(12).style(theme::style::text::secondary));
 
     let content = column![]
         .spacing(8)
@@ -255,10 +228,6 @@ fn task_card<'a>(
     container(content)
         .width(Length::Fill)
         .padding(16)
-        .style(move |_theme| container::Style {
-            background: Some(bg_card.into()),
-            border: iced::border::rounded(8),
-            ..Default::default()
-        })
+        .style(theme::style::card)
         .into()
 }

@@ -33,7 +33,7 @@ pub struct Remotrix {
     settings: Settings,
     pending_speed_apply: bool,
     fluent: Fluent,
-    dark: bool,
+    theme: iced::Theme,
     maximized: bool,
     show_close_dialog: bool,
     window_id: Option<Id>,
@@ -57,7 +57,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
     let add_dialog = AddDialogState::new(settings.download_dir.clone());
     let fluent = Fluent::new(settings.locale);
 
-    let dark = theme::resolve_dark(settings.theme_mode, None);
+    let theme = theme::build_iced(theme::resolve_mode(settings.theme_mode, None));
     let logo_handle =
         iced::widget::image::Handle::from_bytes(&include_bytes!("../assets/icon.png")[..]);
 
@@ -82,7 +82,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         settings,
         pending_speed_apply: false,
         fluent,
-        dark,
+        theme,
         maximized: false,
         show_close_dialog: false,
         window_id: None,
@@ -104,7 +104,11 @@ pub fn app_title(_state: &Remotrix) -> String {
 }
 
 pub fn theme(state: &Remotrix) -> iced::Theme {
-    theme::build(state.dark)
+    state.theme.clone()
+}
+
+fn rebuild_theme(state: &mut Remotrix) {
+    state.theme = theme::build_iced(theme::resolve_mode(state.settings.theme_mode, None));
 }
 
 pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
@@ -262,7 +266,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     "light" => ThemeMode::Light,
                     _ => ThemeMode::System,
                 };
-                state.dark = theme::resolve_dark(state.settings.theme_mode, None);
+                rebuild_theme(state);
             }
             SettingKey::Locale => {
                 state.settings.locale = match value.as_str() {
@@ -436,7 +440,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         }
         Message::ThemeModeChanged(mode) => {
             state.settings.theme_mode = mode;
-            state.dark = theme::resolve_dark(mode, None);
+            rebuild_theme(state);
             config::save(&state.settings);
         }
         Message::LocaleChanged(locale) => {
@@ -499,13 +503,13 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             .count(),
     };
 
-    let titlebar = crate::ui::title_bar::view(state.dark, state.maximized);
-    let left_col =
-        crate::ui::sidebar::view(&state.fluent, state.dark, state.page, &state.logo_handle);
+    let t = &state.theme;
+    let titlebar = crate::ui::title_bar::view(t, state.maximized);
+    let left_col = crate::ui::sidebar::view(&state.fluent, t, state.page, &state.logo_handle);
 
     let mid_col = crate::ui::category_bar::view(
         &state.fluent,
-        state.dark,
+        t,
         state.page,
         state.task_filter,
         state.settings_cat,
@@ -529,11 +533,11 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                 .cloned()
                 .collect();
             let sorted = crate::ui::sort::sort_tasks(&filtered, state.sort_field, state.sort_order);
-            crate::ui::task_list::view(&state.fluent, state.dark, &sorted, &state.sort_combo_state)
+            crate::ui::task_list::view(&state.fluent, t, &sorted, &state.sort_combo_state)
         }
         Page::Settings => crate::ui::settings_page::view(
             &state.fluent,
-            state.dark,
+            t,
             &state.settings,
             state.aria2_version.as_deref(),
             state.aria2_check_msg.as_deref(),
@@ -545,12 +549,6 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             state.aria2_fetch_error.as_deref(),
             state.update_pending.as_deref(),
         ),
-    };
-
-    let bg_primary = if state.dark {
-        theme::BG_PRIMARY
-    } else {
-        theme::BG_PRIMARY_LIGHT
     };
 
     let content = row![]
@@ -581,17 +579,14 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
     let base = container(body)
         .width(Length::Fill)
         .height(Length::Fill)
-        .style(move |_theme| container::Style {
-            background: Some(bg_primary.into()),
-            ..Default::default()
-        });
+        .style(theme::style::base_background);
 
     let mut stacked = iced::widget::opaque(base);
 
     if state.add_dialog.is_visible() {
         stacked = stack![
             stacked,
-            crate::ui::add_dialog::view(&state.fluent, state.dark, &state.add_dialog),
+            crate::ui::add_dialog::view(&state.fluent, t, &state.add_dialog),
         ]
         .width(Length::Fill)
         .height(Length::Fill)
@@ -600,24 +595,17 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
     if state.about_dialog_visible {
         stacked = stack![
             stacked,
-            crate::ui::about_dialog::view(
-                &state.fluent,
-                state.dark,
-                state.aria2_version.as_deref()
-            ),
+            crate::ui::about_dialog::view(&state.fluent, t, state.aria2_version.as_deref()),
         ]
         .width(Length::Fill)
         .height(Length::Fill)
         .into();
     }
     if state.show_close_dialog {
-        stacked = stack![
-            stacked,
-            crate::ui::close_dialog::view(&state.fluent, state.dark),
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into();
+        stacked = stack![stacked, crate::ui::close_dialog::view(&state.fluent, t),]
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into();
     }
 
     container(stacked)

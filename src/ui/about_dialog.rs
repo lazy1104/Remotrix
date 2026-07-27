@@ -7,25 +7,9 @@ use crate::ui::theme;
 
 pub fn view<'a>(
     fluent: &'a Fluent,
-    dark: bool,
+    _theme: &iced::Theme,
     aria2_version: Option<&'a str>,
 ) -> Element<'a, Message> {
-    let text_primary = if dark {
-        theme::TEXT_PRIMARY
-    } else {
-        theme::TEXT_PRIMARY_LIGHT
-    };
-    let text_secondary = if dark {
-        theme::TEXT_SECONDARY
-    } else {
-        theme::TEXT_SECONDARY_LIGHT
-    };
-    let card_bg = if dark {
-        theme::BG_CARD
-    } else {
-        theme::BG_CARD_LIGHT
-    };
-
     let engine_text = match aria2_version {
         Some(v) => format!("Engine: aria2-next v{v}"),
         None => "Engine: aria2-next (--)".to_string(),
@@ -34,18 +18,22 @@ pub fn view<'a>(
     let panel = container(
         column![]
             .spacing(16)
-            .push(
-                text(fluent.get(Tr::AboutTitle))
-                    .size(20)
-                    .color(text_primary),
-            )
+            .push(text(fluent.get(Tr::AboutTitle)).size(20))
             .push(
                 text(format!("Remotrix {}", env!("CARGO_PKG_VERSION")))
                     .size(14)
-                    .color(text_secondary),
+                    .style(theme::style::text::secondary),
             )
-            .push(text(engine_text).size(13).color(text_secondary))
-            .push(text("GUI: iced 0.14").size(13).color(text_secondary))
+            .push(
+                text(engine_text)
+                    .size(13)
+                    .style(theme::style::text::secondary),
+            )
+            .push(
+                text("GUI: iced 0.14")
+                    .size(13)
+                    .style(theme::style::text::secondary),
+            )
             .push(iced::widget::Space::new().height(Length::Fixed(8.0)))
             .push(
                 row![]
@@ -61,20 +49,13 @@ pub fn view<'a>(
     )
     .width(Length::Fixed(380.0))
     .padding(28)
-    .style(move |_theme| container::Style {
-        background: Some(card_bg.into()),
-        border: iced::border::rounded(12),
-        ..Default::default()
-    });
+    .style(theme::style::card);
 
     container(panel)
         .center_x(Length::Fill)
         .center_y(Length::Fill)
         .width(Length::Fill)
         .height(Length::Fill)
-        .style(move |_theme| container::Style {
-            background: Some(theme::OVERLAY.into()),
-            ..Default::default()
-        })
+        .style(theme::style::overlay)
         .into()
 }

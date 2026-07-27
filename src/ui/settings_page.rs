@@ -9,7 +9,7 @@ use crate::ui::theme;
 #[allow(clippy::too_many_arguments)]
 pub fn view<'a>(
     fluent: &'a Fluent,
-    dark: bool,
+    theme: &iced::Theme,
     settings: &'a Settings,
     aria2_version: Option<&'a str>,
     aria2_check_msg: Option<&'a str>,
@@ -18,16 +18,7 @@ pub fn view<'a>(
     aria2_fetch_error: Option<&'a str>,
     update_pending: Option<&'a str>,
 ) -> Element<'a, Message> {
-    let text_primary = if dark {
-        theme::TEXT_PRIMARY
-    } else {
-        theme::TEXT_PRIMARY_LIGHT
-    };
-    let text_secondary = if dark {
-        theme::TEXT_SECONDARY
-    } else {
-        theme::TEXT_SECONDARY_LIGHT
-    };
+    let text_secondary = theme::text_secondary(theme);
 
     let dir_str = settings.download_dir.to_string_lossy().to_string();
     let dl_limit_str = settings.download_limit_kb.to_string();
@@ -42,13 +33,12 @@ pub fn view<'a>(
                 .push(
                     text(fluent.get(Tr::DownloadFolder))
                         .size(13)
-                        .width(Length::Fixed(180.0))
-                        .color(text_primary),
+                        .width(Length::Fixed(180.0)),
                 )
                 .push(
                     text(dir_str)
                         .size(13)
-                        .color(text_secondary)
+                        .style(theme::style::text::secondary)
                         .width(Length::Fill),
                 )
                 .push(
@@ -67,8 +57,7 @@ pub fn view<'a>(
                 .push(
                     text(fluent.get(Tr::MaxConcurrent))
                         .size(13)
-                        .width(Length::Fixed(180.0))
-                        .color(text_primary),
+                        .width(Length::Fixed(180.0)),
                 )
                 .push(
                     text_input("5", max_concurrent_str.as_str())
@@ -88,8 +77,7 @@ pub fn view<'a>(
                 .push(
                     text(fluent.get(Tr::DownloadLimit))
                         .size(13)
-                        .width(Length::Fixed(240.0))
-                        .color(text_primary),
+                        .width(Length::Fixed(240.0)),
                 )
                 .push(
                     text_input("0", dl_limit_str.as_str())
@@ -105,8 +93,7 @@ pub fn view<'a>(
                 .push(
                     text(fluent.get(Tr::UploadLimit))
                         .size(13)
-                        .width(Length::Fixed(240.0))
-                        .color(text_primary),
+                        .width(Length::Fixed(240.0)),
                 )
                 .push(
                     text_input("0", ul_limit_str.as_str())
@@ -177,10 +164,13 @@ pub fn view<'a>(
             .push(
                 text(fluent.get(Tr::Aria2Version))
                     .size(13)
-                    .width(Length::Fixed(180.0))
-                    .color(text_primary),
+                    .width(Length::Fixed(180.0)),
             )
-            .push(text(version_text).size(13).color(text_secondary))
+            .push(
+                text(version_text)
+                    .size(13)
+                    .style(theme::style::text::secondary),
+            )
             .align_y(Alignment::Center)
             .into(),
     );
@@ -215,7 +205,7 @@ pub fn view<'a>(
                 fluent.get(Tr::PendingUpdateHint)
             ))
             .size(12)
-            .color(text_secondary),
+            .style(theme::style::text::secondary),
         );
     } else if aria2_fetch_error.is_some() {
         btn_row = btn_row.push(
@@ -243,7 +233,7 @@ pub fn view<'a>(
     }
 
     if let Some(msg) = aria2_check_msg {
-        btn_row = btn_row.push(text(msg).size(12).color(text_secondary));
+        btn_row = btn_row.push(text(msg).size(12).style(theme::style::text::secondary));
     }
 
     engine_rows.push(btn_row.into());
@@ -278,11 +268,7 @@ pub fn view<'a>(
 
     container(
         column![]
-            .push(
-                text(fluent.get(Tr::SettingsTitle))
-                    .size(22)
-                    .color(text_primary),
-            )
+            .push(text(fluent.get(Tr::SettingsTitle)).size(22))
             .push(iced::widget::Space::new().height(Length::Fixed(20.0)))
             .push(scrollable(content).height(Length::Fill)),
     )
