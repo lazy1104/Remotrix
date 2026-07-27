@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use iced::futures::SinkExt;
-use iced::widget::{column, combo_box, container, row, stack};
+use iced::widget::{column, combo_box, container, row, stack, text_editor};
 use iced::window::Id;
 use iced::{Element, Length, Subscription, Task};
 
@@ -31,7 +31,6 @@ pub struct Remotrix {
     add_dialog: AddDialogState,
     about_dialog_visible: bool,
     settings: Settings,
-    pending_speed_apply: bool,
     fluent: Fluent,
     theme: iced::Theme,
     maximized: bool,
@@ -46,11 +45,18 @@ pub struct Remotrix {
     aria2_status: Option<(String, String)>,
     aria2_fetch_error: Option<String>,
     logo_handle: iced::widget::image::Handle,
+    ua_editor: text_editor::Content,
+    headers_editor: text_editor::Content,
+    torrent_files: HashMap<String, PathBuf>,
+    pending_torrent_path: Option<PathBuf>,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
     config::announce();
     let settings = config::load();
+
+    let ua_editor = text_editor::Content::with_text(&settings.aria2.user_agent);
+    let headers_editor = text_editor::Content::with_text(&settings.aria2.headers.join("\n"));
 
     let (handle, event_rx) = crate::engine::spawn_engine();
 
@@ -80,7 +86,6 @@ pub fn init() -> (Remotrix, Task<Message>) {
         add_dialog,
         about_dialog_visible: false,
         settings,
-        pending_speed_apply: false,
         fluent,
         theme,
         maximized: false,
@@ -94,6 +99,10 @@ pub fn init() -> (Remotrix, Task<Message>) {
         aria2_status: None,
         aria2_fetch_error: None,
         logo_handle,
+        ua_editor,
+        headers_editor,
+        torrent_files: HashMap::new(),
+        pending_torrent_path: None,
     };
 
     (state, Task::none())
@@ -123,7 +132,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.settings_cat = cat;
         }
         Message::OpenAddDialog => {
-            state.add_dialog.open(state.settings.download_dir.clone());
+            state
+                .add_dialog
+                .open(state.settings.download_dir.clone(), state.settings.split);
         }
         Message::CancelAdd => {
             state.add_dialog.close();
@@ -152,8 +163,13 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 }
                 FileKind::Torrent => {
                     if let Some(p) = maybe_path {
+                        state.add_dialog.torrent_path = Some(p.clone());
                         if state.add_dialog.url.trim().is_empty() {
-                            state.add_dialog.url = format!("file://{}", p.display());
+                            state.add_dialog.url = p
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("")
+                                .to_string();
                         }
                     }
                 }
@@ -166,6 +182,30 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         }
         Message::AddDownload => {
             if state.add_dialog.can_submit() {
+                let nav = state.settings.nav_to_tasks_after_add;
+
+                if let Some(tpath) = state.add_dialog.torrent_path.clone() {
+                    state.pending_torrent_path = Some(tpath.clone());
+                    if state
+                        .handle
+                        .cmd_tx
+                        .send(EngineCmd::AddTorrent {
+                            path: tpath,
+                            save_dir: state.add_dialog.save_dir.clone(),
+                            split: state.add_dialog.split,
+                        })
+                        .is_err()
+                    {
+                        tracing::warn!("ui: add torrent cmd send failed");
+                    }
+                    tracing::info!("ui: torrent submitted");
+                    state.add_dialog.close();
+                    if nav {
+                        state.page = Page::Tasks;
+                    }
+                    return Task::none();
+                }
+
                 let urls: Vec<String> = state
                     .add_dialog
                     .url
@@ -188,6 +228,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     }
                     tracing::info!(count = urls.len(), "ui: add download submitted");
                     state.add_dialog.close();
+                    if nav {
+                        state.page = Page::Tasks;
+                    }
                 } else {
                     tracing::debug!("ui: add download skipped (no urls after filter)");
                 }
@@ -254,6 +297,11 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     state.settings.max_concurrent = n.max(1);
                 }
             }
+            SettingKey::Split => {
+                if let Ok(n) = value.parse::<u16>() {
+                    state.settings.split = n.max(1);
+                }
+            }
             SettingKey::DownloadLimit => {
                 state.settings.download_limit_kb = value.parse().unwrap_or(0);
             }
@@ -275,35 +323,103 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 };
                 state.fluent = Fluent::new(state.settings.locale);
             }
+            SettingKey::MaxConnectionPerServer => {
+                if let Ok(n) = value.parse::<u32>() {
+                    state.settings.aria2.max_connection_per_server = n.max(1);
+                }
+            }
+            SettingKey::MinSplitSize => {
+                state.settings.aria2.min_split_size = value;
+            }
+            SettingKey::AutoFileRenaming => {
+                state.settings.aria2.auto_file_renaming = value == "true";
+            }
+            SettingKey::AllowOverwrite => {
+                state.settings.aria2.allow_overwrite = value == "true";
+            }
+            SettingKey::Continue => {
+                state.settings.aria2.r#continue = value == "true";
+            }
+            SettingKey::CheckIntegrity => {
+                state.settings.aria2.check_integrity = value == "true";
+            }
+            SettingKey::MaxDownloadLimit => {
+                state.settings.aria2.max_download_limit_kb = value.parse().unwrap_or(0);
+            }
+            SettingKey::MaxUploadLimit => {
+                state.settings.aria2.max_upload_limit_kb = value.parse().unwrap_or(0);
+            }
+            SettingKey::LowestSpeedLimit => {
+                state.settings.aria2.lowest_speed_limit_kb = value.parse().unwrap_or(0);
+            }
+            SettingKey::UserAgent => {
+                state.settings.aria2.user_agent = value;
+            }
+            SettingKey::Headers => {
+                state.settings.aria2.headers = value
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+            }
+            SettingKey::AllProxy => {
+                state.settings.aria2.all_proxy = value;
+            }
+            SettingKey::MaxTries => {
+                if let Ok(n) = value.parse::<u32>() {
+                    state.settings.aria2.max_tries = n;
+                }
+            }
+            SettingKey::RetryWait => {
+                if let Ok(n) = value.parse::<u32>() {
+                    state.settings.aria2.retry_wait = n;
+                }
+            }
+            SettingKey::ConnectTimeout => {
+                if let Ok(n) = value.parse::<u32>() {
+                    state.settings.aria2.connect_timeout = n;
+                }
+            }
+            SettingKey::BtTracker => {
+                state.settings.aria2.bt_tracker = value;
+            }
+            SettingKey::SeedRatio => {
+                if let Ok(n) = value.parse::<f64>() {
+                    state.settings.aria2.seed_ratio = n.max(0.0);
+                }
+            }
+            SettingKey::SeedTime => {
+                if let Ok(n) = value.parse::<u32>() {
+                    state.settings.aria2.seed_time = n;
+                }
+            }
+            SettingKey::EnableDht => {
+                state.settings.aria2.enable_dht = value == "true";
+            }
+            SettingKey::BtRequireCrypto => {
+                state.settings.aria2.bt_require_crypto = value == "true";
+            }
+            SettingKey::EnableProxy => {
+                state.settings.aria2.proxy_enabled = value == "true";
+            }
+            SettingKey::NavToTasksAfterAdd => {
+                state.settings.nav_to_tasks_after_add = value == "true";
+            }
+            SettingKey::DeleteTorrentAfterComplete => {
+                state.settings.delete_torrent_after_complete = value == "true";
+            }
         },
         Message::ApplySettings => {
             config::save(&state.settings);
-            let dl = if state.settings.download_limit_kb > 0 {
-                Some(state.settings.download_limit_kb * 1024)
-            } else {
-                None
-            };
-            let ul = if state.settings.upload_limit_kb > 0 {
-                Some(state.settings.upload_limit_kb * 1024)
-            } else {
-                None
-            };
-            tracing::info!(
-                max_concurrent = state.settings.max_concurrent,
-                ?dl,
-                ?ul,
-                "ui: apply settings"
-            );
+            let opts = state.settings.to_aria2_task_options();
+            tracing::info!("ui: apply settings");
             if state
                 .handle
                 .cmd_tx
-                .send(EngineCmd::SetSpeedLimit {
-                    download: dl,
-                    upload: ul,
-                })
+                .send(EngineCmd::ApplyAria2Options { options: opts })
                 .is_err()
             {
-                tracing::warn!("ui: set speed limit cmd send failed");
+                tracing::warn!("ui: apply aria2 options cmd send failed");
             }
         }
         Message::Engine(event) => match event {
@@ -316,6 +432,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             EngineEvent::Added { gid, name } => {
                 tracing::info!(?gid, ?name, "ui: task added");
+                if let Some(tpath) = state.pending_torrent_path.take() {
+                    state.torrent_files.insert(gid.clone(), tpath);
+                }
                 let task = DownloadTask {
                     gid: gid.clone(),
                     name,
@@ -336,6 +455,14 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 speed,
                 status,
             } => {
+                if status == "complete"
+                    && state.settings.delete_torrent_after_complete
+                    && state.torrent_files.contains_key(&gid)
+                {
+                    if let Some(path) = state.torrent_files.remove(&gid) {
+                        let _ = std::fs::remove_file(&path);
+                    }
+                }
                 if let Some(t) = state.tasks.get_mut(&gid) {
                     t.downloaded = downloaded;
                     t.total = total;
@@ -448,6 +575,20 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.fluent = Fluent::new(locale);
             config::save(&state.settings);
         }
+        Message::UaEditor(action) => {
+            state.ua_editor.perform(action);
+            state.settings.aria2.user_agent = state.ua_editor.text();
+        }
+        Message::HeadersEditor(action) => {
+            state.headers_editor.perform(action);
+            state.settings.aria2.headers = state
+                .headers_editor
+                .text()
+                .lines()
+                .map(|l| l.trim().to_string())
+                .filter(|l| !l.is_empty())
+                .collect();
+        }
         Message::CheckAria2Update => {
             state.aria2_check_msg = None;
             if state
@@ -475,8 +616,8 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 tracing::warn!("restart engine cmd send failed");
             }
         }
-        Message::RestoreAutoCheck => {
-            state.settings.update.set_ignored("aria2-next", false);
+        Message::SetAutoCheck(enabled) => {
+            state.settings.update.set_ignored("aria2-next", !enabled);
             config::save(&state.settings);
         }
     }
@@ -539,15 +680,17 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             &state.fluent,
             t,
             &state.settings,
+            state.settings_cat,
             state.aria2_version.as_deref(),
             state.aria2_check_msg.as_deref(),
-            !state.settings.update.should_auto_check("aria2-next"),
             state
                 .aria2_status
                 .as_ref()
                 .map(|(s, m)| (s.as_str(), m.as_str())),
             state.aria2_fetch_error.as_deref(),
             state.update_pending.as_deref(),
+            &state.ua_editor,
+            &state.headers_editor,
         ),
     };
 

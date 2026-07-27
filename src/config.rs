@@ -1,10 +1,234 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use aria2_ws::TaskOptions;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
 use crate::i18n::Locale;
 use crate::ui::theme::ThemeMode;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Aria2Options {
+    #[serde(default = "default_max_connection_per_server")]
+    pub max_connection_per_server: u32,
+    #[serde(default = "default_min_split_size")]
+    pub min_split_size: String,
+    #[serde(default = "default_true")]
+    pub auto_file_renaming: bool,
+    #[serde(default)]
+    pub allow_overwrite: bool,
+    #[serde(default = "default_true")]
+    pub r#continue: bool,
+    #[serde(default)]
+    pub check_integrity: bool,
+    #[serde(default)]
+    pub max_download_limit_kb: u64,
+    #[serde(default)]
+    pub max_upload_limit_kb: u64,
+    #[serde(default)]
+    pub lowest_speed_limit_kb: u64,
+    #[serde(default)]
+    pub user_agent: String,
+    #[serde(default)]
+    pub headers: Vec<String>,
+    #[serde(default)]
+    pub all_proxy: String,
+    #[serde(default = "default_max_tries")]
+    pub max_tries: u32,
+    #[serde(default)]
+    pub retry_wait: u32,
+    #[serde(default = "default_connect_timeout")]
+    pub connect_timeout: u32,
+    #[serde(default)]
+    pub bt_tracker: String,
+    #[serde(default = "default_seed_ratio")]
+    pub seed_ratio: f64,
+    #[serde(default)]
+    pub seed_time: u32,
+    #[serde(default = "default_true")]
+    pub enable_dht: bool,
+    #[serde(default)]
+    pub bt_require_crypto: bool,
+    #[serde(default)]
+    pub proxy_enabled: bool,
+}
+
+fn default_max_connection_per_server() -> u32 {
+    16
+}
+fn default_min_split_size() -> String {
+    "1M".to_string()
+}
+fn default_max_tries() -> u32 {
+    5
+}
+fn default_connect_timeout() -> u32 {
+    60
+}
+fn default_seed_ratio() -> f64 {
+    1.0
+}
+fn default_true() -> bool {
+    true
+}
+
+impl Default for Aria2Options {
+    fn default() -> Self {
+        Self {
+            max_connection_per_server: 16,
+            min_split_size: "1M".to_string(),
+            auto_file_renaming: true,
+            allow_overwrite: false,
+            r#continue: true,
+            check_integrity: false,
+            max_download_limit_kb: 0,
+            max_upload_limit_kb: 0,
+            lowest_speed_limit_kb: 0,
+            user_agent: String::new(),
+            headers: Vec::new(),
+            all_proxy: String::new(),
+            max_tries: 5,
+            retry_wait: 0,
+            connect_timeout: 60,
+            bt_tracker: String::new(),
+            seed_ratio: 1.0,
+            seed_time: 0,
+            enable_dht: true,
+            bt_require_crypto: false,
+            proxy_enabled: false,
+        }
+    }
+}
+
+impl Settings {
+    pub fn to_aria2_task_options(&self) -> TaskOptions {
+        let mut extra = Map::new();
+
+        extra.insert(
+            "max-concurrent-downloads".into(),
+            Value::String(self.max_concurrent.to_string()),
+        );
+
+        extra.insert(
+            "min-split-size".into(),
+            Value::String(self.aria2.min_split_size.clone()),
+        );
+
+        extra.insert(
+            "allow-overwrite".into(),
+            Value::String(
+                if self.aria2.allow_overwrite {
+                    "true"
+                } else {
+                    "false"
+                }
+                .into(),
+            ),
+        );
+
+        extra.insert(
+            "max-overall-download-limit".into(),
+            Value::String((self.download_limit_kb * 1024).to_string()),
+        );
+
+        extra.insert(
+            "max-overall-upload-limit".into(),
+            Value::String((self.upload_limit_kb * 1024).to_string()),
+        );
+
+        extra.insert(
+            "max-upload-limit".into(),
+            Value::String((self.aria2.max_upload_limit_kb * 1024).to_string()),
+        );
+
+        if !self.aria2.user_agent.is_empty() {
+            extra.insert(
+                "user-agent".into(),
+                Value::String(self.aria2.user_agent.clone()),
+            );
+        }
+
+        extra.insert(
+            "retry-wait".into(),
+            Value::String(self.aria2.retry_wait.to_string()),
+        );
+
+        extra.insert(
+            "connect-timeout".into(),
+            Value::String(self.aria2.connect_timeout.to_string()),
+        );
+
+        if !self.aria2.bt_tracker.is_empty() {
+            extra.insert(
+                "bt-tracker".into(),
+                Value::String(self.aria2.bt_tracker.clone()),
+            );
+        }
+
+        extra.insert(
+            "seed-ratio".into(),
+            Value::String(self.aria2.seed_ratio.to_string()),
+        );
+
+        if self.aria2.seed_time > 0 {
+            extra.insert(
+                "seed-time".into(),
+                Value::String(self.aria2.seed_time.to_string()),
+            );
+        }
+
+        extra.insert(
+            "enable-dht".into(),
+            Value::String(
+                if self.aria2.enable_dht {
+                    "true"
+                } else {
+                    "false"
+                }
+                .into(),
+            ),
+        );
+
+        extra.insert(
+            "bt-require-crypto".into(),
+            Value::String(
+                if self.aria2.bt_require_crypto {
+                    "true"
+                } else {
+                    "false"
+                }
+                .into(),
+            ),
+        );
+
+        let header = if self.aria2.headers.is_empty() {
+            None
+        } else {
+            Some(self.aria2.headers.clone())
+        };
+
+        TaskOptions {
+            split: Some(self.split as i32),
+            max_connection_per_server: Some(self.aria2.max_connection_per_server as i32),
+            auto_file_renaming: Some(self.aria2.auto_file_renaming),
+            r#continue: Some(self.aria2.r#continue),
+            check_integrity: Some(self.aria2.check_integrity),
+            lowest_speed_limit: Some((self.aria2.lowest_speed_limit_kb * 1024).to_string()),
+            max_download_limit: Some((self.aria2.max_download_limit_kb * 1024).to_string()),
+            header,
+            all_proxy: if self.aria2.proxy_enabled && !self.aria2.all_proxy.is_empty() {
+                Some(self.aria2.all_proxy.clone())
+            } else {
+                Some(String::new())
+            },
+            max_tries: Some(self.aria2.max_tries as i32),
+            timeout: Some(self.aria2.connect_timeout as i32),
+            extra_options: extra,
+            ..Default::default()
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
@@ -19,6 +243,12 @@ pub struct Settings {
     pub locale: Locale,
     #[serde(default)]
     pub update: UpdatePrefs,
+    #[serde(default)]
+    pub aria2: Aria2Options,
+    #[serde(default = "default_true")]
+    pub nav_to_tasks_after_add: bool,
+    #[serde(default)]
+    pub delete_torrent_after_complete: bool,
 }
 
 impl Default for Settings {
@@ -35,6 +265,9 @@ impl Default for Settings {
             theme_mode: ThemeMode::System,
             locale: Locale::default(),
             update: UpdatePrefs::default(),
+            aria2: Aria2Options::default(),
+            nav_to_tasks_after_add: true,
+            delete_torrent_after_complete: false,
         }
     }
 }

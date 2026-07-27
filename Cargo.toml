@@ -26,6 +26,8 @@ dark-light = "1.1"
 fluent-templates = "0.14.0"
 futures = "0.3"
 base64 = "0.22"
+num-traits = "0.2"
+iced_aw = { version = "0.14", default-features = false, features = ["number_input"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 sha2 = "0.10"
 

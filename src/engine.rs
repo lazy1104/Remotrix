@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use aria2_ws::response::TaskStatus as Aria2TaskStatus;
-use aria2_ws::{Client, Event, Map, Notification, TaskOptions};
+use aria2_ws::{Client, Event, Notification, TaskOptions};
 use tokio::io::AsyncBufReadExt;
 use tokio::process::{Child, Command};
 use tokio::sync::mpsc;
@@ -25,9 +25,13 @@ pub enum EngineCmd {
     ResumeAll,
     RemoveAll,
     Snapshot,
-    SetSpeedLimit {
-        download: Option<u64>,
-        upload: Option<u64>,
+    ApplyAria2Options {
+        options: TaskOptions,
+    },
+    AddTorrent {
+        path: PathBuf,
+        save_dir: PathBuf,
+        split: u16,
     },
     Shutdown,
     CheckAria2Update,
@@ -361,26 +365,37 @@ async fn handle_client_cmd(
                 });
             }
         }
-        EngineCmd::SetSpeedLimit { download, upload } => {
-            tracing::info!(?download, ?upload, "set speed limit");
-            let mut extra = Map::new();
-            if let Some(dl) = download {
-                extra.insert(
-                    "max-overall-download-limit".into(),
-                    serde_json::json!(dl.to_string()),
-                );
-            }
-            if let Some(ul) = upload {
-                extra.insert(
-                    "max-overall-upload-limit".into(),
-                    serde_json::json!(ul.to_string()),
-                );
-            }
+        EngineCmd::AddTorrent {
+            path,
+            save_dir,
+            split,
+        } => {
+            tracing::info!(?path, ?save_dir, split, "add torrent");
+            let bytes = tokio::fs::read(&path)
+                .await
+                .map_err(|e| format!("read torrent: {e}"))?;
             let options = TaskOptions {
-                extra_options: extra,
+                dir: Some(save_dir.to_string_lossy().to_string()),
+                split: Some(split as i32),
+                max_connection_per_server: Some((split as i32).max(1)),
                 ..Default::default()
             };
-            let _ = client.change_global_option(options).await;
+            let gid = client
+                .add_torrent(bytes, None, Some(options), None, None)
+                .await
+                .map_err(|e| format!("add_torrent: {e}"))?;
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(&gid)
+                .to_string();
+            let _ = event_tx.send(EngineEvent::Added { gid, name });
+        }
+        EngineCmd::ApplyAria2Options { options } => {
+            tracing::info!("apply aria2 options");
+            if let Err(e) = client.change_global_option(options.clone()).await {
+                tracing::warn!("change_global_option: {e}");
+            }
         }
         _ => {}
     }
@@ -461,6 +476,14 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
     let sync_event_tx = event_tx.clone();
     tokio::spawn(async move {
         sync_existing_tasks(&sync_client, &sync_event_tx).await;
+    });
+
+    let boot_client = sidecar.client.clone();
+    tokio::spawn(async move {
+        let opts = crate::config::load().to_aria2_task_options();
+        if let Err(e) = boot_client.change_global_option(opts).await {
+            tracing::warn!("boot apply global options: {e}");
+        }
     });
 
     let mut handles = Vec::new();

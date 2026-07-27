@@ -13,6 +13,7 @@ pub struct AddDialogState {
     pub url: String,
     pub save_dir: PathBuf,
     pub split: u16,
+    pub torrent_path: Option<PathBuf>,
 }
 
 impl AddDialogState {
@@ -22,14 +23,16 @@ impl AddDialogState {
             url: String::new(),
             save_dir: default_dir,
             split: 16,
+            torrent_path: None,
         }
     }
 
-    pub fn open(&mut self, default_dir: PathBuf) {
+    pub fn open(&mut self, default_dir: PathBuf, default_split: u16) {
         self.visible = true;
         self.url.clear();
         self.save_dir = default_dir;
-        self.split = 16;
+        self.split = default_split;
+        self.torrent_path = None;
     }
 
     pub fn close(&mut self) {
@@ -41,7 +44,8 @@ impl AddDialogState {
     }
 
     pub fn can_submit(&self) -> bool {
-        !self.url.trim().is_empty() && !self.save_dir.as_os_str().is_empty()
+        (!self.url.trim().is_empty() && !self.save_dir.as_os_str().is_empty())
+            || self.torrent_path.is_some()
     }
 }
 

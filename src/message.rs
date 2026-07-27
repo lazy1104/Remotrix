@@ -46,7 +46,10 @@ pub enum Message {
     CheckAria2Update,
     RetryAria2Fetch,
     RestartEngine,
-    RestoreAutoCheck,
+    SetAutoCheck(bool),
+
+    UaEditor(iced::widget::text_editor::Action),
+    HeadersEditor(iced::widget::text_editor::Action),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,6 +81,11 @@ pub enum TaskFilter {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsCategory {
     General,
+    Download,
+    BitTorrent,
+    Ed2k,
+    Network,
+    Advanced,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,8 +128,32 @@ pub enum SettingKey {
     MaxConcurrent,
     DownloadLimit,
     UploadLimit,
+    Split,
     ThemeMode,
     Locale,
+    MaxConnectionPerServer,
+    MinSplitSize,
+    AutoFileRenaming,
+    AllowOverwrite,
+    Continue,
+    CheckIntegrity,
+    MaxDownloadLimit,
+    MaxUploadLimit,
+    LowestSpeedLimit,
+    UserAgent,
+    Headers,
+    AllProxy,
+    MaxTries,
+    RetryWait,
+    ConnectTimeout,
+    BtTracker,
+    SeedRatio,
+    SeedTime,
+    EnableDht,
+    BtRequireCrypto,
+    EnableProxy,
+    NavToTasksAfterAdd,
+    DeleteTorrentAfterComplete,
 }
 
 impl TaskStatus {

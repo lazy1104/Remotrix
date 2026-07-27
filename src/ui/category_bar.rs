@@ -16,7 +16,7 @@ pub fn view<'a>(
     _theme: &iced::Theme,
     page: Page,
     task_filter: TaskFilter,
-    _settings_cat: SettingsCategory,
+    settings_cat: SettingsCategory,
     counts: &Counts,
 ) -> Element<'a, Message> {
     let title_str = match page {
@@ -78,25 +78,44 @@ pub fn view<'a>(
                 .into()
         }
         Page::Settings => {
-            let is_active = true;
-            let btn: iced::widget::Button<'_, Message> = button(
-                row![]
-                    .push(text(fluent.get(Tr::General)).size(14))
-                    .width(Length::Fill)
-                    .align_y(Alignment::Center),
-            )
-            .on_press(Message::SetSettingsCategory(SettingsCategory::General))
-            .padding([10, 14])
-            .width(Length::Fill)
-            .style(button::text);
+            let make_cat = |label: String, target: SettingsCategory| -> Element<'a, Message> {
+                let is_active = settings_cat == target;
+                let btn: iced::widget::Button<'_, Message> = button(
+                    row![]
+                        .push(text(label).size(14))
+                        .width(Length::Fill)
+                        .align_y(Alignment::Center),
+                )
+                .on_press(Message::SetSettingsCategory(target))
+                .padding([10, 14])
+                .width(Length::Fill)
+                .style(button::text);
 
-            let item: Element<'a, Message> = if is_active {
-                container(btn).style(theme::style::active_filter).into()
-            } else {
-                container(btn).into()
+                if is_active {
+                    container(btn).style(theme::style::active_filter).into()
+                } else {
+                    container(btn).into()
+                }
             };
 
-            column![].spacing(6).push(item).into()
+            column![]
+                .spacing(6)
+                .push(make_cat(fluent.get(Tr::General), SettingsCategory::General))
+                .push(make_cat(
+                    fluent.get(Tr::DownloadCategory),
+                    SettingsCategory::Download,
+                ))
+                .push(make_cat(
+                    fluent.get(Tr::BitTorrent),
+                    SettingsCategory::BitTorrent,
+                ))
+                .push(make_cat(fluent.get(Tr::Ed2k), SettingsCategory::Ed2k))
+                .push(make_cat(fluent.get(Tr::Network), SettingsCategory::Network))
+                .push(make_cat(
+                    fluent.get(Tr::Advanced),
+                    SettingsCategory::Advanced,
+                ))
+                .into()
         }
     };
 
