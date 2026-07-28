@@ -44,6 +44,8 @@ pub enum Message {
     CloseDialog(CloseDialogChoice),
 
     ThemeModeChanged(ThemeMode),
+    LightThemeChanged(String),
+    DarkThemeChanged(String),
     LocaleChanged(Locale),
 
     CheckAria2Update,

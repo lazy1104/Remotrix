@@ -72,6 +72,12 @@ fn default_seed_ratio() -> f64 {
 fn default_true() -> bool {
     true
 }
+fn default_light_theme() -> String {
+    "silkcircuit-dawn".into()
+}
+fn default_dark_theme() -> String {
+    "silkcircuit-neon".into()
+}
 
 impl Default for Aria2Options {
     fn default() -> Self {
@@ -237,6 +243,10 @@ pub struct Settings {
     pub download_limit_kb: u64,
     pub upload_limit_kb: u64,
     pub split: u16,
+    #[serde(default = "default_light_theme")]
+    pub light_theme: String,
+    #[serde(default = "default_dark_theme")]
+    pub dark_theme: String,
     #[serde(default)]
     pub theme_mode: ThemeMode,
     #[serde(default)]
@@ -262,6 +272,8 @@ impl Default for Settings {
             download_limit_kb: 0,
             upload_limit_kb: 0,
             split: 16,
+            light_theme: default_light_theme(),
+            dark_theme: default_dark_theme(),
             theme_mode: ThemeMode::System,
             locale: Locale::default(),
             update: UpdatePrefs::default(),

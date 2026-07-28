@@ -30,6 +30,7 @@ num-traits = "0.2"
 iced_aw = { version = "0.14", default-features = false, features = ["number_input", "drop_down"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 sha2 = "0.10"
+opaline = { version = "0.4", default-features = false, features = ["builtin-themes", "iced"] }
 
 [build-dependencies]
 iced_lucide = "0.1"

@@ -21,7 +21,7 @@ pub fn view<'a>(
         |codepoint: char, tip: String, msg: Message, active: bool| -> Element<'a, Message> {
             let glyph = text(codepoint.to_string()).font(lucide_font).size(15);
             let glyph = if active {
-                glyph.color(theme::ACCENT)
+                glyph.color(theme::accent(theme))
             } else {
                 glyph
             };
@@ -39,7 +39,7 @@ pub fn view<'a>(
     let sort_underlay = {
         let glyph = text('\u{E37D}'.to_string()).font(lucide_font).size(15);
         let glyph = if sort_active {
-            glyph.color(theme::ACCENT)
+            glyph.color(theme::accent(theme))
         } else {
             glyph
         };
@@ -226,10 +226,10 @@ fn task_card<'a>(
     .to_string();
 
     let status_color = match t.status {
-        TaskStatus::Active => theme::PROGRESS,
-        TaskStatus::Paused => theme::PAUSED,
-        TaskStatus::Completed => theme::PROGRESS,
-        TaskStatus::Error => theme::ERROR,
+        TaskStatus::Active => theme::success(theme),
+        TaskStatus::Paused => theme::warning(theme),
+        TaskStatus::Completed => theme::success(theme),
+        TaskStatus::Error => theme::danger(theme),
         _ => text_secondary,
     };
 
@@ -243,7 +243,7 @@ fn task_card<'a>(
                 .style(theme::style::text::secondary),
         )
         .push(iced::widget::Space::new().width(Length::Fill))
-        .push(text(speed_text).size(12).color(theme::SPEED))
+        .push(text(speed_text).size(12).color(theme::success(theme)))
         .push(sep1)
         .push(text(eta_text).size(12).style(theme::style::text::secondary))
         .push(sep2)
@@ -252,9 +252,9 @@ fn task_card<'a>(
         .width(Length::Fill);
 
     let bar_color = match t.status {
-        TaskStatus::Paused => theme::PAUSED,
-        TaskStatus::Error => theme::ERROR,
-        _ => theme::PROGRESS,
+        TaskStatus::Paused => theme::warning(theme),
+        TaskStatus::Error => theme::danger(theme),
+        _ => theme::success(theme),
     };
     let bar = progress_bar(0.0..=100.0, pct)
         .girth(Length::Fixed(8.0))

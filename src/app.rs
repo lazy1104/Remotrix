@@ -63,7 +63,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
     let add_dialog = AddDialogState::new(settings.download_dir.clone());
     let fluent = Fluent::new(settings.locale);
 
-    let theme = theme::build_iced(theme::resolve_mode(settings.theme_mode, None));
+    let theme = theme::build_iced(effective_theme_id(&settings));
     let logo_handle =
         iced::widget::image::Handle::from_bytes(&include_bytes!("../assets/icon.png")[..]);
 
@@ -109,8 +109,16 @@ pub fn theme(state: &Remotrix) -> iced::Theme {
     state.theme.clone()
 }
 
+fn effective_theme_id(settings: &Settings) -> &str {
+    if theme::resolve_mode(settings.theme_mode, None) {
+        &settings.dark_theme
+    } else {
+        &settings.light_theme
+    }
+}
+
 fn rebuild_theme(state: &mut Remotrix) {
-    state.theme = theme::build_iced(theme::resolve_mode(state.settings.theme_mode, None));
+    state.theme = theme::build_iced(effective_theme_id(&state.settings));
 }
 
 pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
@@ -573,6 +581,20 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::ThemeModeChanged(mode) => {
             state.settings.theme_mode = mode;
             rebuild_theme(state);
+            config::save(&state.settings);
+        }
+        Message::LightThemeChanged(id) => {
+            state.settings.light_theme = id;
+            if !theme::resolve_mode(state.settings.theme_mode, None) {
+                rebuild_theme(state);
+            }
+            config::save(&state.settings);
+        }
+        Message::DarkThemeChanged(id) => {
+            state.settings.dark_theme = id;
+            if theme::resolve_mode(state.settings.theme_mode, None) {
+                rebuild_theme(state);
+            }
             config::save(&state.settings);
         }
         Message::LocaleChanged(locale) => {

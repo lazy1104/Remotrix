@@ -6,6 +6,8 @@ use iced::{Alignment, Element, Length};
 use crate::config::Settings;
 use crate::i18n::{Fluent, Locale, Tr};
 use crate::message::{Message, SettingKey, SettingsCategory};
+use iced::Color;
+
 use crate::ui::theme;
 
 #[derive(Debug, Clone)]
@@ -43,12 +45,15 @@ pub fn view<'a>(
     ua_editor: &'a text_editor::Content,
     headers_editor: &'a text_editor::Content,
 ) -> Element<'a, Message> {
+    let accent = theme::accent(theme);
     let content = match category {
-        SettingsCategory::General => general_view(fluent, settings),
-        SettingsCategory::Download => download_view(fluent, settings),
-        SettingsCategory::BitTorrent => bittorrent_view(fluent, settings),
+        SettingsCategory::General => general_view(fluent, theme, settings),
+        SettingsCategory::Download => download_view(fluent, settings, accent),
+        SettingsCategory::BitTorrent => bittorrent_view(fluent, settings, accent),
         SettingsCategory::Ed2k => ed2k_view(fluent),
-        SettingsCategory::Network => network_view(fluent, settings, ua_editor, headers_editor),
+        SettingsCategory::Network => {
+            network_view(fluent, settings, ua_editor, headers_editor, accent)
+        }
         SettingsCategory::Advanced => advanced_view(
             fluent,
             theme,
@@ -94,32 +99,67 @@ pub fn view<'a>(
     .into()
 }
 
-fn general_view<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, Message> {
+fn general_view<'a>(
+    fluent: &'a Fluent,
+    theme: &iced::Theme,
+    settings: &'a Settings,
+) -> Element<'a, Message> {
+    let accent = theme::accent(theme);
+    let light_opts: Vec<Labeled<String>> = theme::light_themes()
+        .into_iter()
+        .map(|(name, display)| Labeled {
+            value: name,
+            label: display,
+        })
+        .collect();
+    let dark_opts: Vec<Labeled<String>> = theme::dark_themes()
+        .into_iter()
+        .map(|(name, display)| Labeled {
+            value: name,
+            label: display,
+        })
+        .collect();
+    let mode_opts = vec![
+        Labeled {
+            value: crate::ui::theme::ThemeMode::Dark,
+            label: fluent.get(Tr::ThemeDark),
+        },
+        Labeled {
+            value: crate::ui::theme::ThemeMode::Light,
+            label: fluent.get(Tr::ThemeLight),
+        },
+        Labeled {
+            value: crate::ui::theme::ThemeMode::System,
+            label: fluent.get(Tr::ThemeSystem),
+        },
+    ];
+
     column![]
         .spacing(4)
-        .push(group_title(fluent, Tr::Theme))
+        .push(group_title(fluent, Tr::Appearance, accent))
         .push(labeled_pick(
             fluent,
-            fluent.get(Tr::Theme),
-            vec![
-                Labeled {
-                    value: crate::ui::theme::ThemeMode::Dark,
-                    label: fluent.get(Tr::ThemeDark),
-                },
-                Labeled {
-                    value: crate::ui::theme::ThemeMode::Light,
-                    label: fluent.get(Tr::ThemeLight),
-                },
-                Labeled {
-                    value: crate::ui::theme::ThemeMode::System,
-                    label: fluent.get(Tr::ThemeSystem),
-                },
-            ],
+            fluent.get(Tr::LightTheme),
+            light_opts,
+            Some(settings.light_theme.clone()),
+            |opt| Message::LightThemeChanged(opt.value),
+        ))
+        .push(labeled_pick(
+            fluent,
+            fluent.get(Tr::DarkTheme),
+            dark_opts,
+            Some(settings.dark_theme.clone()),
+            |opt| Message::DarkThemeChanged(opt.value),
+        ))
+        .push(labeled_pick(
+            fluent,
+            fluent.get(Tr::ColorMode),
+            mode_opts,
             Some(settings.theme_mode),
             |opt| Message::ThemeModeChanged(opt.value),
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
-        .push(group_title(fluent, Tr::Locale))
+        .push(group_title(fluent, Tr::Locale, accent))
         .push(labeled_pick(
             fluent,
             fluent.get(Tr::Locale),
@@ -139,13 +179,17 @@ fn general_view<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, M
         .into()
 }
 
-fn download_view<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, Message> {
+fn download_view<'a>(
+    fluent: &'a Fluent,
+    settings: &'a Settings,
+    accent: Color,
+) -> Element<'a, Message> {
     column![]
         .spacing(4)
-        .push(group_title(fluent, Tr::DownloadFolder))
+        .push(group_title(fluent, Tr::DownloadFolder, accent))
         .push(download_folder_row(fluent, settings))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
-        .push(group_title(fluent, Tr::ConnectionSegment))
+        .push(group_title(fluent, Tr::ConnectionSegment, accent))
         .push(labeled_number(
             fluent.get(Tr::MaxConcurrent),
             &settings.max_concurrent,
@@ -173,7 +217,7 @@ fn download_view<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, 
             SettingKey::MinSplitSize,
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
-        .push(group_title(fluent, Tr::ResumeRetry))
+        .push(group_title(fluent, Tr::ResumeRetry, accent))
         .push(labeled_number(
             fluent.get(Tr::MaxTries),
             &settings.aria2.max_tries,
@@ -199,7 +243,7 @@ fn download_view<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, 
             SettingKey::CheckIntegrity,
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
-        .push(group_title(fluent, Tr::File))
+        .push(group_title(fluent, Tr::File, accent))
         .push(labeled_toggle(
             fluent.get(Tr::AutoFileRenaming),
             settings.aria2.auto_file_renaming,
@@ -211,7 +255,7 @@ fn download_view<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, 
             SettingKey::AllowOverwrite,
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
-        .push(group_title(fluent, Tr::SpeedLimits))
+        .push(group_title(fluent, Tr::SpeedLimits, accent))
         .push(labeled_number(
             fluent.get(Tr::DownloadLimit),
             &settings.download_limit_kb,
@@ -248,14 +292,14 @@ fn download_view<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, 
             SettingKey::LowestSpeedLimit,
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
-        .push(group_title(fluent, Tr::NotificationConfirm))
+        .push(group_title(fluent, Tr::NotificationConfirm, accent))
         .push(labeled_toggle(
             fluent.get(Tr::NavToTasksAfterAdd),
             settings.nav_to_tasks_after_add,
             SettingKey::NavToTasksAfterAdd,
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
-        .push(group_title(fluent, Tr::AutoCleanup))
+        .push(group_title(fluent, Tr::AutoCleanup, accent))
         .push(labeled_toggle(
             fluent.get(Tr::DeleteTorrentAfterComplete),
             settings.delete_torrent_after_complete,
@@ -264,10 +308,14 @@ fn download_view<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, 
         .into()
 }
 
-fn bittorrent_view<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, Message> {
+fn bittorrent_view<'a>(
+    fluent: &'a Fluent,
+    settings: &'a Settings,
+    accent: Color,
+) -> Element<'a, Message> {
     column![]
         .spacing(4)
-        .push(group_title(fluent, Tr::BtSettings))
+        .push(group_title(fluent, Tr::BtSettings, accent))
         .push(labeled_toggle(
             fluent.get(Tr::BtRequireCrypto),
             settings.aria2.bt_require_crypto,
@@ -317,38 +365,39 @@ fn network_view<'a>(
     settings: &'a Settings,
     ua_editor: &'a text_editor::Content,
     headers_editor: &'a text_editor::Content,
+    accent: Color,
 ) -> Element<'a, Message> {
     column![]
         .spacing(4)
-        .push(group_title(fluent, Tr::EnableProxy))
+        .push(group_title(fluent, Tr::EnableProxy, accent))
         .push(labeled_toggle(
             fluent.get(Tr::EnableProxy),
             settings.aria2.proxy_enabled,
             SettingKey::EnableProxy,
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(4.0)))
-        .push(group_title(fluent, Tr::OtherProxyConfig))
+        .push(group_title(fluent, Tr::OtherProxyConfig, accent))
         .push(labeled_text_input(
             fluent.get(Tr::Proxy),
             &settings.aria2.all_proxy,
             SettingKey::AllProxy,
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
-        .push(group_title(fluent, Tr::UserAgent))
+        .push(group_title(fluent, Tr::UserAgent, accent))
         .push(labeled_editor(
             fluent.get(Tr::UserAgent),
             ua_editor,
             Message::UaEditor,
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
-        .push(group_title(fluent, Tr::Headers))
+        .push(group_title(fluent, Tr::Headers, accent))
         .push(labeled_editor(
             fluent.get(Tr::Headers),
             headers_editor,
             Message::HeadersEditor,
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
-        .push(group_title(fluent, Tr::ConnectTimeout))
+        .push(group_title(fluent, Tr::ConnectTimeout, accent))
         .push(labeled_number(
             fluent.get(Tr::ConnectTimeout),
             &settings.aria2.connect_timeout,
@@ -370,6 +419,7 @@ fn advanced_view<'a>(
     aria2_fetch_error: Option<&'a str>,
     update_pending: Option<&'a str>,
 ) -> Element<'a, Message> {
+    let accent = theme::accent(theme);
     let text_secondary = theme::text_secondary(theme);
 
     let auto_check_enabled = settings.update.should_auto_check("aria2-next");
@@ -426,9 +476,9 @@ fn advanced_view<'a>(
 
     if let Some((stage, message)) = aria2_status {
         let status_color = if stage == "update-downloading" || stage == "update-verifying" {
-            crate::ui::theme::ACCENT
+            accent
         } else if stage == "ready" {
-            crate::ui::theme::PROGRESS
+            theme::success(theme)
         } else {
             text_secondary
         };
@@ -436,7 +486,7 @@ fn advanced_view<'a>(
     }
 
     if let Some(err) = aria2_fetch_error {
-        engine_rows.push(text(err).size(12).color(crate::ui::theme::ERROR).into());
+        engine_rows.push(text(err).size(12).color(theme::danger(theme)).into());
     }
 
     let mut btn_row = row![].spacing(12);
@@ -486,7 +536,7 @@ fn advanced_view<'a>(
     column![]
         .spacing(12)
         .push(update_toggle)
-        .push(group_title(fluent, Tr::Engine))
+        .push(group_title(fluent, Tr::Engine, accent))
         .push(engine_col)
         .into()
 }
@@ -632,9 +682,6 @@ fn download_folder_row<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Elemen
         .into()
 }
 
-fn group_title<'a>(fluent: &'a Fluent, key: Tr) -> Element<'a, Message> {
-    text(fluent.get(key))
-        .size(16)
-        .color(crate::ui::theme::ACCENT)
-        .into()
+fn group_title<'a>(fluent: &'a Fluent, key: Tr, accent: Color) -> Element<'a, Message> {
+    text(fluent.get(key)).size(16).color(accent).into()
 }
