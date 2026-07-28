@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use iced::futures::SinkExt;
-use iced::widget::{column, combo_box, container, row, stack, text_editor};
+use iced::widget::{column, container, row, stack, text_editor};
 use iced::window::Id;
 use iced::{Element, Length, Subscription, Task};
 
@@ -36,7 +36,7 @@ pub struct Remotrix {
     maximized: bool,
     show_close_dialog: bool,
     window_id: Option<Id>,
-    sort_combo_state: combo_box::State<SortField>,
+    sort_menu_open: bool,
     sort_field: SortField,
     sort_order: SortOrder,
     aria2_version: Option<String>,
@@ -67,15 +67,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
     let logo_handle =
         iced::widget::image::Handle::from_bytes(&include_bytes!("../assets/icon.png")[..]);
 
-    let sort_options = vec![
-        SortField::AddedTime,
-        SortField::Name,
-        SortField::Size,
-        SortField::Progress,
-        SortField::Status,
-    ];
     let state = Remotrix {
-        sort_combo_state: combo_box::State::new(sort_options),
         page: Page::Tasks,
         task_filter: TaskFilter::All,
         settings_cat: SettingsCategory::General,
@@ -91,6 +83,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         maximized: false,
         show_close_dialog: false,
         window_id: None,
+        sort_menu_open: false,
         sort_field: SortField::AddedTime,
         sort_order: SortOrder::Desc,
         aria2_version: None,
@@ -281,6 +274,18 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         }
         Message::SortSelected(field) => {
             state.sort_field = field;
+        }
+        Message::ToggleSortMenu => {
+            state.sort_menu_open = !state.sort_menu_open;
+        }
+        Message::CloseSortMenu => {
+            state.sort_menu_open = false;
+        }
+        Message::ToggleSortOrder => {
+            state.sort_order = match state.sort_order {
+                SortOrder::Asc => SortOrder::Desc,
+                SortOrder::Desc => SortOrder::Asc,
+            };
         }
         Message::OpenAbout => {
             state.about_dialog_visible = true;
@@ -674,7 +679,14 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                 .cloned()
                 .collect();
             let sorted = crate::ui::sort::sort_tasks(&filtered, state.sort_field, state.sort_order);
-            crate::ui::task_list::view(&state.fluent, t, &sorted, &state.sort_combo_state)
+            crate::ui::task_list::view(
+                &state.fluent,
+                t,
+                &sorted,
+                state.sort_field,
+                state.sort_order,
+                state.sort_menu_open,
+            )
         }
         Page::Settings => crate::ui::settings_page::view(
             &state.fluent,

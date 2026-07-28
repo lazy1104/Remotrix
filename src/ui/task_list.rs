@@ -1,10 +1,9 @@
-use iced::widget::{
-    button, column, combo_box, container, progress_bar, row, scrollable, text, tooltip,
-};
+use iced::widget::{button, column, container, progress_bar, row, scrollable, text, tooltip};
 use iced::{Alignment, Element, Length};
+use iced_aw::widget::drop_down;
 
 use crate::i18n::{Fluent, Tr};
-use crate::message::{Message, SortField};
+use crate::message::{Message, SortField, SortOrder};
 use crate::task::{format_duration, format_size, format_speed, DownloadTask, TaskStatus};
 use crate::ui::theme;
 
@@ -12,63 +11,139 @@ pub fn view<'a>(
     fluent: &'a Fluent,
     theme: &iced::Theme,
     tasks: &[DownloadTask],
-    sort_combo_state: &'a combo_box::State<SortField>,
+    sort_field: SortField,
+    sort_order: SortOrder,
+    sort_menu_open: bool,
 ) -> Element<'a, Message> {
-    let combo_w = combo_box::ComboBox::new(
-        sort_combo_state,
-        "",
-        None::<&SortField>,
-        Message::SortSelected,
-    )
-    .size(13.0)
-    .width(Length::Fixed(130.0));
-
     let lucide_font = iced::Font::with_name("lucide");
 
-    let toolbar_btn = |codepoint: char, tip: String, msg: Message| -> Element<'a, Message> {
-        let glyph = text(codepoint.to_string()).font(lucide_font).size(15);
-        let btn = button(glyph)
-            .on_press(msg)
+    let toolbar_btn =
+        |codepoint: char, tip: String, msg: Message, active: bool| -> Element<'a, Message> {
+            let glyph = text(codepoint.to_string()).font(lucide_font).size(15);
+            let glyph = if active {
+                glyph.color(theme::ACCENT)
+            } else {
+                glyph
+            };
+            let btn = button(glyph)
+                .on_press(msg)
+                .padding([6_u16, 8])
+                .style(button::text);
+            tooltip(btn, text(tip), tooltip::Position::Bottom)
+                .style(container::rounded_box)
+                .into()
+        };
+
+    let sort_active = sort_menu_open || sort_field != SortField::AddedTime;
+
+    let sort_underlay = {
+        let glyph = text('\u{E37D}'.to_string()).font(lucide_font).size(15);
+        let glyph = if sort_active {
+            glyph.color(theme::ACCENT)
+        } else {
+            glyph
+        };
+        button(glyph)
+            .on_press(Message::ToggleSortMenu)
             .padding([6_u16, 8])
+            .style(button::text)
+    };
+
+    let sort_overlay: Element<'a, Message> = {
+        let asc_desc_label = fluent.get(if sort_order == SortOrder::Desc {
+            Tr::SortDesc
+        } else {
+            Tr::SortAsc
+        });
+        let asc_desc_btn = button(text(asc_desc_label).size(13))
+            .on_press(Message::ToggleSortOrder)
+            .width(Length::Fill)
+            .padding([6, 8])
             .style(button::text);
-        tooltip(btn, text(tip), tooltip::Position::Bottom)
-            .style(container::rounded_box)
-            .into()
+
+        let mut col = column![asc_desc_btn].spacing(2).width(Length::Fill);
+        col = col.push(iced::widget::rule::horizontal(1));
+
+        let fields = [
+            (SortField::AddedTime, Tr::SortByAdded),
+            (SortField::Name, Tr::SortByName),
+            (SortField::Size, Tr::SortBySize),
+            (SortField::Progress, Tr::SortByProgress),
+            (SortField::Status, Tr::SortByStatus),
+        ];
+
+        for (field, tr) in fields {
+            let selected = field == sort_field;
+            let btn = button(text(fluent.get(tr)).size(13))
+                .on_press(Message::SortSelected(field))
+                .width(Length::Fill)
+                .padding([6, 8])
+                .style(theme::style::button::sidebar_icon(selected));
+            col = col.push(btn);
+        }
+
+        container(col).padding(6).style(theme::style::card).into()
+    };
+
+    let sort_dropdown = drop_down::DropDown::new(sort_underlay, sort_overlay, sort_menu_open)
+        .on_dismiss(Message::CloseSortMenu)
+        .width(Length::Fixed(170.0));
+
+    let new_btn: Element<'a, Message> = {
+        let glyph = text('\u{E13D}'.to_string()).font(lucide_font).size(15);
+        let inner = container(glyph).center(Length::Fixed(28.0));
+        let btn = button(inner)
+            .on_press(Message::OpenAddDialog)
+            .padding(0)
+            .style(theme::style::button::new_download());
+        tooltip(
+            btn,
+            text(fluent.get(Tr::NewDownload)),
+            tooltip::Position::Bottom,
+        )
+        .style(container::rounded_box)
+        .into()
     };
 
     let toolbar = row![]
+        .push(iced::widget::Space::new().width(Length::Fill))
+        .push(new_btn)
         .push(
             row![]
                 .push(toolbar_btn(
                     '\u{E145}',
                     fluent.get(Tr::Refresh),
                     Message::Refresh,
+                    false,
                 ))
-                .push(combo_w)
+                .push(sort_dropdown)
                 .push(toolbar_btn(
                     '\u{E13C}',
                     fluent.get(Tr::StartAll),
                     Message::StartAll,
+                    false,
                 ))
                 .push(toolbar_btn(
                     '\u{E12E}',
                     fluent.get(Tr::PauseAll),
                     Message::PauseAll,
+                    false,
                 ))
                 .push(toolbar_btn(
                     '\u{E18E}',
                     fluent.get(Tr::DeleteAll),
                     Message::DeleteAll,
+                    false,
                 ))
                 .push(toolbar_btn(
                     '\u{E28F}',
                     fluent.get(Tr::ClearList),
                     Message::ClearCompleted,
+                    false,
                 ))
                 .align_y(Alignment::Center)
                 .spacing(4),
         )
-        .push(iced::widget::Space::new().width(Length::Fill))
         .width(Length::Fill)
         .padding(iced::Padding::new(0.0).bottom(12.0));
 

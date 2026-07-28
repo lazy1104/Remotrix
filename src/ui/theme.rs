@@ -295,6 +295,26 @@ pub mod style {
                 }
             }
         }
+
+        pub fn new_download<'a>(
+        ) -> impl Fn(&iced::Theme, iced::widget::button::Status) -> iced::widget::button::Style + 'a
+        {
+            move |_t: &iced::Theme,
+                  status: iced::widget::button::Status|
+                  -> iced::widget::button::Style {
+                let background = match status {
+                    iced::widget::button::Status::Hovered
+                    | iced::widget::button::Status::Pressed => Color::from_rgb(0.353, 0.627, 0.902),
+                    _ => super::super::ACCENT,
+                };
+                iced::widget::button::Style {
+                    background: Some(background.into()),
+                    text_color: super::super::TEXT_PRIMARY,
+                    border: iced::border::rounded(40),
+                    ..Default::default()
+                }
+            }
+        }
     }
 
     pub mod progress {

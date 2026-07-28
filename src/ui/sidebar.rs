@@ -41,7 +41,7 @@ pub fn view<'a>(
         '\u{E106}',
         fluent.get(Tr::Tasks),
         Message::NavigatePage(Page::Tasks),
-        page == Page::Tasks,
+        false,
     );
     let new_area = icon_btn(
         '\u{E13D}',
@@ -54,7 +54,7 @@ pub fn view<'a>(
         '\u{E154}',
         fluent.get(Tr::Settings),
         Message::NavigatePage(Page::Settings),
-        page == Page::Settings,
+        false,
     );
 
     let col = column![]
@@ -63,8 +63,8 @@ pub fn view<'a>(
         .push(iced::widget::Space::new().height(Length::Fixed(20.0)))
         .push(list_area)
         .push(new_area)
-        .push(about_area)
         .push(iced::widget::Space::new().height(Length::Fill))
+        .push(about_area)
         .push(sett_area)
         .height(Length::Fill);
 
