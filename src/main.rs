@@ -14,6 +14,10 @@ mod updater;
 fn main() -> iced::Result {
     let _log_guard = init_tracing();
 
+    let cfg = crate::config::load();
+    let w = cfg.window_width.max(800.0);
+    let h = cfg.window_height.max(560.0);
+
     iced::application(app::init, app::update, app::view)
         .title(app::app_title as fn(&app::Remotrix) -> String)
         .theme(app::theme as fn(&app::Remotrix) -> iced::Theme)
@@ -25,10 +29,12 @@ fn main() -> iced::Result {
         .font(iced_aw::ICED_AW_FONT_BYTES)
         .default_font(iced::Font::with_name("HarmonyOS Sans SC"))
         .window(iced::window::Settings {
-            size: iced::Size::new(1040.0, 720.0),
+            size: iced::Size::new(w, h),
+            maximized: cfg.window_maximized,
             icon: load_icon(),
             decorations: false,
             exit_on_close_request: false,
+            min_size: Some(iced::Size::new(800.0, 560.0)),
             ..Default::default()
         })
         .run()

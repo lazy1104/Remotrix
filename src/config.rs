@@ -78,6 +78,12 @@ fn default_light_theme() -> String {
 fn default_dark_theme() -> String {
     "silkcircuit-neon".into()
 }
+fn default_window_width() -> f32 {
+    1040.0
+}
+fn default_window_height() -> f32 {
+    720.0
+}
 
 impl Default for Aria2Options {
     fn default() -> Self {
@@ -259,6 +265,12 @@ pub struct Settings {
     pub nav_to_tasks_after_add: bool,
     #[serde(default)]
     pub delete_torrent_after_complete: bool,
+    #[serde(default = "default_window_width")]
+    pub window_width: f32,
+    #[serde(default = "default_window_height")]
+    pub window_height: f32,
+    #[serde(default)]
+    pub window_maximized: bool,
 }
 
 impl Default for Settings {
@@ -280,6 +292,9 @@ impl Default for Settings {
             aria2: Aria2Options::default(),
             nav_to_tasks_after_add: true,
             delete_torrent_after_complete: false,
+            window_width: default_window_width(),
+            window_height: default_window_height(),
+            window_maximized: false,
         }
     }
 }

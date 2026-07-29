@@ -39,6 +39,7 @@ pub enum Message {
 
     WindowOpened(iced::window::Id),
     DragWindow,
+    ResizeWindow(iced::window::Direction),
     WindowAction(WindowCmd),
     CloseRequested,
     CloseDialog(CloseDialogChoice),
@@ -57,6 +58,9 @@ pub enum Message {
     CloseTaskDetails,
     RefreshTaskDetails,
     FlushDirty,
+    WindowResized(iced::Size),
+    WindowMaximized(bool),
+    PersistWindowGeometry,
     SelectDetailsTab(DetailsTab),
     OpenTaskFolder(String),
     CopyTaskLink(String),

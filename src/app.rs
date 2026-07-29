@@ -55,6 +55,10 @@ pub struct Remotrix {
     db: Option<Db>,
     dirty: HashSet<String>,
     details: DetailsDialogState,
+    window_size: iced::Size,
+    last_resize: Option<iced::Size>,
+    geometry_dirty: bool,
+    pending_close: bool,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
@@ -63,6 +67,10 @@ pub fn init() -> (Remotrix, Task<Message>) {
 
     let ua_editor = text_editor::Content::with_text(&settings.aria2.user_agent);
     let headers_editor = text_editor::Content::with_text(&settings.aria2.headers.join("\n"));
+
+    let window_w = settings.window_width;
+    let window_h = settings.window_height;
+    let window_maximized = settings.window_maximized;
 
     let (handle, event_rx) = crate::engine::spawn_engine();
 
@@ -97,7 +105,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         settings,
         fluent,
         theme,
-        maximized: false,
+        maximized: window_maximized,
         show_close_dialog: false,
         window_id: None,
         sort_menu_open: false,
@@ -116,6 +124,10 @@ pub fn init() -> (Remotrix, Task<Message>) {
         db,
         dirty: HashSet::new(),
         details: DetailsDialogState::new(),
+        window_size: iced::Size::new(window_w, window_h),
+        last_resize: None,
+        geometry_dirty: false,
+        pending_close: false,
     };
 
     (state, Task::none())
@@ -139,6 +151,12 @@ fn effective_theme_id(settings: &Settings) -> &str {
 
 fn rebuild_theme(state: &mut Remotrix) {
     state.theme = theme::build_iced(effective_theme_id(&state.settings));
+}
+
+fn sync_geometry_to_settings(state: &mut Remotrix) {
+    state.settings.window_width = state.window_size.width;
+    state.settings.window_height = state.window_size.height;
+    state.settings.window_maximized = state.maximized;
 }
 
 pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
@@ -619,6 +637,10 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 state.aria2_status = Some((stage, message));
             }
         },
+        Message::WindowResized(size) => {
+            state.last_resize = Some(size);
+            state.geometry_dirty = true;
+        }
         Message::WindowOpened(id) => {
             if state.window_id.is_none() {
                 state.window_id = Some(id);
@@ -627,6 +649,11 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::DragWindow => {
             if let Some(id) = state.window_id {
                 return iced::window::drag::<Message>(id);
+            }
+        }
+        Message::ResizeWindow(direction) => {
+            if let Some(id) = state.window_id {
+                return iced::window::drag_resize::<Message>(id, direction);
             }
         }
         Message::WindowAction(cmd) => {
@@ -651,6 +678,15 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     if state.handle.cmd_tx.send(EngineCmd::Shutdown).is_err() {
                         tracing::warn!("ui: shutdown cmd send failed");
                     }
+                    if state.geometry_dirty {
+                        state.pending_close = true;
+                        if let Some(id) = state.window_id {
+                            return iced::window::is_maximized(id)
+                                .then(|max| Task::done(Message::WindowMaximized(max)));
+                        }
+                    }
+                    sync_geometry_to_settings(state);
+                    config::save(&state.settings);
                     if let Some(id) = state.window_id {
                         iced::window::close::<Message>(id)
                     } else {
@@ -660,6 +696,32 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 CloseDialogChoice::Cancel => Task::none(),
                 CloseDialogChoice::MinimizeToTray => Task::none(),
             };
+        }
+        Message::PersistWindowGeometry => {
+            if state.geometry_dirty {
+                if let Some(id) = state.window_id {
+                    return iced::window::is_maximized(id)
+                        .then(|max| Task::done(Message::WindowMaximized(max)));
+                }
+            }
+        }
+        Message::WindowMaximized(max) => {
+            state.maximized = max;
+            if let Some(s) = state.last_resize {
+                if !max {
+                    state.window_size = s;
+                }
+                state.last_resize = None;
+            }
+            sync_geometry_to_settings(state);
+            config::save(&state.settings);
+            state.geometry_dirty = false;
+            if state.pending_close {
+                state.pending_close = false;
+                if let Some(id) = state.window_id {
+                    return iced::window::close::<Message>(id);
+                }
+            }
         }
         Message::ThemeModeChanged(mode) => {
             state.settings.theme_mode = mode;
@@ -931,7 +993,18 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         .height(Length::Fill)
         .style(theme::style::base_background);
 
-    let mut stacked = iced::widget::opaque(base);
+    let framed: iced::Element<'_, Message> = if state.maximized {
+        #[allow(clippy::useless_conversion)]
+        {
+            iced::widget::opaque(base).into()
+        }
+    } else {
+        stack![iced::widget::opaque(base), crate::ui::resize_frame::view(),]
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    };
+    let mut stacked = framed;
 
     if state.add_dialog.is_visible() {
         stacked = stack![
@@ -1026,13 +1099,25 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
 
     let flush = iced::time::every(Duration::from_millis(1000)).map(|_| Message::FlushDirty);
 
+    let resizes = iced::window::resize_events().map(|(_id, size)| Message::WindowResized(size));
+    let persist_periodic =
+        iced::time::every(Duration::from_millis(2000)).map(|_| Message::PersistWindowGeometry);
+
     let refresh = if state.details.is_visible() {
         iced::time::every(Duration::from_millis(2000)).map(|_| Message::RefreshTaskDetails)
     } else {
         Subscription::none()
     };
 
-    Subscription::batch(vec![engine, open, close, flush, refresh])
+    Subscription::batch(vec![
+        engine,
+        open,
+        close,
+        flush,
+        resizes,
+        persist_periodic,
+        refresh,
+    ])
 }
 
 fn pick_folder(kind: FileKind) -> Task<Message> {

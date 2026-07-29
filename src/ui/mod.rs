@@ -6,6 +6,7 @@ pub mod details_dialog;
 pub mod icon;
 pub mod icons;
 pub mod piece_map;
+pub mod resize_frame;
 pub mod settings_page;
 pub mod sidebar;
 pub mod sort;
