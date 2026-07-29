@@ -352,10 +352,16 @@ async fn handle_client_cmd(
         EngineCmd::Pause(gid) => {
             tracing::info!(?gid, "pause");
             let _ = client.pause(&gid).await;
+            if let Ok(status) = client.tell_status(&gid).await {
+                emit_progress(event_tx, &status).await;
+            }
         }
         EngineCmd::Resume(gid) => {
             tracing::info!(?gid, "resume");
             let _ = client.unpause(&gid).await;
+            if let Ok(status) = client.tell_status(&gid).await {
+                emit_progress(event_tx, &status).await;
+            }
         }
         EngineCmd::Remove(gid) => {
             tracing::info!(?gid, "remove");
@@ -373,10 +379,16 @@ async fn handle_client_cmd(
         EngineCmd::PauseAll => {
             tracing::info!("pause all");
             let _ = client.pause_all().await;
+            for s in fetch_all_tasks(client).await {
+                emit_progress(event_tx, &s).await;
+            }
         }
         EngineCmd::ResumeAll => {
             tracing::info!("resume all");
             let _ = client.unpause_all().await;
+            for s in fetch_all_tasks(client).await {
+                emit_progress(event_tx, &s).await;
+            }
         }
         EngineCmd::RemoveAll => {
             tracing::info!("remove all");
@@ -570,12 +582,16 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
         loop {
             match rx.recv().await {
                 Ok(Notification::Aria2 { gid, event }) => match event {
-                    Event::Complete | Event::Error | Event::Stop | Event::BtComplete => {
+                    Event::Start
+                    | Event::Pause
+                    | Event::Complete
+                    | Event::Error
+                    | Event::Stop
+                    | Event::BtComplete => {
                         if let Ok(status) = notif_client.tell_status(&gid).await {
                             emit_progress(&notif_event_tx, &status).await;
                         }
                     }
-                    _ => {}
                 },
                 Ok(Notification::WebSocketConnected) => {
                     tracing::info!("aria2-ws reconnected");
