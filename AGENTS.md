@@ -4,10 +4,13 @@
 Rust-native desktop download manager inspired by Motrix.app. Built with `iced` GUI framework and **aria2-next sidecar** (via `aria2-ws` RPC client).
 
 | Component | Choice | Rationale |
-|---|---|---|
-| GUI | `iced 0.14` (+tokio feature) | Pure Rust, widget-based, dark theme support |
-| Engine | `aria2-next` sidecar + `aria2-ws 0.5` | C++ aria2 fork with JSON-RPC over WebSocket; spawned as subprocess |
-| Async | `tokio 1.x` full features | Shared runtime for engine and UI |
+|---|---|---|---|
+| GUI | `iced 0.14` (+tokio, advanced, image, canvas) | Pure Rust, widget-based, multi-theme support |
+| Engine | `aria2-next` sidecar + `aria2-ws 0.5` | C++ aria2 fork, JSON-RPC over WebSocket; spawned as subprocess |
+| Async | `tokio 1.x` (full) | Shared runtime for engine + UI |
+| Persistence | `rusqlite 0.32` (bundled) | Embedded SQLite for task metadata / progress |
+| Themes | `opaline 0.4` (builtin-themes, iced) + `dark-light 1.1` | Multiple light/dark palettes; system detection |
+| i18n | `fluent-templates 0.14` | Fluent translations (zh/en) |
 | File dialog | `rfd 0.15` | Native OS file picker |
 | Config dirs | `directories 5` | XDG/user data paths |
 
@@ -27,18 +30,23 @@ Rust-native desktop download manager inspired by Motrix.app. Built with `iced` G
 // --- Channel Protocol (must match between engine.rs and message.rs) ---
 enum EngineCmd {
     AddDownload { urls: Vec<String>, save_dir: PathBuf, split: u16 },
+    AddTorrent { path: PathBuf, save_dir: PathBuf, split: u16 },
     Pause(String), Resume(String), Remove(String),
     PauseAll, ResumeAll, RemoveAll, Snapshot,
-    SetSpeedLimit { download: Option<u64>, upload: Option<u64> },
+    ApplyAria2Options { options: TaskOptions },
+    FetchTaskDetails(String),
     Shutdown,
     CheckAria2Update,
     RetryAria2Fetch,
     RestartEngine,
 }
 enum EngineEvent {
-    Added { gid: String, name: String },
-    Progress { gid: String, downloaded: u64, total: u64, speed: u64, status: String },
-    Removed(String), EngineReady, EngineStopped,
+    Added { gid: String, name: String, url: String, dir: String },
+    Progress { gid: String, downloaded: u64, total: u64, speed: u64, status: String, connections: u64 },
+    Removed(String),
+    TaskDetails { gid: String, details: crate::task::TaskDetails },
+    TaskDetailsFailed { gid: String },
+    EngineReady, EngineStopped,
     Aria2Status { stage: String, message: String },
     Aria2Version { version: String },
     Aria2CheckResult { current: String, latest: Option<String> },
@@ -73,58 +81,56 @@ let status = client.tell_status(&gid).await?;
 
 ## Cargo.toml Dependencies
 ```toml
-[package] name = "remotrix" version = "0.1.0" edition = "2021"
+[package] name = "remotrix" version = "0.1.0" edition = "2021" license = "GPL-2.0-or-later"
 [dependencies]
 aria2-ws = "0.5"
-iced = { version = "0.14", features = ["tokio", "advanced", "image"] }
+iced = { version = "0.14", features = ["tokio", "advanced", "image", "canvas"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 directories = "5"
 rfd = "0.15"
-base64 = "0.22"
+image = "0.24"
+dark-light = "1.1"
+fluent-templates = "0.14.0"
 futures = "0.3"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+base64 = "0.22"
+hex = "0.4"
+num-traits = "0.2"
+iced_aw = { version = "0.14", default-features = false, features = ["number_input", "drop_down"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 sha2 = "0.10"
+opaline = { version = "0.4", default-features = false, features = ["builtin-themes", "iced"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+open = "5"
 
 [build-dependencies]
 iced_lucide = "0.1"
 ```
 
 ## Code Conventions
-- **Module structure**: `src/` with flat top-level modules (`app.rs`, `engine.rs`, `task.rs`, `message.rs`, `config.rs`) + `ui/` subdirectory
+- **Module structure**: `src/` with flat top-level modules (`app.rs`, `config.rs`, `db.rs`, `engine.rs`, `aria2_fetcher.rs`, `updater.rs`, `message.rs`, `task.rs`, `i18n.rs`) + `ui/` subdirectory
 - **UI pattern**: Each page is a `fn` returning `iced::Element<'_, Message, Theme>`; no widget OOP wrappers
-- **Theme**: Custom `Theme` struct (not iced built-in themes) with Motrix-dark palette (defined in `ui/theme.rs`)
+- **Theme**: `opaline` builtin themes loaded via the iced adapter (`src/ui/theme.rs`); colors read from `iced::Theme::extended_palette()`, no hardcoded palette constants.
 - **Naming**: `snake_case` for fns/vars, `PascalCase` for types/enums, `SCREAMING_SNAKE` for constants
 - **Error handling**: Use `String` errors in engine layer, map to `EngineEvent::EngineStopped` for fatal
 - **No comments** in source code unless explaining a non-obvious design decision
 - **Imports**: Group as `std` → external crates → `crate::` (blank-line separated)
 
-## Theme Constants (Motrix Dark)
-```rust
-const BG_PRIMARY: Color = Color::from_rgb(0.12, 0.12, 0.18);     // #1e1e2e
-const BG_SIDEBAR: Color = Color::from_rgb(0.09, 0.09, 0.15);    // #181825
-const BG_CARD: Color = Color::from_rgb(0.15, 0.15, 0.25);       // #252540
-const ACCENT: Color = Color::from_rgb(0.29, 0.56, 0.85);        // #4A90D9
-const PROGRESS: Color = Color::from_rgb(0.30, 0.69, 0.31);      // #4CAF50
-const SPEED: Color = Color::from_rgb(0.55, 0.76, 0.29);         // #8BC34A
-const ERROR: Color = Color::from_rgb(0.96, 0.26, 0.21);         // #F44336
-const PAUSED: Color = Color::from_rgb(1.00, 0.60, 0.00);        // #FF9800
-const TEXT_PRIMARY: Color = Color::from_rgb(1.0, 1.0, 1.0);
-const TEXT_SECONDARY: Color = Color::from_rgb(0.63, 0.63, 0.69); // #A0A0B0
-const BORDER: Color = Color::from_rgb(0.18, 0.18, 0.27);        // #2D2D44
-```
-
 ## Build / Check Commands
 ```bash
-cargo build                    # debug build (downloads aria2-next binary)
+cargo build                    # debug build (no network; aria2-next fetched at runtime)
 cargo build --release          # release build
 cargo run --                   # run app
 cargo clippy --workspace       # lint (no warnings allowed)
 cargo fmt --check              # formatting check
 ```
+Run `/check-docs` (Kilo command) to audit README.md and this file against the codebase.
 
 ## Build Process (build.rs)
 - Build-time only generates the icon module (`iced_lucide::build`)

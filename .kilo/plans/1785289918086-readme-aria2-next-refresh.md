@@ -1,3 +1,68 @@
+# Plan: Refresh README for the aria2-next sidecar architecture
+
+## Goal & Scope (confirmed with user: FULL refresh)
+
+`README.md` is stale: it still describes the abandoned `aria2-core` Rust engine.
+Rewrite it to reflect the current **aria2-next sidecar + `aria2-ws` RPC** architecture
+and fix every other section that drifted (dependency versions, tech stack, code layout,
+features, config/data dirs, roadmap). Single-file documentation change only — no source edits.
+
+## Verified discrepancies (README vs actual code)
+
+| Section | README (stale) | Actual (verified) |
+|---|---|---|
+| Engine | `aria2-core 0.2.3` (Rust rewrite) | aria2-next sidecar (C++ aria2 fork) driven via `aria2-ws 0.5` WebSocket RPC; spawned as subprocess with a tokio supervisor (`src/engine.rs`) |
+| GUI | `iced 0.13` | `iced 0.14` (+tokio, advanced, image, **canvas**) |
+| System theme | `dark-light 2` | `dark-light 1.1` |
+| Themes | Motrix dark/light palette (custom `Theme` struct) | `opaline 0.4` builtin themes via iced adapter (`src/ui/theme.rs`); no hardcoded palette constants |
+| Persistence | not mentioned | `rusqlite 0.32` (bundled) SQLite in `src/db.rs`; meta + progress flushed every 1s |
+| Updater | not mentioned | `src/aria2_fetcher.rs` + `src/updater.rs`: runtime fetch from GitHub Releases (`AnInsomniacy/aria2-next`), sha256 verify, `.installed`/`.pending-update` cache, `ARIA2_BIN` override, auto-update check + staged apply on restart |
+| Logging | not mentioned | `tracing` + `tracing-appender 0.2` daily rolling file logs |
+| Magnet | claimed as supported | NOT implemented (engine has `AddDownload`/`AddTorrent` only; `add_magnet` unused) → move to roadmap |
+| Code layout | missing 3 top-level + 7 ui files | add `aria2_fetcher.rs`, `db.rs`, `updater.rs`, `ui/{mod,icon,icons,category_bar,details_dialog,piece_map,sort,about_dialog}.rs` |
+
+## Confirmed facts (to encode verbatim)
+
+- **Config path** (`ProjectDirs::from("dev","remotrix","Remotrix")`, verified against `directories 5.0.1` source + on-disk files):
+  - Linux: `~/.config/remotrix/settings.json` (Linux uses only lowercased `application` = `remotrix`)
+  - macOS: `~/Library/Application Support/dev.remotrix.Remotrix/settings.json` (bundle id `dev.remotrix.Remotrix`)
+  - Windows: `%APPDATA%\remotrix\Remotrix\config\settings.json` (path `remotrix\Remotrix`, config subdir)
+- **Data dir** (db, `aria2/` binary cache+session, `logs/`):
+  - Linux: `~/.local/share/remotrix/`
+  - macOS: `~/Library/Application Support/dev.remotrix.Remotrix/`
+  - Windows: `%APPDATA%\remotrix\Remotrix\data\`
+- **Sidebar nav**: Tasks / New / About / Settings (icon buttons, `src/ui/sidebar.rs`)
+- **Task filters** (`category_bar.rs`): All / Downloading / Completed (with counts)
+- **Settings categories**: General / Download / BitTorrent / eD2k / Network / Advanced
+- **Sort fields**: added time, name, size, progress, status (asc/desc)
+- **Details dialog tabs**: Summary / Activity / Files; `TaskDetails` = bitfield, num_pieces, piece_length, files, upload_speed, num_seeders, info_hash, error_code, error_message; `piece_map.rs` = BT piece canvas
+- **Build**: `build.rs` only generates the iced_lucide icon module (`fonts/icons.toml`); **no network at build time**. aria2-next binary is fetched at **runtime** on first launch.
+- **Dependencies** (from `Cargo.toml`): aria2-ws 0.5, iced 0.14, tokio 1 (full), serde/serde_json, anyhow, tracing + tracing-subscriber 0.3 + tracing-appender 0.2, directories 5, rfd 0.15, image 0.24, dark-light 1.1, fluent-templates 0.14, futures 0.3, base64 0.22, hex 0.4, num-traits 0.2, iced_aw 0.14 (number_input, drop_down), reqwest 0.12 (rustls, json), sha2 0.10, opaline 0.4 (builtin-themes, iced), rusqlite 0.32 (bundled), chrono 0.4 (clock), open 5. Build-dep: iced_lucide 0.1.
+- **License**: GPL-2.0-or-later (confirmed in `Cargo.toml`).
+
+## Implementation steps
+
+1. Overwrite `README.md` with the content in the "Proposed README" section below (single Write).
+2. Run `cargo fmt --check` and `cargo clippy --workspace` to confirm no accidental source touches (README change alone needs neither, but a clean build verifies nothing else moved).
+3. Eyeball the rendered markdown for the ASCII diagram alignment.
+
+## Out of scope
+
+- `AGENTS.md` is also partly stale (its "Theme Constants (Motrix Dark)" block no longer matches `theme.rs`, which now uses opaline). User asked only for README; leave AGENTS.md untouched unless requested.
+- No source code changes. No new screenshots.
+
+## Validation
+
+- `cargo build` still compiles (README edit must not break anything).
+- Grep README for `aria2-core` → expect 0 hits.
+- Grep README for `0.13` / `dark-light 2` → expect 0 hits.
+- Confirm config-path lines match the "Confirmed facts" above.
+
+---
+
+## Proposed README (full content to write to `README.md`)
+
+```markdown
 # Remotrix
 
 A Rust-native desktop download manager inspired by [Motrix](https://motrix.app/), built with the
@@ -181,3 +246,11 @@ DHT, and more).
 ## License
 
 GPL-2.0-or-later. See the `license` field in `Cargo.toml`.
+```
+
+## Notes for the implementer
+
+- The fenced ``` block above contains the **exact** README body. When writing `README.md`, do **not**
+  include the surrounding triple-backtick fence — write only the markdown content inside it.
+- The ASCII architecture diagram uses literal spaces; preserve them exactly so it renders aligned.
+- Keep the existing trailing newline at end of file.
