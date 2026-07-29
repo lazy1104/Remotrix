@@ -640,11 +640,17 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     }
                 }
                 if let Some(t) = state.tasks.get_mut(&gid) {
-                    t.downloaded = downloaded;
-                    t.total = total;
-                    t.speed = speed;
-                    t.status = TaskStatus::from_engine(&status);
-                    t.connections = connections;
+                    if total == 0 && t.total > 0 {
+                        t.status = TaskStatus::from_engine(&status);
+                        t.speed = speed;
+                        t.connections = connections;
+                    } else {
+                        t.downloaded = downloaded;
+                        t.total = total;
+                        t.speed = speed;
+                        t.status = TaskStatus::from_engine(&status);
+                        t.connections = connections;
+                    }
                     state.dirty.insert(gid);
                 }
             }
