@@ -42,7 +42,7 @@ pub fn view<'a>(
                         button(text(fluent.get(Tr::CloseAbout)).size(14))
                             .on_press(Message::CloseAbout)
                             .padding([10, 22])
-                            .style(button::secondary),
+                            .style(theme::style::button::secondary()),
                     )
                     .width(Length::Fill),
             ),

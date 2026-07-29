@@ -71,7 +71,7 @@ pub fn view<'a>(
             button(text(fluent.get(Tr::Browse)).size(12))
                 .on_press(Message::BrowseTorrent)
                 .padding([6, 12])
-                .style(button::secondary),
+                .style(theme::style::button::secondary()),
         )
         .align_y(Alignment::Center)
         .width(Length::Fill);
@@ -94,7 +94,7 @@ pub fn view<'a>(
             button(text(fluent.get(Tr::Browse)).size(12))
                 .on_press(Message::BrowseSaveDir)
                 .padding([6, 12])
-                .style(button::secondary),
+                .style(theme::style::button::secondary()),
         )
         .align_y(Alignment::Center)
         .width(Length::Fill);
@@ -123,18 +123,19 @@ pub fn view<'a>(
             button(text(fluent.get(Tr::Cancel)).size(14))
                 .on_press(Message::CancelAdd)
                 .padding([8, 18])
-                .style(button::secondary),
+                .style(theme::style::button::secondary()),
         )
-        .push(
-            button(text(fluent.get(Tr::Download)).size(14))
+        .push({
+            let mut btn = button(text(fluent.get(Tr::Download)).size(14))
                 .on_press(Message::AddDownload)
-                .padding([8, 18])
-                .style(if state.can_submit() {
-                    button::primary
-                } else {
-                    button::secondary
-                }),
-        )
+                .padding([8, 18]);
+            btn = if state.can_submit() {
+                btn.style(theme::style::button::primary())
+            } else {
+                btn.style(theme::style::button::secondary())
+            };
+            btn
+        })
         .spacing(10)
         .align_y(Alignment::Center)
         .width(Length::Fill);

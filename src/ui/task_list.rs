@@ -29,7 +29,7 @@ pub fn view<'a>(
             let btn = button(glyph)
                 .on_press(msg)
                 .padding([6_u16, 8])
-                .style(button::text);
+                .style(theme::style::button::toolbar_icon(active));
             tooltip(btn, text(tip), tooltip::Position::Bottom)
                 .style(container::rounded_box)
                 .into()
@@ -47,7 +47,7 @@ pub fn view<'a>(
         button(glyph)
             .on_press(Message::ToggleSortMenu)
             .padding([6_u16, 8])
-            .style(button::text)
+            .style(theme::style::button::toolbar_icon(sort_active))
     };
 
     let sort_overlay: Element<'a, Message> = {
@@ -60,7 +60,7 @@ pub fn view<'a>(
             .on_press(Message::ToggleSortOrder)
             .width(Length::Fill)
             .padding([6, 8])
-            .style(button::text);
+            .style(theme::style::button::text());
 
         let mut col = column![asc_desc_btn].spacing(2).width(Length::Fill);
         col = col.push(iced::widget::rule::horizontal(1));
@@ -201,8 +201,13 @@ fn task_card<'a>(
     let toolbar_icon =
         |glyph: iced::widget::Text<'a>, msg: Option<Message>| -> Element<'a, Message> {
             let btn = match msg {
-                Some(m) => button(glyph).on_press(m).padding(4).style(button::text),
-                None => button(glyph).padding(4).style(button::text),
+                Some(m) => button(glyph)
+                    .on_press(m)
+                    .padding(4)
+                    .style(theme::style::button::toolbar_icon(false)),
+                None => button(glyph)
+                    .padding(4)
+                    .style(theme::style::button::toolbar_icon(false)),
             };
             btn.into()
         };
@@ -225,7 +230,7 @@ fn task_card<'a>(
             button(glyph)
                 .on_press(Message::OpenTaskFolder(t.gid.clone()))
                 .padding(4)
-                .style(button::text),
+                .style(theme::style::button::toolbar_icon(false)),
             text(fluent.get(Tr::ShowInFolder)).size(12),
             tooltip::Position::Bottom,
         )
@@ -233,7 +238,10 @@ fn task_card<'a>(
         .into()
     } else {
         let glyph = icon::folder_open().size(15).color(text_secondary);
-        button(glyph).padding(4).style(button::text).into()
+        button(glyph)
+            .padding(4)
+            .style(theme::style::button::toolbar_icon(false))
+            .into()
     };
 
     let copy_link_btn: Element<'a, Message> = if !t.url.is_empty() {
@@ -242,7 +250,7 @@ fn task_card<'a>(
             button(glyph)
                 .on_press(Message::CopyTaskLink(t.gid.clone()))
                 .padding(4)
-                .style(button::text),
+                .style(theme::style::button::toolbar_icon(false)),
             text(fluent.get(Tr::CopyLink)).size(12),
             tooltip::Position::Bottom,
         )
@@ -250,7 +258,10 @@ fn task_card<'a>(
         .into()
     } else {
         let glyph = icon::copy().size(15).color(text_secondary);
-        button(glyph).padding(4).style(button::text).into()
+        button(glyph)
+            .padding(4)
+            .style(theme::style::button::toolbar_icon(false))
+            .into()
     };
 
     let details_btn: Element<'a, Message> = {
@@ -259,7 +270,7 @@ fn task_card<'a>(
             button(glyph)
                 .on_press(Message::OpenTaskDetails(t.gid.clone()))
                 .padding(4)
-                .style(button::text),
+                .style(theme::style::button::toolbar_icon(false)),
             text(fluent.get(Tr::Details)).size(12),
             tooltip::Position::Bottom,
         )
@@ -273,7 +284,7 @@ fn task_card<'a>(
             button(glyph)
                 .on_press(Message::RemoveTask(t.gid.clone()))
                 .padding(4)
-                .style(button::text),
+                .style(theme::style::button::toolbar_icon(false)),
             text(fluent.get(Tr::Remove)).size(12),
             tooltip::Position::Bottom,
         )

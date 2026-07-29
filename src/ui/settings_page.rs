@@ -81,7 +81,7 @@ pub fn view<'a>(
                     button(text(fluent.get(Tr::Apply)).size(14))
                         .on_press(Message::ApplySettings)
                         .padding([10, 24])
-                        .style(button::primary),
+                        .style(theme::style::button::primary()),
                 )
                 .width(Length::Fill),
         );
@@ -496,7 +496,7 @@ fn advanced_view<'a>(
             button(text(fluent.get(Tr::RestartToUpdate)).size(12))
                 .on_press(Message::RestartEngine)
                 .padding([6, 12])
-                .style(button::primary),
+                .style(theme::style::button::primary()),
         );
         btn_row = btn_row.push(
             text(format!(
@@ -511,14 +511,14 @@ fn advanced_view<'a>(
             button(text(fluent.get(Tr::Retry)).size(12))
                 .on_press(Message::RetryAria2Fetch)
                 .padding([6, 12])
-                .style(button::secondary),
+                .style(theme::style::button::secondary()),
         );
     } else {
         btn_row = btn_row.push(
             button(text(fluent.get(Tr::CheckUpdate)).size(12))
                 .on_press(Message::CheckAria2Update)
                 .padding([6, 12])
-                .style(button::secondary),
+                .style(theme::style::button::secondary()),
         );
     }
 
@@ -675,7 +675,7 @@ fn download_folder_row<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Elemen
                     String::new(),
                 ))
                 .padding([6, 12])
-                .style(button::secondary),
+                .style(theme::style::button::secondary()),
         )
         .height(Length::Fixed(36.0))
         .align_y(Alignment::Center)

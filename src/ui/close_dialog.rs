@@ -18,12 +18,12 @@ pub fn view<'a>(fluent: &'a Fluent, _theme: &iced::Theme) -> Element<'a, Message
     let close_btn = button(text(fluent.get(Tr::CloseAction)).size(14))
         .on_press(Message::CloseDialog(CloseDialogChoice::Close))
         .padding([10, 22])
-        .style(button::danger);
+        .style(theme::style::button::danger());
 
     let cancel_btn = button(text(fluent.get(Tr::Cancel)).size(14))
         .on_press(Message::CloseDialog(CloseDialogChoice::Cancel))
         .padding([10, 22])
-        .style(button::secondary);
+        .style(theme::style::button::secondary());
 
     let tray_btn = button(
         column![]
@@ -37,7 +37,7 @@ pub fn view<'a>(fluent: &'a Fluent, _theme: &iced::Theme) -> Element<'a, Message
             .align_x(Alignment::Center),
     )
     .padding([8, 22])
-    .style(button::text);
+    .style(theme::style::button::text());
 
     let buttons = row![]
         .push(cancel_btn)

@@ -102,7 +102,7 @@ pub fn view<'a>(
                     button(text(fluent.get(Tr::CloseAbout)).size(13))
                         .on_press(Message::CloseTaskDetails)
                         .padding([6, 14])
-                        .style(button::secondary),
+                        .style(theme::style::button::secondary()),
                 )
                 .align_x(Alignment::Center),
         )

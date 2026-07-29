@@ -49,7 +49,7 @@ pub fn view<'a>(
                     .on_press(Message::SetTaskFilter(target))
                     .padding([10, 14])
                     .width(Length::Fill)
-                    .style(button::text);
+                    .style(theme::style::button::text());
 
                     if is_active {
                         container(btn).style(theme::style::active_filter).into()
@@ -89,7 +89,7 @@ pub fn view<'a>(
                 .on_press(Message::SetSettingsCategory(target))
                 .padding([10, 14])
                 .width(Length::Fill)
-                .style(button::text);
+                .style(theme::style::button::text());
 
                 if is_active {
                     container(btn).style(theme::style::active_filter).into()
