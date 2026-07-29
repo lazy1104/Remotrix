@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use iced::widget::{button, column, container, row, text, text_input};
+use iced::widget::{button, column, container, row, text, text_editor, text_input};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
@@ -10,7 +10,7 @@ use crate::ui::theme;
 #[derive(Debug, Clone)]
 pub struct AddDialogState {
     pub visible: bool,
-    pub url: String,
+    pub url_editor: text_editor::Content,
     pub save_dir: PathBuf,
     pub split: u16,
     pub torrent_path: Option<PathBuf>,
@@ -20,7 +20,7 @@ impl AddDialogState {
     pub fn new(default_dir: PathBuf) -> Self {
         Self {
             visible: false,
-            url: String::new(),
+            url_editor: text_editor::Content::new(),
             save_dir: default_dir,
             split: 16,
             torrent_path: None,
@@ -29,7 +29,7 @@ impl AddDialogState {
 
     pub fn open(&mut self, default_dir: PathBuf, default_split: u16) {
         self.visible = true;
-        self.url.clear();
+        self.url_editor = text_editor::Content::new();
         self.save_dir = default_dir;
         self.split = default_split;
         self.torrent_path = None;
@@ -44,7 +44,7 @@ impl AddDialogState {
     }
 
     pub fn can_submit(&self) -> bool {
-        (!self.url.trim().is_empty() && !self.save_dir.as_os_str().is_empty())
+        (!self.url_editor.text().trim().is_empty() && !self.save_dir.as_os_str().is_empty())
             || self.torrent_path.is_some()
     }
 }
@@ -55,8 +55,10 @@ pub fn view<'a>(
     state: &'a AddDialogState,
 ) -> Element<'a, Message> {
     let placeholder = fluent.get(Tr::UrlPlaceholder);
-    let url_input = text_input(&placeholder, state.url.as_str())
-        .on_input(Message::AddUrlChanged)
+    let url_input = text_editor(&state.url_editor)
+        .placeholder(placeholder)
+        .on_action(Message::UrlEditor)
+        .height(Length::Fixed(120.0))
         .padding(10)
         .size(14);
 

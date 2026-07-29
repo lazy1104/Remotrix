@@ -16,7 +16,7 @@ paused = 已暂停
 error = 错误
 removed = 已移除
 new-download = 新建下载
-url-placeholder = https:// 或 magnet:?xt=urn:btih:...
+url-placeholder = 每行一个链接 (https:// 或 magnet:?xt=urn:btih:...)
 or-torrent = 或选择 .torrent 文件
 browse = 浏览
 save-to = 保存到

@@ -16,7 +16,7 @@ paused = Paused
 error = Error
 removed = Removed
 new-download = New Download
-url-placeholder = https:// or magnet:?xt=urn:btih:...
+url-placeholder = One link per line (https:// or magnet:?xt=urn:btih:...)
 or-torrent = Or choose a .torrent file
 browse = Browse
 save-to = Save to

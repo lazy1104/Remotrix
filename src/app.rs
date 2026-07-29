@@ -212,8 +212,8 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::CancelAdd => {
             state.add_dialog.close();
         }
-        Message::AddUrlChanged(value) => {
-            state.add_dialog.url = value;
+        Message::UrlEditor(action) => {
+            state.add_dialog.url_editor.perform(action);
         }
         Message::SaveDirChanged(value) => {
             state.add_dialog.save_dir = PathBuf::from(value);
@@ -237,12 +237,13 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 FileKind::Torrent => {
                     if let Some(p) = maybe_path {
                         state.add_dialog.torrent_path = Some(p.clone());
-                        if state.add_dialog.url.trim().is_empty() {
-                            state.add_dialog.url = p
+                        if state.add_dialog.url_editor.text().trim().is_empty() {
+                            let fname = p
                                 .file_name()
                                 .and_then(|n| n.to_str())
                                 .unwrap_or("")
                                 .to_string();
+                            state.add_dialog.url_editor = text_editor::Content::with_text(&fname);
                         }
                     }
                 }
@@ -281,7 +282,8 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
 
                 let urls: Vec<String> = state
                     .add_dialog
-                    .url
+                    .url_editor
+                    .text()
                     .lines()
                     .map(|l| l.trim().to_string())
                     .filter(|l| !l.is_empty())

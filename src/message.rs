@@ -18,7 +18,6 @@ pub enum Message {
     NavigatePage(Page),
     SetTaskFilter(TaskFilter),
     SetSettingsCategory(SettingsCategory),
-    AddUrlChanged(String),
     SaveDirChanged(String),
     BrowseSaveDir,
     BrowseTorrent,
@@ -76,6 +75,7 @@ pub enum Message {
     CopyTaskLink(String),
     Noop,
 
+    UrlEditor(iced::widget::text_editor::Action),
     UaEditor(iced::widget::text_editor::Action),
     HeadersEditor(iced::widget::text_editor::Action),
 
