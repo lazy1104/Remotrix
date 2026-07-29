@@ -20,10 +20,15 @@ pub enum EngineCmd {
     },
     Pause(String),
     Resume(String),
-    Remove(String),
+    Remove {
+        gid: String,
+        delete_files: bool,
+    },
     PauseAll,
     ResumeAll,
-    RemoveAll,
+    RemoveAll {
+        delete_files: bool,
+    },
     Snapshot,
     ApplyAria2Options {
         options: TaskOptions,
@@ -246,6 +251,25 @@ fn basename(uri: &str) -> Option<String> {
     }
 }
 
+fn collect_file_paths(s: &aria2_ws::response::Status) -> Vec<String> {
+    let mut paths = Vec::new();
+    for f in &s.files {
+        if !f.path.is_empty() {
+            paths.push(f.path.clone());
+        } else if let Some(uri) = f.uris.first() {
+            if let Some(name) = basename(&uri.uri) {
+                paths.push(
+                    std::path::Path::new(&s.dir)
+                        .join(name)
+                        .to_string_lossy()
+                        .into_owned(),
+                );
+            }
+        }
+    }
+    paths
+}
+
 fn name_from_status(s: &aria2_ws::response::Status) -> String {
     if let Some(file) = s.files.first() {
         let path = std::path::Path::new(&file.path);
@@ -314,6 +338,26 @@ async fn sync_existing_tasks(client: &Client, event_tx: &EventTx) {
     }
 }
 
+async fn remove_task_from_aria2(client: &Client, gid: &str) {
+    if client.remove(gid).await.is_err() {
+        let _ = client.force_remove(gid).await;
+    }
+    let _ = client.remove_download_result(gid).await;
+}
+
+async fn delete_task_files(paths: &[String]) {
+    for p in paths {
+        if p.is_empty() {
+            continue;
+        }
+        tracing::debug!(path = %p, "deleting file");
+        if let Err(e) = tokio::fs::remove_file(std::path::Path::new(p)).await {
+            tracing::debug!(path = %p, error = %e, "delete file skipped");
+        }
+        let _ = tokio::fs::remove_file(std::path::Path::new(&format!("{p}.aria2"))).await;
+    }
+}
+
 async fn handle_client_cmd(
     client: &Client,
     cmd: EngineCmd,
@@ -363,18 +407,20 @@ async fn handle_client_cmd(
                 emit_progress(event_tx, &status).await;
             }
         }
-        EngineCmd::Remove(gid) => {
-            tracing::info!(?gid, "remove");
-            match client.remove(&gid).await {
-                Ok(_) => {
-                    let _ = event_tx.send(EngineEvent::Removed(gid));
-                }
-                Err(e) => {
-                    tracing::warn!(?gid, error = ?e, "remove failed, trying force_remove");
-                    let _ = client.force_remove(&gid).await;
-                    let _ = event_tx.send(EngineEvent::Removed(gid));
-                }
+        EngineCmd::Remove { gid, delete_files } => {
+            tracing::info!(?gid, delete_files, "remove");
+            let paths = client
+                .tell_status(&gid)
+                .await
+                .ok()
+                .map(|s| collect_file_paths(&s))
+                .unwrap_or_default();
+            remove_task_from_aria2(client, &gid).await;
+            let _ = client.save_session().await;
+            if delete_files {
+                delete_task_files(&paths).await;
             }
+            let _ = event_tx.send(EngineEvent::Removed(gid));
         }
         EngineCmd::PauseAll => {
             tracing::info!("pause all");
@@ -390,12 +436,17 @@ async fn handle_client_cmd(
                 emit_progress(event_tx, &s).await;
             }
         }
-        EngineCmd::RemoveAll => {
-            tracing::info!("remove all");
-            if let Ok(active) = client.tell_active().await {
-                for s in &active {
-                    let _ = client.remove(&s.gid).await;
-                    let _ = event_tx.send(EngineEvent::Removed(s.gid.clone()));
+        EngineCmd::RemoveAll { delete_files } => {
+            tracing::info!(delete_files, "remove all");
+            let tasks = fetch_all_tasks(client).await;
+            for s in &tasks {
+                remove_task_from_aria2(client, &s.gid).await;
+                let _ = event_tx.send(EngineEvent::Removed(s.gid.clone()));
+            }
+            let _ = client.save_session().await;
+            if delete_files {
+                for s in &tasks {
+                    delete_task_files(&collect_file_paths(s)).await;
                 }
             }
         }

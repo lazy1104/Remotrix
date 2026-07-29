@@ -9,7 +9,7 @@ use crate::ui::theme::ThemeMode;
 pub enum ConfirmAction {
     DeleteAll,
     ClearCompleted,
-    RemoveTask(String),
+    DeleteTask(String),
     LeaveSettings { target: Page },
 }
 
@@ -30,9 +30,11 @@ pub enum Message {
     PauseTask(String),
     ResumeTask(String),
     RemoveTask(String),
+    DeleteTask(String),
     StartAll,
     PauseAll,
     DeleteAll,
+    RemoveAllRecords,
     ClearCompleted,
     Refresh,
     SortSelected(SortField),

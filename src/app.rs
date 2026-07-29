@@ -180,6 +180,15 @@ fn revert_apply_settings(state: &mut Remotrix) {
     state.settings_dirty = false;
 }
 
+fn clear_all_local(state: &mut Remotrix) {
+    state.tasks.clear();
+    state.task_order.clear();
+    state.dirty.clear();
+    if let Some(ref db) = state.db {
+        db.delete_all();
+    }
+}
+
 pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
     match message {
         Message::NavigatePage(page) => {
@@ -311,8 +320,30 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
         }
         Message::RemoveTask(gid) => {
-            if state.handle.cmd_tx.send(EngineCmd::Remove(gid)).is_err() {
+            if state
+                .handle
+                .cmd_tx
+                .send(EngineCmd::Remove {
+                    gid,
+                    delete_files: false,
+                })
+                .is_err()
+            {
                 tracing::warn!("ui: remove cmd send failed");
+            }
+            state.confirm = None;
+        }
+        Message::DeleteTask(gid) => {
+            if state
+                .handle
+                .cmd_tx
+                .send(EngineCmd::Remove {
+                    gid,
+                    delete_files: true,
+                })
+                .is_err()
+            {
+                tracing::warn!("ui: delete cmd send failed");
             }
             state.confirm = None;
         }
@@ -327,15 +358,29 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
         }
         Message::DeleteAll => {
-            if state.handle.cmd_tx.send(EngineCmd::RemoveAll).is_err() {
+            if state
+                .handle
+                .cmd_tx
+                .send(EngineCmd::RemoveAll { delete_files: true })
+                .is_err()
+            {
                 tracing::warn!("ui: remove all cmd send failed");
             }
-            state.tasks.clear();
-            state.task_order.clear();
-            state.dirty.clear();
-            if let Some(ref db) = state.db {
-                db.delete_all();
+            clear_all_local(state);
+            state.confirm = None;
+        }
+        Message::RemoveAllRecords => {
+            if state
+                .handle
+                .cmd_tx
+                .send(EngineCmd::RemoveAll {
+                    delete_files: false,
+                })
+                .is_err()
+            {
+                tracing::warn!("ui: remove all records cmd send failed");
             }
+            clear_all_local(state);
             state.confirm = None;
         }
         Message::ClearCompleted => {

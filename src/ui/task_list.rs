@@ -281,12 +281,12 @@ fn task_card<'a>(
         let glyph = icon::trash().size(15).color(text_secondary);
         tooltip(
             button(glyph)
-                .on_press(Message::RequestConfirm(ConfirmAction::RemoveTask(
+                .on_press(Message::RequestConfirm(ConfirmAction::DeleteTask(
                     t.gid.clone(),
                 )))
                 .padding(4)
                 .style(theme::style::button::toolbar_icon(false)),
-            text(fluent.get(Tr::Remove)).size(12),
+            text(fluent.get(Tr::Delete)).size(12),
             tooltip::Position::Bottom,
         )
         .style(container::rounded_box)
