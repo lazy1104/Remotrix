@@ -45,7 +45,7 @@ fn init_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
     let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info,remotrix=debug,aria2_ws=debug"));
+        .unwrap_or_else(|_| EnvFilter::new("info,remotrix=debug"));
 
     match crate::config::log_dir() {
         Some(dir) => {
