@@ -92,11 +92,10 @@ pub fn view<'a>(
 
     let new_btn: Element<'a, Message> = {
         let glyph = text('\u{E13D}'.to_string()).font(lucide_font).size(15);
-        let inner = container(glyph).center(Length::Fixed(28.0));
-        let btn = button(inner)
+        let btn = button(glyph)
             .on_press(Message::OpenAddDialog)
-            .padding(0)
-            .style(theme::style::button::new_download());
+            .padding([6_u16, 8])
+            .style(theme::style::button::toolbar_icon(true));
         tooltip(
             btn,
             text(fluent.get(Tr::NewDownload)),
