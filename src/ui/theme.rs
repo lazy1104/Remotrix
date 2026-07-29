@@ -333,6 +333,35 @@ pub mod style {
             }
         }
 
+        pub fn sidebar_nav<'a>(active: bool) -> impl Fn(&iced::Theme, Status) -> Style + 'a {
+            move |t: &iced::Theme, status: Status| -> Style {
+                let accent = t.extended_palette().primary.base.color;
+                if active {
+                    Style {
+                        background: Some(
+                            Color::from_rgba(accent.r, accent.g, accent.b, 0.25).into(),
+                        ),
+                        text_color: accent,
+                        border: iced::border::rounded(20.0),
+                        ..Default::default()
+                    }
+                } else {
+                    let text = t.extended_palette().background.base.text;
+                    Style {
+                        background: match status {
+                            Status::Hovered | Status::Pressed => {
+                                Some(Color::from_rgba(1.0, 1.0, 1.0, 0.08).into())
+                            }
+                            _ => None,
+                        },
+                        text_color: text,
+                        border: iced::border::rounded(20.0),
+                        ..Default::default()
+                    }
+                }
+            }
+        }
+
         pub fn window_control<'a>(is_close: bool) -> impl Fn(&iced::Theme, Status) -> Style + 'a {
             move |t: &iced::Theme, status: Status| -> Style {
                 let hover = if is_close {

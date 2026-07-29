@@ -1,5 +1,5 @@
 use iced::widget::{button, column, container, image, text, tooltip};
-use iced::{Element, Length};
+use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, Page};
@@ -24,13 +24,19 @@ pub fn view<'a>(
         |codepoint: char, tip: String, msg: Message, active: bool| -> Element<'a, Message> {
             let glyph = text(codepoint.to_string())
                 .font(iced::Font::with_name("lucide"))
-                .size(20);
-            let btn_content = container(glyph).center_x(Length::Fill).width(Length::Fill);
+                .size(20)
+                .line_height(1.0);
+            let btn_content = container(glyph)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+                .width(Length::Fill)
+                .height(Length::Fill);
             let btn = button(btn_content)
                 .on_press(msg)
-                .padding([10, 0])
-                .width(Length::Fill)
-                .style(theme::style::button::sidebar_icon(active));
+                .padding(0)
+                .width(Length::Fixed(40.0))
+                .height(Length::Fixed(40.0))
+                .style(theme::style::button::sidebar_nav(active));
 
             tooltip(btn, text(tip), tooltip::Position::Right)
                 .style(container::rounded_box)
@@ -41,7 +47,7 @@ pub fn view<'a>(
         '\u{E106}',
         fluent.get(Tr::Tasks),
         Message::NavigatePage(Page::Tasks),
-        false,
+        page == Page::Tasks,
     );
     let new_area = icon_btn(
         '\u{E13D}',
@@ -54,11 +60,12 @@ pub fn view<'a>(
         '\u{E154}',
         fluent.get(Tr::Settings),
         Message::NavigatePage(Page::Settings),
-        false,
+        page == Page::Settings,
     );
 
     let col = column![]
         .spacing(4)
+        .align_x(Alignment::Center)
         .push(logo)
         .push(iced::widget::Space::new().height(Length::Fixed(20.0)))
         .push(list_area)

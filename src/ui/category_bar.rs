@@ -3,6 +3,7 @@ use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, Page, SettingsCategory, TaskFilter};
+use crate::ui::icon;
 use crate::ui::theme;
 
 pub struct Counts {
@@ -39,10 +40,17 @@ pub fn view<'a>(
                     } else {
                         label
                     };
+                    let icon = match target {
+                        TaskFilter::All => icon::layers(),
+                        TaskFilter::Downloading => icon::download_arrow(),
+                        TaskFilter::Completed => icon::circle_check(),
+                    };
                     let btn: iced::widget::Button<'_, Message> = button(
                         row![]
+                            .push(icon.size(15))
                             .push(text(label_text).size(14))
                             .push(iced::widget::Space::new().width(Length::Fill))
+                            .spacing(8)
                             .align_y(Alignment::Center)
                             .width(Length::Fill),
                     )
@@ -80,9 +88,19 @@ pub fn view<'a>(
         Page::Settings => {
             let make_cat = |label: String, target: SettingsCategory| -> Element<'a, Message> {
                 let is_active = settings_cat == target;
+                let icon = match target {
+                    SettingsCategory::General => icon::sliders(),
+                    SettingsCategory::Download => icon::download(),
+                    SettingsCategory::BitTorrent => icon::magnet(),
+                    SettingsCategory::Ed2k => icon::share(),
+                    SettingsCategory::Network => icon::globe(),
+                    SettingsCategory::Advanced => icon::wrench(),
+                };
                 let btn: iced::widget::Button<'_, Message> = button(
                     row![]
+                        .push(icon.size(15))
                         .push(text(label).size(14))
+                        .spacing(8)
                         .width(Length::Fill)
                         .align_y(Alignment::Center),
                 )
