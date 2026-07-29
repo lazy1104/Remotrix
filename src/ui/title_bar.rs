@@ -2,6 +2,7 @@ use iced::widget::{button, container, mouse_area, row, text};
 use iced::{Alignment, Element, Length};
 
 use crate::message::{Message, WindowCmd};
+use crate::ui::icon;
 use crate::ui::icons::{CATEGORY_W, SIDEBAR_W};
 use crate::ui::theme;
 
@@ -33,7 +34,7 @@ pub fn view<'a>(_theme: &iced::Theme, maximized: bool) -> Element<'a, Message> {
     .style(theme::style::category_background);
 
     let min_btn = button(
-        container(text("–").size(15))
+        container(icon::minus().size(15).line_height(1.0))
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .width(Length::Fill)
@@ -45,9 +46,13 @@ pub fn view<'a>(_theme: &iced::Theme, maximized: bool) -> Element<'a, Message> {
     .height(Length::Fill)
     .style(theme::style::button::window_control(false));
 
-    let max_glyph = if maximized { "❐" } else { "▢" };
+    let max_icon = if maximized {
+        icon::copy()
+    } else {
+        icon::square()
+    };
     let max_btn = button(
-        container(text(max_glyph).size(13))
+        container(max_icon.size(15).line_height(1.0))
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .width(Length::Fill)
@@ -60,7 +65,7 @@ pub fn view<'a>(_theme: &iced::Theme, maximized: bool) -> Element<'a, Message> {
     .style(theme::style::button::window_control(false));
 
     let close_btn = button(
-        container(text("✕").size(14))
+        container(icon::x().size(15).line_height(1.0))
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .width(Length::Fill)

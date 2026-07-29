@@ -1,8 +1,8 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// c11bf35a1c6528432f2433c45c4daf981a4100c4bbe6b58c8330a0f0e1dd4ce4
-use iced::widget::{text, Text};
+// 3b22309efd820f31d7b603f6f3440a42b7e11ea516b4c3338c9916bb29ddec68
 use iced::Font;
+use iced::widget::{Text, text};
 
 pub const FONT: &[u8] = include_bytes!("../../fonts/lucide.ttf");
 
@@ -23,6 +23,7 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("layers", "\u{E529}"),
     ("list", "\u{E106}"),
     ("magnet", "\u{E2B5}"),
+    ("minus", "\u{E11C}"),
     ("pause", "\u{E12E}"),
     ("play", "\u{E13C}"),
     ("plus", "\u{E13D}"),
@@ -31,8 +32,10 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("share", "\u{E156}"),
     ("sliders", "\u{E29A}"),
     ("sort", "\u{E37D}"),
+    ("square", "\u{E167}"),
     ("trash", "\u{E18E}"),
     ("wrench", "\u{E1B1}"),
+    ("x", "\u{E1B2}"),
 ];
 
 pub fn circle_check<'a>() -> Text<'a> {
@@ -87,6 +90,10 @@ pub fn magnet<'a>() -> Text<'a> {
     icon("\u{E2B5}")
 }
 
+pub fn minus<'a>() -> Text<'a> {
+    icon("\u{E11C}")
+}
+
 pub fn pause<'a>() -> Text<'a> {
     icon("\u{E12E}")
 }
@@ -119,12 +126,20 @@ pub fn sort<'a>() -> Text<'a> {
     icon("\u{E37D}")
 }
 
+pub fn square<'a>() -> Text<'a> {
+    icon("\u{E167}")
+}
+
 pub fn trash<'a>() -> Text<'a> {
     icon("\u{E18E}")
 }
 
 pub fn wrench<'a>() -> Text<'a> {
     icon("\u{E1B1}")
+}
+
+pub fn x<'a>() -> Text<'a> {
+    icon("\u{E1B2}")
 }
 
 /// Render any Lucide icon by its codepoint string.
