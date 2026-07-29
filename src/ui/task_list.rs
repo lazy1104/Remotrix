@@ -5,6 +5,7 @@ use iced_aw::widget::drop_down;
 use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, SortField, SortOrder};
 use crate::task::{format_duration, format_size, format_speed, DownloadTask, TaskStatus};
+use crate::ui::icon;
 use crate::ui::theme;
 
 pub fn view<'a>(
@@ -197,59 +198,97 @@ fn task_card<'a>(
     let pct = t.progress_pct();
     let name = text(t.name.clone()).size(15);
 
-    let meta_left = format!(
-        "{} / {}",
-        format_size(t.downloaded),
-        if t.total == 0 {
-            "—".to_string()
-        } else {
-            format_size(t.total)
-        }
-    );
-    let speed_text = if t.speed > 0 {
-        format_speed(t.speed)
-    } else {
-        "—".to_string()
-    };
-    let eta_text = match t.eta_secs() {
-        Some(s) => format_duration(s),
-        None => "—".to_string(),
-    };
-    let status_str = match t.status {
-        TaskStatus::Waiting => fluent.get(Tr::Waiting),
-        TaskStatus::Active => fluent.get(Tr::Active),
-        TaskStatus::Paused => fluent.get(Tr::Paused),
-        TaskStatus::Completed => fluent.get(Tr::Completed),
-        TaskStatus::Error => fluent.get(Tr::Error),
-        TaskStatus::Removed => fluent.get(Tr::Removed),
-    }
-    .to_string();
+    let toolbar_icon =
+        |glyph: iced::widget::Text<'a>, msg: Option<Message>| -> Element<'a, Message> {
+            let btn = match msg {
+                Some(m) => button(glyph).on_press(m).padding(4).style(button::text),
+                None => button(glyph).padding(4).style(button::text),
+            };
+            btn.into()
+        };
 
-    let status_color = match t.status {
-        TaskStatus::Active => theme::success(theme),
-        TaskStatus::Paused => theme::warning(theme),
-        TaskStatus::Completed => theme::success(theme),
-        TaskStatus::Error => theme::danger(theme),
-        _ => text_secondary,
+    let pause_resume_btn = match t.status {
+        TaskStatus::Active | TaskStatus::Waiting => toolbar_icon(
+            icon::pause().size(15).color(text_secondary),
+            Some(Message::PauseTask(t.gid.clone())),
+        ),
+        TaskStatus::Paused => toolbar_icon(
+            icon::play().size(15).color(text_secondary),
+            Some(Message::ResumeTask(t.gid.clone())),
+        ),
+        _ => toolbar_icon(icon::pause().size(15).color(text_secondary), None),
     };
 
-    let sep1 = text("  ·  ").size(12).style(theme::style::text::secondary);
-    let sep2 = text("  ·  ").size(12).style(theme::style::text::secondary);
-
-    let meta = row![]
-        .push(
-            text(meta_left)
-                .size(12)
-                .style(theme::style::text::secondary),
+    let show_in_folder_btn: Element<'a, Message> = if !t.save_dir.as_os_str().is_empty() {
+        let glyph = icon::folder_open().size(15).color(text_secondary);
+        tooltip(
+            button(glyph)
+                .on_press(Message::OpenTaskFolder(t.gid.clone()))
+                .padding(4)
+                .style(button::text),
+            text(fluent.get(Tr::ShowInFolder)).size(12),
+            tooltip::Position::Bottom,
         )
-        .push(iced::widget::Space::new().width(Length::Fill))
-        .push(text(speed_text).size(12).color(theme::success(theme)))
-        .push(sep1)
-        .push(text(eta_text).size(12).style(theme::style::text::secondary))
-        .push(sep2)
-        .push(text(status_str).size(12).color(status_color))
-        .align_y(Alignment::Center)
-        .width(Length::Fill);
+        .style(container::rounded_box)
+        .into()
+    } else {
+        let glyph = icon::folder_open().size(15).color(text_secondary);
+        button(glyph).padding(4).style(button::text).into()
+    };
+
+    let copy_link_btn: Element<'a, Message> = if !t.url.is_empty() {
+        let glyph = icon::copy().size(15).color(text_secondary);
+        tooltip(
+            button(glyph)
+                .on_press(Message::CopyTaskLink(t.gid.clone()))
+                .padding(4)
+                .style(button::text),
+            text(fluent.get(Tr::CopyLink)).size(12),
+            tooltip::Position::Bottom,
+        )
+        .style(container::rounded_box)
+        .into()
+    } else {
+        let glyph = icon::copy().size(15).color(text_secondary);
+        button(glyph).padding(4).style(button::text).into()
+    };
+
+    let details_btn: Element<'a, Message> = {
+        let glyph = icon::details().size(15).color(text_secondary);
+        tooltip(
+            button(glyph)
+                .on_press(Message::OpenTaskDetails(t.gid.clone()))
+                .padding(4)
+                .style(button::text),
+            text(fluent.get(Tr::Details)).size(12),
+            tooltip::Position::Bottom,
+        )
+        .style(container::rounded_box)
+        .into()
+    };
+
+    let delete_btn: Element<'a, Message> = {
+        let glyph = icon::trash().size(15).color(text_secondary);
+        tooltip(
+            button(glyph)
+                .on_press(Message::RemoveTask(t.gid.clone()))
+                .padding(4)
+                .style(button::text),
+            text(fluent.get(Tr::Remove)).size(12),
+            tooltip::Position::Bottom,
+        )
+        .style(container::rounded_box)
+        .into()
+    };
+
+    let toolbar = row![]
+        .push(pause_resume_btn)
+        .push(show_in_folder_btn)
+        .push(copy_link_btn)
+        .push(details_btn)
+        .push(delete_btn)
+        .spacing(2)
+        .align_y(Alignment::Center);
 
     let bar_color = match t.status {
         TaskStatus::Paused => theme::warning(theme),
@@ -260,44 +299,61 @@ fn task_card<'a>(
         .girth(Length::Fixed(8.0))
         .style(theme::style::progress::task(bar_color));
 
-    let mut actions = row![].spacing(8);
-    match t.status {
-        TaskStatus::Active | TaskStatus::Waiting => {
-            actions = actions.push(
-                button(text(fluent.get(Tr::Pause)).size(12))
-                    .on_press(Message::PauseTask(t.gid.clone()))
-                    .padding([6, 12])
-                    .style(button::secondary),
-            );
+    let downloaded_text = format!(
+        "{} / {}",
+        format_size(t.downloaded),
+        if t.total == 0 {
+            "—".to_string()
+        } else {
+            format_size(t.total)
         }
-        TaskStatus::Paused => {
-            actions = actions.push(
-                button(text(fluent.get(Tr::Resume)).size(12))
-                    .on_press(Message::ResumeTask(t.gid.clone()))
-                    .padding([6, 12])
-                    .style(button::secondary),
-            );
-        }
-        _ => {}
-    }
-    if !matches!(t.status, TaskStatus::Removed) {
-        actions = actions.push(
-            button(text(fluent.get(Tr::Remove)).size(12))
-                .on_press(Message::RemoveTask(t.gid.clone()))
-                .padding([6, 12])
-                .style(button::danger),
-        );
-    }
-    let pct_text = format!("{:.1}%", pct);
-    actions = actions.push(iced::widget::Space::new().width(Length::Fill));
-    actions = actions.push(text(pct_text).size(12).style(theme::style::text::secondary));
+    );
+
+    let speed_text = if t.speed > 0 {
+        format_speed(t.speed)
+    } else {
+        "—".to_string()
+    };
+    let eta_text = match t.eta_secs() {
+        Some(s) => format_duration(s),
+        None => "—".to_string(),
+    };
+    let conn_text = if t.is_download_active() || t.status == TaskStatus::Completed {
+        t.connections.to_string()
+    } else {
+        "0".to_string()
+    };
+
+    let sep = || text("  ·  ").size(12).style(theme::style::text::secondary);
+
+    let row3 = row![]
+        .push(
+            text(downloaded_text)
+                .size(12)
+                .style(theme::style::text::secondary),
+        )
+        .push(iced::widget::Space::new().width(Length::Fill))
+        .push(text(eta_text).size(12).style(theme::style::text::secondary))
+        .push(sep())
+        .push(text(speed_text).size(12).color(theme::success(theme)))
+        .push(sep())
+        .push(icon::connections().size(12).color(text_secondary))
+        .push(text(conn_text).size(12))
+        .align_y(Alignment::Center)
+        .width(Length::Fill);
 
     let content = column![]
         .spacing(8)
-        .push(row![name, iced::widget::Space::new().width(Length::Fill)].align_y(Alignment::Center))
+        .push(
+            row![
+                name,
+                iced::widget::Space::new().width(Length::Fill),
+                toolbar
+            ]
+            .align_y(Alignment::Center),
+        )
         .push(bar)
-        .push(meta)
-        .push(actions.align_y(Alignment::Center))
+        .push(row3)
         .width(Length::Fill);
 
     container(content)

@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use iced::futures::SinkExt;
 use iced::widget::{column, container, row, stack, text_editor};
@@ -9,6 +10,7 @@ use iced::window::Id;
 use iced::{Element, Length, Subscription, Task};
 
 use crate::config::{self, Settings};
+use crate::db::Db;
 use crate::engine::{EngineCmd, EngineEvent, EngineHandle, EventRx};
 use crate::i18n::{Fluent, Locale};
 use crate::message::{
@@ -18,6 +20,7 @@ use crate::message::{
 use crate::task::{DownloadTask, TaskStatus};
 use crate::ui::add_dialog::AddDialogState;
 use crate::ui::category_bar::Counts;
+use crate::ui::details_dialog::DetailsDialogState;
 use crate::ui::icons::{CATEGORY_W, SIDEBAR_W};
 use crate::ui::theme::{self, ThemeMode};
 pub struct Remotrix {
@@ -49,6 +52,9 @@ pub struct Remotrix {
     headers_editor: text_editor::Content,
     torrent_files: HashMap<String, PathBuf>,
     pending_torrent_path: Option<PathBuf>,
+    db: Option<Db>,
+    dirty: HashSet<String>,
+    details: DetailsDialogState,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
@@ -67,12 +73,23 @@ pub fn init() -> (Remotrix, Task<Message>) {
     let logo_handle =
         iced::widget::image::Handle::from_bytes(&include_bytes!("../assets/icon.png")[..]);
 
+    let db = crate::config::db_path().and_then(|p| Db::open(&p).ok());
+    let (tasks, task_order) = if let Some(ref db) = db {
+        let loaded = db.load_all();
+        let order: Vec<String> = loaded.iter().map(|t| t.gid.clone()).collect();
+        let map: HashMap<String, DownloadTask> =
+            loaded.into_iter().map(|t| (t.gid.clone(), t)).collect();
+        (map, order)
+    } else {
+        (HashMap::new(), Vec::new())
+    };
+
     let state = Remotrix {
         page: Page::Tasks,
         task_filter: TaskFilter::All,
         settings_cat: SettingsCategory::General,
-        tasks: HashMap::new(),
-        task_order: Vec::new(),
+        tasks,
+        task_order,
         handle,
         event_rx_slot: Arc::new(Mutex::new(Some(event_rx))),
         add_dialog,
@@ -96,6 +113,9 @@ pub fn init() -> (Remotrix, Task<Message>) {
         headers_editor,
         torrent_files: HashMap::new(),
         pending_torrent_path: None,
+        db,
+        dirty: HashSet::new(),
+        details: DetailsDialogState::new(),
     };
 
     (state, Task::none())
@@ -268,8 +288,24 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             state.tasks.clear();
             state.task_order.clear();
+            state.dirty.clear();
+            if let Some(ref db) = state.db {
+                db.delete_all();
+            }
         }
         Message::ClearCompleted => {
+            let completed: Vec<String> = state
+                .tasks
+                .iter()
+                .filter(|(_, t)| matches!(t.status, TaskStatus::Completed | TaskStatus::Removed))
+                .map(|(gid, _)| gid.clone())
+                .collect();
+            if let Some(ref db) = state.db {
+                db.clear_completed(&completed);
+            }
+            for gid in &completed {
+                state.dirty.remove(gid);
+            }
             state
                 .tasks
                 .retain(|_k, t| !matches!(t.status, TaskStatus::Completed | TaskStatus::Removed));
@@ -443,23 +479,50 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             EngineEvent::EngineStopped => {
                 tracing::info!("engine stopped");
             }
-            EngineEvent::Added { gid, name } => {
+            EngineEvent::Added {
+                gid,
+                name,
+                url,
+                dir,
+            } => {
                 tracing::info!(?gid, ?name, "ui: task added");
                 if let Some(tpath) = state.pending_torrent_path.take() {
                     state.torrent_files.insert(gid.clone(), tpath);
                 }
-                let task = DownloadTask {
-                    gid: gid.clone(),
-                    name,
-                    url: String::new(),
-                    save_dir: PathBuf::new(),
-                    downloaded: 0,
-                    total: 0,
-                    speed: 0,
-                    status: TaskStatus::Waiting,
-                };
-                state.tasks.insert(gid.clone(), task);
-                state.task_order.insert(0, gid);
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+                if let Some(existing) = state.tasks.get_mut(&gid) {
+                    let _ = existing;
+                    state.dirty.insert(gid.clone());
+                } else {
+                    let task = DownloadTask {
+                        gid: gid.clone(),
+                        name,
+                        url,
+                        save_dir: PathBuf::from(dir),
+                        downloaded: 0,
+                        total: 0,
+                        speed: 0,
+                        status: TaskStatus::Waiting,
+                        connections: 0,
+                        added_at: now,
+                    };
+                    state.tasks.insert(gid.clone(), task);
+                    state.task_order.insert(0, gid.clone());
+                    if let Some(ref db) = state.db {
+                        db.upsert_meta(
+                            &gid,
+                            &state.tasks[&gid].name,
+                            &state.tasks[&gid].url,
+                            &state.tasks[&gid].save_dir.to_string_lossy(),
+                            "waiting",
+                            now,
+                        );
+                    }
+                }
+                state.dirty.insert(gid);
             }
             EngineEvent::Progress {
                 gid,
@@ -467,6 +530,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 total,
                 speed,
                 status,
+                connections,
             } => {
                 if status == "complete"
                     && state.settings.delete_torrent_after_complete
@@ -481,12 +545,31 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     t.total = total;
                     t.speed = speed;
                     t.status = TaskStatus::from_engine(&status);
+                    t.connections = connections;
+                    state.dirty.insert(gid);
                 }
             }
             EngineEvent::Removed(gid) => {
                 tracing::info!(?gid, "ui: task removed");
                 state.tasks.remove(&gid);
                 state.task_order.retain(|g| g != &gid);
+                state.dirty.remove(&gid);
+                if let Some(ref db) = state.db {
+                    db.delete(&gid);
+                }
+            }
+            EngineEvent::TaskDetails { gid, details } => {
+                tracing::debug!(?gid, "task details received");
+                if state.details.gid.as_deref() == Some(&gid) {
+                    state.details.details = Some(details);
+                    state.details.loading = false;
+                }
+            }
+            EngineEvent::TaskDetailsFailed { gid } => {
+                tracing::debug!(?gid, "task details failed");
+                if state.details.gid.as_deref() == Some(&gid) {
+                    state.details.loading = false;
+                }
             }
             EngineEvent::Aria2Version { version } => {
                 tracing::info!(?version, "aria2 version received");
@@ -647,6 +730,96 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.settings.update.set_ignored("aria2-next", !enabled);
             config::save(&state.settings);
         }
+        Message::OpenTaskDetails(gid) => {
+            state.details.open(gid.clone());
+            if state
+                .handle
+                .cmd_tx
+                .send(EngineCmd::FetchTaskDetails(gid))
+                .is_err()
+            {
+                tracing::warn!("fetch task details cmd send failed");
+            }
+        }
+        Message::CloseTaskDetails => {
+            state.details.close();
+        }
+        Message::RefreshTaskDetails => {
+            if state.details.is_visible() {
+                if let Some(ref gid) = state.details.gid {
+                    if state
+                        .handle
+                        .cmd_tx
+                        .send(EngineCmd::FetchTaskDetails(gid.clone()))
+                        .is_err()
+                    {
+                        tracing::warn!("refresh task details cmd send failed");
+                    }
+                }
+            }
+        }
+        Message::FlushDirty => {
+            if state.dirty.is_empty() {
+                return Task::none();
+            }
+            let batch: Vec<(String, u64, u64, u64, u64, String)> = state
+                .dirty
+                .iter()
+                .filter_map(|gid| {
+                    state.tasks.get(gid).map(|t| {
+                        let status = match t.status {
+                            TaskStatus::Waiting => "waiting",
+                            TaskStatus::Active => "active",
+                            TaskStatus::Paused => "paused",
+                            TaskStatus::Completed => "complete",
+                            TaskStatus::Error => "error",
+                            TaskStatus::Removed => "removed",
+                        };
+                        (
+                            gid.clone(),
+                            t.downloaded,
+                            t.total,
+                            t.speed,
+                            t.connections,
+                            status.to_string(),
+                        )
+                    })
+                })
+                .collect();
+            if let Some(ref db) = state.db {
+                db.flush(&batch);
+            }
+            state.dirty.clear();
+        }
+        Message::SelectDetailsTab(tab) => {
+            state.details.active_tab = tab;
+        }
+        Message::OpenTaskFolder(gid) => {
+            let dir = state
+                .tasks
+                .get(&gid)
+                .map(|t| t.save_dir.clone())
+                .unwrap_or_default();
+            if !dir.as_os_str().is_empty() {
+                return Task::perform(
+                    async move {
+                        let _ = open::that(&dir);
+                    },
+                    |_| Message::Noop,
+                );
+            }
+        }
+        Message::CopyTaskLink(gid) => {
+            let url = state
+                .tasks
+                .get(&gid)
+                .map(|t| t.url.clone())
+                .unwrap_or_default();
+            if !url.is_empty() {
+                return iced::clipboard::write::<Message>(url);
+            }
+        }
+        Message::Noop => {}
     }
     Task::none()
 }
@@ -784,6 +957,20 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             .height(Length::Fill)
             .into();
     }
+    if state.details.is_visible() {
+        let task = state
+            .details
+            .gid
+            .as_deref()
+            .and_then(|g| state.tasks.get(g));
+        stacked = stack![
+            stacked,
+            crate::ui::details_dialog::view(&state.fluent, t, task, &state.details),
+        ]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into();
+    }
 
     container(stacked)
         .width(Length::Fill)
@@ -837,7 +1024,15 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
     let open = iced::window::open_events().map(Message::WindowOpened);
     let close = iced::window::close_requests().map(|_id| Message::CloseRequested);
 
-    Subscription::batch(vec![engine, open, close])
+    let flush = iced::time::every(Duration::from_millis(1000)).map(|_| Message::FlushDirty);
+
+    let refresh = if state.details.is_visible() {
+        iced::time::every(Duration::from_millis(2000)).map(|_| Message::RefreshTaskDetails)
+    } else {
+        Subscription::none()
+    };
+
+    Subscription::batch(vec![engine, open, close, flush, refresh])
 }
 
 fn pick_folder(kind: FileKind) -> Task<Message> {

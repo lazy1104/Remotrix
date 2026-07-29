@@ -1,0 +1,145 @@
+use std::path::Path;
+
+use rusqlite::Connection;
+
+use crate::task::{DownloadTask, TaskStatus};
+
+pub struct Db {
+    conn: std::sync::Mutex<Connection>,
+}
+
+impl Db {
+    pub fn open(path: &Path) -> Result<Self, String> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("create db dir: {e}"))?;
+        }
+        let conn = Connection::open(path).map_err(|e| format!("open db: {e}"))?;
+        conn.execute_batch(
+            "PRAGMA journal_mode=WAL;
+             PRAGMA synchronous=NORMAL;
+             PRAGMA busy_timeout=5000;",
+        )
+        .map_err(|e| format!("db pragma: {e}"))?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS tasks (
+                gid TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                url TEXT NOT NULL DEFAULT '',
+                dir TEXT NOT NULL DEFAULT '',
+                downloaded INTEGER NOT NULL DEFAULT 0,
+                total INTEGER NOT NULL DEFAULT 0,
+                speed INTEGER NOT NULL DEFAULT 0,
+                connections INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL,
+                added_at INTEGER NOT NULL
+            );",
+        )
+        .map_err(|e| format!("create table: {e}"))?;
+        Ok(Db {
+            conn: std::sync::Mutex::new(conn),
+        })
+    }
+
+    pub fn load_all(&self) -> Vec<DownloadTask> {
+        let conn = self.conn.lock().expect("db lock");
+        let mut stmt = match conn.prepare(
+            "SELECT gid, name, url, dir, downloaded, total, speed, connections, status, added_at
+             FROM tasks ORDER BY added_at DESC",
+        ) {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        let rows = match stmt.query_map([], |row| {
+            let status_str: String = row.get(8)?;
+            let status = match status_str.as_str() {
+                "waiting" => TaskStatus::Waiting,
+                "active" => TaskStatus::Active,
+                "paused" => TaskStatus::Paused,
+                "complete" => TaskStatus::Completed,
+                "error" => TaskStatus::Error,
+                "removed" => TaskStatus::Removed,
+                _ => TaskStatus::Waiting,
+            };
+            Ok(DownloadTask {
+                gid: row.get(0)?,
+                name: row.get(1)?,
+                url: row.get(2)?,
+                save_dir: row.get::<_, String>(3)?.into(),
+                downloaded: row.get(4)?,
+                total: row.get(5)?,
+                speed: row.get(6)?,
+                connections: row.get(7)?,
+                status,
+                added_at: row.get(9)?,
+            })
+        }) {
+            Ok(r) => r,
+            Err(_) => return Vec::new(),
+        };
+        rows.filter_map(|r| r.ok()).collect()
+    }
+
+    pub fn upsert_meta(
+        &self,
+        gid: &str,
+        name: &str,
+        url: &str,
+        dir: &str,
+        status: &str,
+        added_at: i64,
+    ) {
+        let conn = self.conn.lock().expect("db lock");
+        let _ = conn.execute(
+            "INSERT INTO tasks (gid, name, url, dir, downloaded, total, speed, connections, status, added_at)
+             VALUES (?1, ?2, ?3, ?4, 0, 0, 0, 0, ?5, ?6)
+             ON CONFLICT(gid) DO UPDATE SET
+                name=excluded.name, url=excluded.url, dir=excluded.dir, status=excluded.status",
+            rusqlite::params![gid, name, url, dir, status, added_at],
+        );
+    }
+
+    pub fn upsert_progress(
+        &self,
+        gid: &str,
+        downloaded: u64,
+        total: u64,
+        speed: u64,
+        connections: u64,
+        status: &str,
+    ) {
+        let conn = self.conn.lock().expect("db lock");
+        let _ = conn.execute(
+            "UPDATE tasks SET downloaded=?1, total=?2, speed=?3, connections=?4, status=?5 WHERE gid=?6",
+            rusqlite::params![downloaded, total, speed, connections, status, gid],
+        );
+    }
+
+    pub fn flush(&self, dirty: &[(String, u64, u64, u64, u64, String)]) {
+        let conn = self.conn.lock().expect("db lock");
+        let _ = conn.execute_batch("BEGIN");
+        for (gid, downloaded, total, speed, connections, status) in dirty {
+            let _ = conn.execute(
+                "UPDATE tasks SET downloaded=?1, total=?2, speed=?3, connections=?4, status=?5 WHERE gid=?6",
+                rusqlite::params![downloaded, total, speed, connections, status, gid],
+            );
+        }
+        let _ = conn.execute_batch("COMMIT");
+    }
+
+    pub fn delete(&self, gid: &str) {
+        let conn = self.conn.lock().expect("db lock");
+        let _ = conn.execute("DELETE FROM tasks WHERE gid=?1", rusqlite::params![gid]);
+    }
+
+    pub fn delete_all(&self) {
+        let conn = self.conn.lock().expect("db lock");
+        let _ = conn.execute_batch("DELETE FROM tasks");
+    }
+
+    pub fn clear_completed(&self, gids: &[String]) {
+        let conn = self.conn.lock().expect("db lock");
+        for gid in gids {
+            let _ = conn.execute("DELETE FROM tasks WHERE gid=?1", rusqlite::params![gid]);
+        }
+    }
+}

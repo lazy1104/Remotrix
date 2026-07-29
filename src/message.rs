@@ -53,6 +53,15 @@ pub enum Message {
     RestartEngine,
     SetAutoCheck(bool),
 
+    OpenTaskDetails(String),
+    CloseTaskDetails,
+    RefreshTaskDetails,
+    FlushDirty,
+    SelectDetailsTab(DetailsTab),
+    OpenTaskFolder(String),
+    CopyTaskLink(String),
+    Noop,
+
     UaEditor(iced::widget::text_editor::Action),
     HeadersEditor(iced::widget::text_editor::Action),
 }
@@ -106,6 +115,13 @@ pub enum SortField {
 pub enum SortOrder {
     Asc,
     Desc,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DetailsTab {
+    Summary,
+    Activity,
+    Files,
 }
 
 impl std::fmt::Display for SortField {

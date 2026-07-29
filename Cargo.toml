@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 aria2-ws = "0.5"
-iced = { version = "0.14", features = ["tokio", "advanced", "image"] }
+iced = { version = "0.14", features = ["tokio", "advanced", "image", "canvas"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -26,11 +26,15 @@ dark-light = "1.1"
 fluent-templates = "0.14.0"
 futures = "0.3"
 base64 = "0.22"
+hex = "0.4"
 num-traits = "0.2"
 iced_aw = { version = "0.14", default-features = false, features = ["number_input", "drop_down"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 sha2 = "0.10"
 opaline = { version = "0.4", default-features = false, features = ["builtin-themes", "iced"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+open = "5"
 
 [build-dependencies]
 iced_lucide = "0.1"

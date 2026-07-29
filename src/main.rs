@@ -3,6 +3,7 @@
 mod app;
 mod aria2_fetcher;
 mod config;
+mod db;
 mod engine;
 mod i18n;
 mod message;

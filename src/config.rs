@@ -362,26 +362,7 @@ pub fn save(settings: &Settings) {
     }
 }
 
-pub fn exe_dir() -> Option<PathBuf> {
-    std::env::current_exe()
-        .ok()?
-        .parent()
-        .map(ToOwned::to_owned)
-}
-
 fn aria2_dir() -> Option<PathBuf> {
-    if let Some(exe) = exe_dir() {
-        let dir = exe.join("aria2");
-        if let Ok(true) = std::fs::create_dir_all(&dir)
-            .and_then(|_| {
-                let test = dir.join(".wtest");
-                std::fs::write(&test, "").and_then(|_| std::fs::remove_file(&test))
-            })
-            .map(|_| true)
-        {
-            return Some(dir);
-        }
-    }
     let proj = directories::ProjectDirs::from("dev", "remotrix", "Remotrix")?;
     let dir = proj.data_dir().join("aria2");
     let _ = std::fs::create_dir_all(&dir);
@@ -393,6 +374,12 @@ pub fn log_dir() -> Option<PathBuf> {
     let dir = proj.data_dir().join("logs");
     let _ = std::fs::create_dir_all(&dir);
     Some(dir)
+}
+
+pub fn db_path() -> Option<PathBuf> {
+    let proj = directories::ProjectDirs::from("dev", "remotrix", "Remotrix")?;
+    let dir = proj.data_dir().to_path_buf();
+    Some(dir.join("remotrix.db"))
 }
 
 pub fn session_dir() -> Option<PathBuf> {
@@ -409,5 +396,8 @@ pub fn announce() {
     }
     if let Some(p) = log_dir() {
         tracing::info!(?p, "log dir");
+    }
+    if let Some(p) = aria2_dir() {
+        tracing::info!(?p, "aria2 dir");
     }
 }

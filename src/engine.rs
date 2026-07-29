@@ -33,6 +33,7 @@ pub enum EngineCmd {
         save_dir: PathBuf,
         split: u16,
     },
+    FetchTaskDetails(String),
     Shutdown,
     CheckAria2Update,
     RetryAria2Fetch,
@@ -44,6 +45,8 @@ pub enum EngineEvent {
     Added {
         gid: String,
         name: String,
+        url: String,
+        dir: String,
     },
     Progress {
         gid: String,
@@ -51,8 +54,16 @@ pub enum EngineEvent {
         total: u64,
         speed: u64,
         status: String,
+        connections: u64,
     },
     Removed(String),
+    TaskDetails {
+        gid: String,
+        details: crate::task::TaskDetails,
+    },
+    TaskDetailsFailed {
+        gid: String,
+    },
     EngineReady,
     EngineStopped,
     Aria2Status {
@@ -239,7 +250,14 @@ fn name_from_status(s: &aria2_ws::response::Status) -> String {
     if let Some(file) = s.files.first() {
         let path = std::path::Path::new(&file.path);
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            return name.to_string();
+            if !name.is_empty() {
+                return name.to_string();
+            }
+        }
+        if let Some(u) = file.uris.first() {
+            if let Some(b) = basename(&u.uri) {
+                return b;
+            }
         }
     }
     s.gid.clone()
@@ -252,6 +270,7 @@ async fn emit_progress(event_tx: &EventTx, s: &aria2_ws::response::Status) {
         total: s.total_length,
         speed: s.download_speed,
         status: status_to_string(&s.status).to_string(),
+        connections: s.connections,
     });
 }
 
@@ -273,9 +292,18 @@ async fn sync_existing_tasks(client: &Client, event_tx: &EventTx) {
     let all = fetch_all_tasks(client).await;
     for s in &all {
         let name = name_from_status(s);
+        let url = s
+            .files
+            .first()
+            .and_then(|f| f.uris.first())
+            .map(|u| u.uri.clone())
+            .unwrap_or_default();
+        let dir = s.dir.clone();
         let _ = event_tx.send(EngineEvent::Added {
             gid: s.gid.clone(),
             name,
+            url,
+            dir,
         });
         emit_progress(event_tx, s).await;
     }
@@ -313,7 +341,13 @@ async fn handle_client_cmd(
                 .await
                 .map_err(|e| format!("add_uri: {e}"))?;
             let name = basename(&uri).unwrap_or_else(|| gid.clone());
-            let _ = event_tx.send(EngineEvent::Added { gid, name });
+            let dir = save_dir.to_string_lossy().to_string();
+            let _ = event_tx.send(EngineEvent::Added {
+                gid,
+                name,
+                url: uri,
+                dir,
+            });
         }
         EngineCmd::Pause(gid) => {
             tracing::info!(?gid, "pause");
@@ -362,6 +396,7 @@ async fn handle_client_cmd(
                     total: s.total_length,
                     speed: s.download_speed,
                     status: status_to_string(&s.status).to_string(),
+                    connections: s.connections,
                 });
             }
         }
@@ -389,7 +424,47 @@ async fn handle_client_cmd(
                 .and_then(|n| n.to_str())
                 .unwrap_or(&gid)
                 .to_string();
-            let _ = event_tx.send(EngineEvent::Added { gid, name });
+            let dir = save_dir.to_string_lossy().to_string();
+            let _ = event_tx.send(EngineEvent::Added {
+                gid,
+                name,
+                url: String::new(),
+                dir,
+            });
+        }
+        EngineCmd::FetchTaskDetails(gid) => {
+            tracing::debug!(?gid, "fetch task details");
+            match client.tell_status(&gid).await {
+                Ok(s) => {
+                    let files = s
+                        .files
+                        .iter()
+                        .map(|f| crate::task::TaskFile {
+                            index: f.index,
+                            path: f.path.clone(),
+                            length: f.length,
+                            completed_length: f.completed_length,
+                            selected: f.selected,
+                        })
+                        .collect();
+                    let details = crate::task::TaskDetails {
+                        bitfield: s.bitfield,
+                        num_pieces: s.num_pieces,
+                        piece_length: s.piece_length,
+                        files,
+                        upload_speed: s.upload_speed,
+                        num_seeders: s.num_seeders,
+                        info_hash: s.info_hash,
+                        error_code: s.error_code,
+                        error_message: s.error_message,
+                    };
+                    let _ = event_tx.send(EngineEvent::TaskDetails { gid, details });
+                }
+                Err(e) => {
+                    tracing::warn!(?gid, error = ?e, "tell_status failed");
+                    let _ = event_tx.send(EngineEvent::TaskDetailsFailed { gid });
+                }
+            }
         }
         EngineCmd::ApplyAria2Options { options } => {
             tracing::info!("apply aria2 options");

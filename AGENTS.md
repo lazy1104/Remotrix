@@ -17,7 +17,7 @@ Rust-native desktop download manager inspired by Motrix.app. Built with `iced` G
 - Communication via `tokio::sync::mpsc` channels (unbounded)
 - **GUI → Engine**: `EngineCmd` via `mpsc::Sender`
 - **Engine → GUI**: `EngineEvent` via `mpsc::Receiver`, consumed by `iced::Subscription`
-- `aria2_fetcher::ensure_aria2_next()` fetches the aria2-next binary at runtime from GitHub Releases (first launch), caches in `<exe_dir>/aria2/` (falls back to `<data_dir>/aria2/`)
+- `aria2_fetcher::ensure_aria2_next()` fetches the aria2-next binary at runtime from GitHub Releases (first launch), caches in `<data_dir>/aria2/`
 - Engine degrades gracefully on fetch/spawn failure (no exit), retryable via `RetryAria2Fetch`
 - Update check → background stage download → write `.pending-update` → next restart/engine restart applies pending update
 - Task persistence via aria2 `--save-session`/`--input-file`
@@ -130,8 +130,7 @@ cargo fmt --check              # formatting check
 - Build-time only generates the icon module (`iced_lucide::build`)
 - **No network access** during build — offline `cargo build` always succeeds
 - aria2-next binary is fetched at **runtime** by `aria2_fetcher::ensure_aria2_next()`:
-  - First launch: downloads from GitHub Releases (`AnInsomniacy/aria2-next`) to `<exe_dir>/aria2/`
-  - Falls back to `<data_dir>/aria2/` when exe dir is not writable
+  - First launch: downloads from GitHub Releases (`AnInsomniacy/aria2-next`) to `<data_dir>/aria2/`
   - Cached across runs with `.installed` version/sha256 tracking
   - Supports `ARIA2_BIN` env var to skip download entirely
 - Update workflow: `updater::fetch_latest_release()` → background stage download → write `.pending-update` → next restart/engine restart applies pending update

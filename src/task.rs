@@ -10,6 +10,8 @@ pub struct DownloadTask {
     pub total: u64,
     pub speed: u64,
     pub status: TaskStatus,
+    pub connections: u64,
+    pub added_at: i64,
 }
 
 impl DownloadTask {
@@ -57,6 +59,28 @@ impl TaskStatus {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct TaskFile {
+    pub index: u64,
+    pub path: String,
+    pub length: u64,
+    pub completed_length: u64,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct TaskDetails {
+    pub bitfield: Option<String>,
+    pub num_pieces: u64,
+    pub piece_length: u64,
+    pub files: Vec<TaskFile>,
+    pub upload_speed: u64,
+    pub num_seeders: Option<u64>,
+    pub info_hash: Option<String>,
+    pub error_code: Option<String>,
+    pub error_message: Option<String>,
+}
+
 pub fn format_size(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     let mut value = bytes as f64;
@@ -87,4 +111,41 @@ pub fn format_duration(secs: u64) -> String {
     } else {
         format!("{:02}:{:02}", secs / 60, secs % 60)
     }
+}
+
+pub fn format_add_time(unix_secs: i64) -> String {
+    use chrono::{DateTime, Local, Utc};
+    let dt: DateTime<Utc> = DateTime::from_timestamp(unix_secs, 0).unwrap_or_default();
+    let local: DateTime<Local> = dt.with_timezone(&Local);
+    local.format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
+pub fn completed_pieces(bitfield: Option<&str>, num_pieces: u64) -> (u64, u64) {
+    let Some(bf) = bitfield else {
+        return (0, num_pieces);
+    };
+    if bf.is_empty() || num_pieces == 0 {
+        return (0, num_pieces);
+    }
+    let bits = match hex::decode(bf) {
+        Ok(b) => b,
+        Err(_) => return (0, num_pieces),
+    };
+    let mut done = 0u64;
+    let mut total_bits = 0u64;
+    for &byte in &bits {
+        for i in (0..8).rev() {
+            if total_bits >= num_pieces {
+                break;
+            }
+            if (byte >> i) & 1 == 1 {
+                done += 1;
+            }
+            total_bits += 1;
+        }
+        if total_bits >= num_pieces {
+            break;
+        }
+    }
+    (done, num_pieces)
 }
