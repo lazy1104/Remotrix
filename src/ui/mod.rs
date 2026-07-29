@@ -2,6 +2,7 @@ pub mod about_dialog;
 pub mod add_dialog;
 pub mod category_bar;
 pub mod close_dialog;
+pub mod confirm_dialog;
 pub mod details_dialog;
 pub mod icon;
 pub mod icons;

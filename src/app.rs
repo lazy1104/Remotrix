@@ -14,8 +14,8 @@ use crate::db::Db;
 use crate::engine::{EngineCmd, EngineEvent, EngineHandle, EventRx};
 use crate::i18n::{Fluent, Locale};
 use crate::message::{
-    CloseDialogChoice, FileKind, Message, Page, SettingKey, SettingsCategory, SortField, SortOrder,
-    TaskFilter, WindowCmd,
+    CloseDialogChoice, ConfirmAction, FileKind, Message, Page, SettingKey, SettingsCategory,
+    SortField, SortOrder, TaskFilter, WindowCmd,
 };
 use crate::task::{DownloadTask, TaskStatus};
 use crate::ui::add_dialog::AddDialogState;
@@ -59,6 +59,9 @@ pub struct Remotrix {
     last_resize: Option<iced::Size>,
     geometry_dirty: bool,
     pending_close: bool,
+    confirm: Option<ConfirmAction>,
+    settings_dirty: bool,
+    applied_settings: Settings,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
@@ -102,6 +105,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         event_rx_slot: Arc::new(Mutex::new(Some(event_rx))),
         add_dialog,
         about_dialog_visible: false,
+        applied_settings: settings.clone(),
         settings,
         fluent,
         theme,
@@ -128,6 +132,8 @@ pub fn init() -> (Remotrix, Task<Message>) {
         last_resize: None,
         geometry_dirty: false,
         pending_close: false,
+        confirm: None,
+        settings_dirty: false,
     };
 
     (state, Task::none())
@@ -159,10 +165,29 @@ fn sync_geometry_to_settings(state: &mut Remotrix) {
     state.settings.window_maximized = state.maximized;
 }
 
+fn revert_apply_settings(state: &mut Remotrix) {
+    state.settings.max_concurrent = state.applied_settings.max_concurrent;
+    state.settings.download_limit_kb = state.applied_settings.download_limit_kb;
+    state.settings.upload_limit_kb = state.applied_settings.upload_limit_kb;
+    state.settings.split = state.applied_settings.split;
+    state.settings.nav_to_tasks_after_add = state.applied_settings.nav_to_tasks_after_add;
+    state.settings.delete_torrent_after_complete =
+        state.applied_settings.delete_torrent_after_complete;
+    state.settings.aria2 = state.applied_settings.aria2.clone();
+    state.ua_editor = text_editor::Content::with_text(&state.settings.aria2.user_agent);
+    state.headers_editor =
+        text_editor::Content::with_text(&state.settings.aria2.headers.join("\n"));
+    state.settings_dirty = false;
+}
+
 pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
     match message {
         Message::NavigatePage(page) => {
-            state.page = page;
+            if page == Page::Tasks && state.page == Page::Settings && state.settings_dirty {
+                state.confirm = Some(ConfirmAction::LeaveSettings { target: page });
+            } else {
+                state.page = page;
+            }
         }
         Message::SetTaskFilter(filter) => {
             state.task_filter = filter;
@@ -289,6 +314,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             if state.handle.cmd_tx.send(EngineCmd::Remove(gid)).is_err() {
                 tracing::warn!("ui: remove cmd send failed");
             }
+            state.confirm = None;
         }
         Message::StartAll => {
             if state.handle.cmd_tx.send(EngineCmd::ResumeAll).is_err() {
@@ -310,6 +336,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             if let Some(ref db) = state.db {
                 db.delete_all();
             }
+            state.confirm = None;
         }
         Message::ClearCompleted => {
             let completed: Vec<String> = state
@@ -328,6 +355,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 .tasks
                 .retain(|_k, t| !matches!(t.status, TaskStatus::Completed | TaskStatus::Removed));
             state.task_order.retain(|gid| state.tasks.contains_key(gid));
+            state.confirm = None;
         }
         Message::Refresh => {
             if state.handle.cmd_tx.send(EngineCmd::Snapshot).is_err() {
@@ -355,127 +383,131 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::CloseAbout => {
             state.about_dialog_visible = false;
         }
-        Message::SettingChanged(key, value) => match key {
-            SettingKey::DownloadDir => {
+        Message::SettingChanged(key, value) => {
+            if key == SettingKey::DownloadDir {
                 return pick_folder(FileKind::SaveDir);
             }
-            SettingKey::MaxConcurrent => {
-                if let Ok(n) = value.parse::<u32>() {
-                    state.settings.max_concurrent = n.max(1);
+            state.settings_dirty = true;
+            match key {
+                SettingKey::DownloadDir => unreachable!(),
+                SettingKey::MaxConcurrent => {
+                    if let Ok(n) = value.parse::<u32>() {
+                        state.settings.max_concurrent = n.max(1);
+                    }
+                }
+                SettingKey::Split => {
+                    if let Ok(n) = value.parse::<u16>() {
+                        state.settings.split = n.max(1);
+                    }
+                }
+                SettingKey::DownloadLimit => {
+                    state.settings.download_limit_kb = value.parse().unwrap_or(0);
+                }
+                SettingKey::UploadLimit => {
+                    state.settings.upload_limit_kb = value.parse().unwrap_or(0);
+                }
+                SettingKey::ThemeMode => {
+                    state.settings.theme_mode = match value.as_str() {
+                        "dark" => ThemeMode::Dark,
+                        "light" => ThemeMode::Light,
+                        _ => ThemeMode::System,
+                    };
+                    rebuild_theme(state);
+                }
+                SettingKey::Locale => {
+                    state.settings.locale = match value.as_str() {
+                        "zh-CN" => Locale::ZhCN,
+                        _ => Locale::EnUS,
+                    };
+                    state.fluent = Fluent::new(state.settings.locale);
+                }
+                SettingKey::MaxConnectionPerServer => {
+                    if let Ok(n) = value.parse::<u32>() {
+                        state.settings.aria2.max_connection_per_server = n.max(1);
+                    }
+                }
+                SettingKey::MinSplitSize => {
+                    state.settings.aria2.min_split_size = value;
+                }
+                SettingKey::AutoFileRenaming => {
+                    state.settings.aria2.auto_file_renaming = value == "true";
+                }
+                SettingKey::AllowOverwrite => {
+                    state.settings.aria2.allow_overwrite = value == "true";
+                }
+                SettingKey::Continue => {
+                    state.settings.aria2.r#continue = value == "true";
+                }
+                SettingKey::CheckIntegrity => {
+                    state.settings.aria2.check_integrity = value == "true";
+                }
+                SettingKey::MaxDownloadLimit => {
+                    state.settings.aria2.max_download_limit_kb = value.parse().unwrap_or(0);
+                }
+                SettingKey::MaxUploadLimit => {
+                    state.settings.aria2.max_upload_limit_kb = value.parse().unwrap_or(0);
+                }
+                SettingKey::LowestSpeedLimit => {
+                    state.settings.aria2.lowest_speed_limit_kb = value.parse().unwrap_or(0);
+                }
+                SettingKey::UserAgent => {
+                    state.settings.aria2.user_agent = value;
+                }
+                SettingKey::Headers => {
+                    state.settings.aria2.headers = value
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                }
+                SettingKey::AllProxy => {
+                    state.settings.aria2.all_proxy = value;
+                }
+                SettingKey::MaxTries => {
+                    if let Ok(n) = value.parse::<u32>() {
+                        state.settings.aria2.max_tries = n;
+                    }
+                }
+                SettingKey::RetryWait => {
+                    if let Ok(n) = value.parse::<u32>() {
+                        state.settings.aria2.retry_wait = n;
+                    }
+                }
+                SettingKey::ConnectTimeout => {
+                    if let Ok(n) = value.parse::<u32>() {
+                        state.settings.aria2.connect_timeout = n;
+                    }
+                }
+                SettingKey::BtTracker => {
+                    state.settings.aria2.bt_tracker = value;
+                }
+                SettingKey::SeedRatio => {
+                    if let Ok(n) = value.parse::<f64>() {
+                        state.settings.aria2.seed_ratio = n.max(0.0);
+                    }
+                }
+                SettingKey::SeedTime => {
+                    if let Ok(n) = value.parse::<u32>() {
+                        state.settings.aria2.seed_time = n;
+                    }
+                }
+                SettingKey::EnableDht => {
+                    state.settings.aria2.enable_dht = value == "true";
+                }
+                SettingKey::BtRequireCrypto => {
+                    state.settings.aria2.bt_require_crypto = value == "true";
+                }
+                SettingKey::EnableProxy => {
+                    state.settings.aria2.proxy_enabled = value == "true";
+                }
+                SettingKey::NavToTasksAfterAdd => {
+                    state.settings.nav_to_tasks_after_add = value == "true";
+                }
+                SettingKey::DeleteTorrentAfterComplete => {
+                    state.settings.delete_torrent_after_complete = value == "true";
                 }
             }
-            SettingKey::Split => {
-                if let Ok(n) = value.parse::<u16>() {
-                    state.settings.split = n.max(1);
-                }
-            }
-            SettingKey::DownloadLimit => {
-                state.settings.download_limit_kb = value.parse().unwrap_or(0);
-            }
-            SettingKey::UploadLimit => {
-                state.settings.upload_limit_kb = value.parse().unwrap_or(0);
-            }
-            SettingKey::ThemeMode => {
-                state.settings.theme_mode = match value.as_str() {
-                    "dark" => ThemeMode::Dark,
-                    "light" => ThemeMode::Light,
-                    _ => ThemeMode::System,
-                };
-                rebuild_theme(state);
-            }
-            SettingKey::Locale => {
-                state.settings.locale = match value.as_str() {
-                    "zh-CN" => Locale::ZhCN,
-                    _ => Locale::EnUS,
-                };
-                state.fluent = Fluent::new(state.settings.locale);
-            }
-            SettingKey::MaxConnectionPerServer => {
-                if let Ok(n) = value.parse::<u32>() {
-                    state.settings.aria2.max_connection_per_server = n.max(1);
-                }
-            }
-            SettingKey::MinSplitSize => {
-                state.settings.aria2.min_split_size = value;
-            }
-            SettingKey::AutoFileRenaming => {
-                state.settings.aria2.auto_file_renaming = value == "true";
-            }
-            SettingKey::AllowOverwrite => {
-                state.settings.aria2.allow_overwrite = value == "true";
-            }
-            SettingKey::Continue => {
-                state.settings.aria2.r#continue = value == "true";
-            }
-            SettingKey::CheckIntegrity => {
-                state.settings.aria2.check_integrity = value == "true";
-            }
-            SettingKey::MaxDownloadLimit => {
-                state.settings.aria2.max_download_limit_kb = value.parse().unwrap_or(0);
-            }
-            SettingKey::MaxUploadLimit => {
-                state.settings.aria2.max_upload_limit_kb = value.parse().unwrap_or(0);
-            }
-            SettingKey::LowestSpeedLimit => {
-                state.settings.aria2.lowest_speed_limit_kb = value.parse().unwrap_or(0);
-            }
-            SettingKey::UserAgent => {
-                state.settings.aria2.user_agent = value;
-            }
-            SettingKey::Headers => {
-                state.settings.aria2.headers = value
-                    .split(',')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect();
-            }
-            SettingKey::AllProxy => {
-                state.settings.aria2.all_proxy = value;
-            }
-            SettingKey::MaxTries => {
-                if let Ok(n) = value.parse::<u32>() {
-                    state.settings.aria2.max_tries = n;
-                }
-            }
-            SettingKey::RetryWait => {
-                if let Ok(n) = value.parse::<u32>() {
-                    state.settings.aria2.retry_wait = n;
-                }
-            }
-            SettingKey::ConnectTimeout => {
-                if let Ok(n) = value.parse::<u32>() {
-                    state.settings.aria2.connect_timeout = n;
-                }
-            }
-            SettingKey::BtTracker => {
-                state.settings.aria2.bt_tracker = value;
-            }
-            SettingKey::SeedRatio => {
-                if let Ok(n) = value.parse::<f64>() {
-                    state.settings.aria2.seed_ratio = n.max(0.0);
-                }
-            }
-            SettingKey::SeedTime => {
-                if let Ok(n) = value.parse::<u32>() {
-                    state.settings.aria2.seed_time = n;
-                }
-            }
-            SettingKey::EnableDht => {
-                state.settings.aria2.enable_dht = value == "true";
-            }
-            SettingKey::BtRequireCrypto => {
-                state.settings.aria2.bt_require_crypto = value == "true";
-            }
-            SettingKey::EnableProxy => {
-                state.settings.aria2.proxy_enabled = value == "true";
-            }
-            SettingKey::NavToTasksAfterAdd => {
-                state.settings.nav_to_tasks_after_add = value == "true";
-            }
-            SettingKey::DeleteTorrentAfterComplete => {
-                state.settings.delete_torrent_after_complete = value == "true";
-            }
-        },
+        }
         Message::ApplySettings => {
             config::save(&state.settings);
             let opts = state.settings.to_aria2_task_options();
@@ -488,6 +520,8 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             {
                 tracing::warn!("ui: apply aria2 options cmd send failed");
             }
+            state.applied_settings = state.settings.clone();
+            state.settings_dirty = false;
         }
         Message::Engine(event) => match event {
             EngineEvent::EngineReady => {
@@ -750,6 +784,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::UaEditor(action) => {
             state.ua_editor.perform(action);
             state.settings.aria2.user_agent = state.ua_editor.text();
+            state.settings_dirty = true;
         }
         Message::HeadersEditor(action) => {
             state.headers_editor.perform(action);
@@ -760,6 +795,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 .map(|l| l.trim().to_string())
                 .filter(|l| !l.is_empty())
                 .collect();
+            state.settings_dirty = true;
         }
         Message::CheckAria2Update => {
             state.aria2_check_msg = None;
@@ -879,6 +915,31 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 .unwrap_or_default();
             if !url.is_empty() {
                 return iced::clipboard::write::<Message>(url);
+            }
+        }
+        Message::RequestConfirm(action) => {
+            state.confirm = Some(action);
+        }
+        Message::ConfirmCancel => {
+            state.confirm = None;
+        }
+        Message::ApplyAndLeaveSettings => {
+            if let Some(ConfirmAction::LeaveSettings { target }) = state.confirm.take() {
+                config::save(&state.settings);
+                let opts = state.settings.to_aria2_task_options();
+                let _ = state
+                    .handle
+                    .cmd_tx
+                    .send(EngineCmd::ApplyAria2Options { options: opts });
+                state.applied_settings = state.settings.clone();
+                state.settings_dirty = false;
+                state.page = target;
+            }
+        }
+        Message::DiscardAndLeaveSettings => {
+            if let Some(ConfirmAction::LeaveSettings { target }) = state.confirm.take() {
+                revert_apply_settings(state);
+                state.page = target;
             }
         }
         Message::Noop => {}
@@ -1039,6 +1100,15 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         stacked = stack![
             stacked,
             crate::ui::details_dialog::view(&state.fluent, t, task, &state.details),
+        ]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into();
+    }
+    if let Some(ref action) = state.confirm {
+        stacked = stack![
+            stacked,
+            crate::ui::confirm_dialog::view(&state.fluent, t, action),
         ]
         .width(Length::Fill)
         .height(Length::Fill)

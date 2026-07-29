@@ -165,7 +165,7 @@ pub enum Tr {
     ConnectionSegment,
     ResumeRetry,
     File,
-    NotificationConfirm,
+    Confirm,
     AutoCleanup,
     BtSettings,
     BtRequireCrypto,
@@ -196,6 +196,15 @@ pub enum Tr {
     CopyLink,
     Loading,
     TaskGone,
+    ConfirmDeleteAllTitle,
+    ConfirmDeleteAllBody,
+    ConfirmClearTitle,
+    ConfirmClearBody,
+    ConfirmRemoveTitle,
+    ConfirmRemoveBody,
+    ConfirmUnappliedTitle,
+    ConfirmUnappliedBody,
+    Discard,
 }
 
 impl Tr {
@@ -309,7 +318,7 @@ impl Tr {
             Tr::ConnectionSegment => "connection-segment",
             Tr::ResumeRetry => "resume-retry",
             Tr::File => "file",
-            Tr::NotificationConfirm => "notification-confirm",
+            Tr::Confirm => "confirm",
             Tr::AutoCleanup => "auto-cleanup",
             Tr::BtSettings => "bt-settings",
             Tr::BtRequireCrypto => "bt-require-crypto",
@@ -340,6 +349,15 @@ impl Tr {
             Tr::CopyLink => "copy-link",
             Tr::Loading => "loading",
             Tr::TaskGone => "task-gone",
+            Tr::ConfirmDeleteAllTitle => "confirm-delete-all-title",
+            Tr::ConfirmDeleteAllBody => "confirm-delete-all-body",
+            Tr::ConfirmClearTitle => "confirm-clear-title",
+            Tr::ConfirmClearBody => "confirm-clear-body",
+            Tr::ConfirmRemoveTitle => "confirm-remove-title",
+            Tr::ConfirmRemoveBody => "confirm-remove-body",
+            Tr::ConfirmUnappliedTitle => "confirm-unapplied-title",
+            Tr::ConfirmUnappliedBody => "confirm-unapplied-body",
+            Tr::Discard => "discard",
         }
     }
 }

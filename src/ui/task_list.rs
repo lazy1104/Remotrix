@@ -3,7 +3,7 @@ use iced::{Alignment, Element, Length};
 use iced_aw::widget::drop_down;
 
 use crate::i18n::{Fluent, Tr};
-use crate::message::{Message, SortField, SortOrder};
+use crate::message::{ConfirmAction, Message, SortField, SortOrder};
 use crate::task::{format_duration, format_size, format_speed, DownloadTask, TaskStatus};
 use crate::ui::icon;
 use crate::ui::theme;
@@ -132,13 +132,13 @@ pub fn view<'a>(
                 .push(toolbar_btn(
                     '\u{E18E}',
                     fluent.get(Tr::DeleteAll),
-                    Message::DeleteAll,
+                    Message::RequestConfirm(ConfirmAction::DeleteAll),
                     false,
                 ))
                 .push(toolbar_btn(
                     '\u{E28F}',
                     fluent.get(Tr::ClearList),
-                    Message::ClearCompleted,
+                    Message::RequestConfirm(ConfirmAction::ClearCompleted),
                     false,
                 ))
                 .align_y(Alignment::Center)
@@ -281,7 +281,9 @@ fn task_card<'a>(
         let glyph = icon::trash().size(15).color(text_secondary);
         tooltip(
             button(glyph)
-                .on_press(Message::RemoveTask(t.gid.clone()))
+                .on_press(Message::RequestConfirm(ConfirmAction::RemoveTask(
+                    t.gid.clone(),
+                )))
                 .padding(4)
                 .style(theme::style::button::toolbar_icon(false)),
             text(fluent.get(Tr::Remove)).size(12),

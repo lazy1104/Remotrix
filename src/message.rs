@@ -6,6 +6,14 @@ use crate::task::TaskStatus;
 use crate::ui::theme::ThemeMode;
 
 #[derive(Debug, Clone)]
+pub enum ConfirmAction {
+    DeleteAll,
+    ClearCompleted,
+    RemoveTask(String),
+    LeaveSettings { target: Page },
+}
+
+#[derive(Debug, Clone)]
 pub enum Message {
     NavigatePage(Page),
     SetTaskFilter(TaskFilter),
@@ -68,6 +76,11 @@ pub enum Message {
 
     UaEditor(iced::widget::text_editor::Action),
     HeadersEditor(iced::widget::text_editor::Action),
+
+    RequestConfirm(ConfirmAction),
+    ConfirmCancel,
+    ApplyAndLeaveSettings,
+    DiscardAndLeaveSettings,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

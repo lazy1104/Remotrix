@@ -292,7 +292,7 @@ fn download_view<'a>(
             SettingKey::LowestSpeedLimit,
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
-        .push(group_title(fluent, Tr::NotificationConfirm, accent))
+        .push(group_title(fluent, Tr::Confirm, accent))
         .push(labeled_toggle(
             fluent.get(Tr::NavToTasksAfterAdd),
             settings.nav_to_tasks_after_add,
