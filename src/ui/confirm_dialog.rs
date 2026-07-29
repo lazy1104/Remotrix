@@ -41,11 +41,13 @@ pub fn view<'a>(
                 .style(theme::style::button::danger());
 
             row![]
+                .push(iced::widget::Space::new().width(Length::Fill))
                 .push(cancel_btn)
                 .push(remove_record_btn)
                 .push(delete_files_btn)
                 .spacing(10)
                 .align_y(Alignment::Center)
+                .width(Length::Fill)
                 .into()
         }
         ConfirmAction::DeleteAll => {
@@ -59,11 +61,13 @@ pub fn view<'a>(
                 .style(theme::style::button::danger());
 
             row![]
+                .push(iced::widget::Space::new().width(Length::Fill))
                 .push(cancel_btn)
                 .push(remove_all_records_btn)
                 .push(delete_all_files_btn)
                 .spacing(10)
                 .align_y(Alignment::Center)
+                .width(Length::Fill)
                 .into()
         }
         ConfirmAction::ClearCompleted => {
@@ -73,10 +77,12 @@ pub fn view<'a>(
                 .style(theme::style::button::danger());
 
             row![]
+                .push(iced::widget::Space::new().width(Length::Fill))
                 .push(cancel_btn)
                 .push(confirm_btn)
                 .spacing(10)
                 .align_y(Alignment::Center)
+                .width(Length::Fill)
                 .into()
         }
         ConfirmAction::LeaveSettings { .. } => {
@@ -90,11 +96,13 @@ pub fn view<'a>(
                 .style(theme::style::button::primary());
 
             row![]
+                .push(iced::widget::Space::new().width(Length::Fill))
                 .push(cancel_btn)
                 .push(discard_btn)
                 .push(apply_btn)
                 .spacing(10)
                 .align_y(Alignment::Center)
+                .width(Length::Fill)
                 .into()
         }
     };

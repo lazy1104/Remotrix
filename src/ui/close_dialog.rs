@@ -40,11 +40,13 @@ pub fn view<'a>(fluent: &'a Fluent, _theme: &iced::Theme) -> Element<'a, Message
     .style(theme::style::button::text());
 
     let buttons = row![]
+        .push(iced::widget::Space::new().width(Length::Fill))
         .push(cancel_btn)
         .push(tray_btn)
         .push(close_btn)
         .spacing(10)
-        .align_y(Alignment::Center);
+        .align_y(Alignment::Center)
+        .width(Length::Fill);
 
     let panel = container(
         column![]
