@@ -489,21 +489,27 @@ fn advanced_view<'a>(
 
     if let Some(dir) = crate::config::aria2_bin_dir() {
         engine_rows.push(labeled_readonly(
+            fluent,
+            theme,
             fluent.get(Tr::EngineDataDir),
-            dir.to_string_lossy().to_string(),
+            &dir.to_string_lossy(),
         ));
     }
     if let Some(path) = crate::config::session_dir() {
         let sf = path.join("session.txt");
         engine_rows.push(labeled_readonly(
+            fluent,
+            theme,
             fluent.get(Tr::EngineSessionFile),
-            sf.to_string_lossy().to_string(),
+            &sf.to_string_lossy(),
         ));
     }
     if let Some(dir) = crate::config::log_dir() {
         engine_rows.push(labeled_readonly(
+            fluent,
+            theme,
             fluent.get(Tr::EngineLogFile),
-            dir.to_string_lossy().to_string(),
+            &dir.to_string_lossy(),
         ));
     }
 
@@ -673,15 +679,23 @@ where
     )
 }
 
-fn labeled_readonly<'a>(label: String, value: String) -> Element<'a, Message> {
+fn labeled_readonly<'a>(
+    fluent: &'a Fluent,
+    theme: &'a iced::Theme,
+    label: String,
+    value: &str,
+) -> Element<'a, Message> {
     row![]
         .push(text(label).size(13).width(Length::Fixed(200.0)))
-        .push(
-            text(value)
-                .size(13)
-                .style(theme::style::text::secondary)
-                .width(Length::Fill),
-        )
+        .push(path_picker::view(
+            fluent,
+            theme,
+            value,
+            None,
+            false,
+            false,
+            &[],
+        ))
         .height(Length::Fixed(36.0))
         .align_y(Alignment::Center)
         .into()

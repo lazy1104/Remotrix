@@ -71,10 +71,6 @@ pub fn view<'a>(
         .as_ref()
         .and_then(|p| p.as_os_str().to_str())
         .unwrap_or("");
-    let hist_torrent: &[String] = path_history
-        .get("torrent")
-        .map(|v| v.as_slice())
-        .unwrap_or(&[]);
     let torrent_row = column![]
         .spacing(4)
         .push(
@@ -87,9 +83,9 @@ pub fn view<'a>(
             theme,
             torrent_str,
             Some(PathPickerId::Torrent),
-            true,
-            path_history_open == Some(PathPickerId::Torrent),
-            hist_torrent,
+            false,
+            false,
+            &[],
         ));
 
     let hist_save: &[String] = path_history

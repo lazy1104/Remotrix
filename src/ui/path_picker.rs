@@ -27,7 +27,7 @@ fn separator() -> Element<'static, Message> {
 pub fn view<'a>(
     fluent: &'a Fluent,
     theme: &'a iced::Theme,
-    value: &'a str,
+    value: &str,
     id: Option<PathPickerId>,
     show_history: bool,
     history_open: bool,
@@ -79,17 +79,19 @@ pub fn view<'a>(
         if show_history {
             row = row.push(separator());
             if history.is_empty() {
-                let disabled_btn =
-                    button(icon_content(icon::list().size(15).color(text_secondary)))
-                        .style(theme::style::button::grouped_icon(true))
-                        .height(Length::Fill);
+                let disabled_btn = button(icon_content(
+                    icon::folder_clock().size(15).color(text_secondary),
+                ))
+                .style(theme::style::button::grouped_icon(true))
+                .height(Length::Fill);
                 row = row.push(disabled_btn);
             } else {
-                let trailing_btn =
-                    button(icon_content(icon::list().size(15).color(text_secondary)))
-                        .on_press(Message::TogglePathHistory(pid))
-                        .style(theme::style::button::grouped_icon(true))
-                        .height(Length::Fill);
+                let trailing_btn = button(icon_content(
+                    icon::folder_clock().size(15).color(text_secondary),
+                ))
+                .on_press(Message::TogglePathHistory(pid))
+                .style(theme::style::button::grouped_icon(true))
+                .height(Length::Fill);
                 row = row.push(trailing_btn);
             }
         }

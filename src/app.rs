@@ -1253,13 +1253,14 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
 
 fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
     let s = p.to_string_lossy().to_string();
-    state.settings.record_path(id.history_key(), &s);
     match id {
         PathPickerId::DownloadDir => {
+            state.settings.record_path(id.history_key(), &s);
             state.settings.download_dir = p;
             state.settings_dirty = true;
         }
         PathPickerId::SaveDir => {
+            state.settings.record_path(id.history_key(), &s);
             state.add_dialog.save_dir = p;
             config::save(&state.settings);
         }

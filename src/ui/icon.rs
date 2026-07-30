@@ -1,8 +1,8 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// 3b22309efd820f31d7b603f6f3440a42b7e11ea516b4c3338c9916bb29ddec68
-use iced::widget::{text, Text};
+// 55de3005b689ea26c5d3a384c2fe57a1202f4f73c5c90c4d44cfd7beffbfaefa
 use iced::Font;
+use iced::widget::{Text, text};
 
 pub const FONT: &[u8] = include_bytes!("../../fonts/lucide.ttf");
 
@@ -17,6 +17,7 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("download", "\u{E0B2}"),
     ("download_arrow", "\u{E455}"),
     ("eraser", "\u{E28F}"),
+    ("folder_clock", "\u{E32F}"),
     ("folder_open", "\u{E247}"),
     ("globe", "\u{E0E8}"),
     ("info", "\u{E0F9}"),
@@ -64,6 +65,10 @@ pub fn download_arrow<'a>() -> Text<'a> {
 
 pub fn eraser<'a>() -> Text<'a> {
     icon("\u{E28F}")
+}
+
+pub fn folder_clock<'a>() -> Text<'a> {
+    icon("\u{E32F}")
 }
 
 pub fn folder_open<'a>() -> Text<'a> {
