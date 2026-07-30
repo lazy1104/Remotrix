@@ -253,6 +253,28 @@ pub mod style {
             }
         }
 
+        pub fn picker_item<'a>() -> impl Fn(&iced::Theme, Status) -> Style + 'a {
+            move |t: &iced::Theme, status: Status| -> Style {
+                let palette = t.extended_palette();
+                let base_text = palette.background.base.text;
+                let primary = palette.primary.base;
+                Style {
+                    background: match status {
+                        Status::Hovered | Status::Pressed => Some(primary.color.into()),
+                        _ => None,
+                    },
+                    text_color: match status {
+                        Status::Hovered | Status::Pressed => primary.text,
+                        Status::Disabled => scale_alpha(base_text, 0.5),
+                        _ => base_text,
+                    },
+                    border: iced::border::rounded(super::super::RADIUS_BUTTON),
+                    shadow: Shadow::default(),
+                    ..Default::default()
+                }
+            }
+        }
+
         pub fn toolbar_icon<'a>(active: bool) -> impl Fn(&iced::Theme, Status) -> Style + 'a {
             move |t: &iced::Theme, status: Status| -> Style {
                 let accent = t.extended_palette().primary.base.color;

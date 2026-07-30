@@ -238,7 +238,7 @@ impl PathPicker {
                             ))))
                             .width(Length::Fill)
                             .padding([6, 8])
-                            .style(theme::style::button::text())
+                            .style(theme::style::button::picker_item())
                             .into()
                     })
                     .collect();
