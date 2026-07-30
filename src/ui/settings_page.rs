@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use iced::widget::{
     button, column, container, pick_list, row, scrollable, text, text_editor, text_input, toggler,
 };
@@ -5,9 +7,10 @@ use iced::{Alignment, Element, Length};
 
 use crate::config::Settings;
 use crate::i18n::{Fluent, Locale, Tr};
-use crate::message::{Message, SettingKey, SettingsCategory};
+use crate::message::{Message, PathPickerId, SettingKey, SettingsCategory};
 use iced::Color;
 
+use crate::ui::path_picker;
 use crate::ui::theme;
 
 #[derive(Debug, Clone)]
@@ -34,7 +37,7 @@ where
 #[allow(clippy::too_many_arguments)]
 pub fn view<'a>(
     fluent: &'a Fluent,
-    theme: &iced::Theme,
+    theme: &'a iced::Theme,
     settings: &'a Settings,
     category: SettingsCategory,
     aria2_version: Option<&'a str>,
@@ -44,11 +47,15 @@ pub fn view<'a>(
     update_pending: Option<&'a str>,
     ua_editor: &'a text_editor::Content,
     headers_editor: &'a text_editor::Content,
+    path_history: &'a HashMap<String, Vec<String>>,
+    path_history_open: Option<PathPickerId>,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
     let content = match category {
         SettingsCategory::General => general_view(fluent, theme, settings),
-        SettingsCategory::Download => download_view(fluent, settings, accent),
+        SettingsCategory::Download => {
+            download_view(fluent, theme, settings, path_history, path_history_open)
+        }
         SettingsCategory::BitTorrent => bittorrent_view(fluent, settings, accent),
         SettingsCategory::Ed2k => ed2k_view(fluent),
         SettingsCategory::Network => {
@@ -181,13 +188,39 @@ fn general_view<'a>(
 
 fn download_view<'a>(
     fluent: &'a Fluent,
+    theme: &'a iced::Theme,
     settings: &'a Settings,
-    accent: Color,
+    path_history: &'a HashMap<String, Vec<String>>,
+    path_history_open: Option<PathPickerId>,
 ) -> Element<'a, Message> {
+    let accent = theme::accent(theme);
+    let download_hist: &[String] = path_history
+        .get("download_dir")
+        .map(|v| v.as_slice())
+        .unwrap_or(&[]);
+    let dir_str: &str = settings.download_dir.as_os_str().to_str().unwrap_or("");
     column![]
         .spacing(4)
         .push(group_title(fluent, Tr::DownloadFolder, accent))
-        .push(download_folder_row(fluent, settings))
+        .push(
+            row![]
+                .push(
+                    text(fluent.get(Tr::DownloadFolder))
+                        .size(13)
+                        .width(Length::Fixed(200.0)),
+                )
+                .push(path_picker::view(
+                    fluent,
+                    theme,
+                    dir_str,
+                    Some(PathPickerId::DownloadDir),
+                    true,
+                    path_history_open == Some(PathPickerId::DownloadDir),
+                    download_hist,
+                ))
+                .height(Length::Fixed(36.0))
+                .align_y(Alignment::Center),
+        )
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::ConnectionSegment, accent))
         .push(labeled_number(
@@ -411,7 +444,7 @@ fn network_view<'a>(
 #[allow(clippy::too_many_arguments)]
 fn advanced_view<'a>(
     fluent: &'a Fluent,
-    theme: &iced::Theme,
+    theme: &'a iced::Theme,
     settings: &'a Settings,
     aria2_version: Option<&'a str>,
     aria2_check_msg: Option<&'a str>,
@@ -648,34 +681,6 @@ fn labeled_readonly<'a>(label: String, value: String) -> Element<'a, Message> {
                 .size(13)
                 .style(theme::style::text::secondary)
                 .width(Length::Fill),
-        )
-        .height(Length::Fixed(36.0))
-        .align_y(Alignment::Center)
-        .into()
-}
-
-fn download_folder_row<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, Message> {
-    let dir_str = settings.download_dir.to_string_lossy().to_string();
-    row![]
-        .push(
-            text(fluent.get(Tr::DownloadFolder))
-                .size(13)
-                .width(Length::Fixed(200.0)),
-        )
-        .push(
-            text(dir_str)
-                .size(13)
-                .style(theme::style::text::secondary)
-                .width(Length::Fill),
-        )
-        .push(
-            button(text(fluent.get(Tr::Browse)).size(12))
-                .on_press(Message::SettingChanged(
-                    SettingKey::DownloadDir,
-                    String::new(),
-                ))
-                .padding([6, 12])
-                .style(theme::style::button::secondary()),
         )
         .height(Length::Fixed(36.0))
         .align_y(Alignment::Center)

@@ -1,10 +1,12 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use iced::widget::{button, column, container, row, text, text_editor, text_input};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
-use crate::message::Message;
+use crate::message::{Message, PathPickerId};
+use crate::ui::path_picker;
 use crate::ui::theme;
 
 #[derive(Debug, Clone)]
@@ -51,8 +53,10 @@ impl AddDialogState {
 
 pub fn view<'a>(
     fluent: &'a Fluent,
-    _theme: &iced::Theme,
+    theme: &'a iced::Theme,
     state: &'a AddDialogState,
+    path_history: &'a HashMap<String, Vec<String>>,
+    path_history_open: Option<PathPickerId>,
 ) -> Element<'a, Message> {
     let placeholder = fluent.get(Tr::UrlPlaceholder);
     let url_input = text_editor(&state.url_editor)
@@ -62,44 +66,53 @@ pub fn view<'a>(
         .padding(10)
         .size(14);
 
-    let torrent_row = row![]
+    let torrent_str: &str = state
+        .torrent_path
+        .as_ref()
+        .and_then(|p| p.as_os_str().to_str())
+        .unwrap_or("");
+    let hist_torrent: &[String] = path_history
+        .get("torrent")
+        .map(|v| v.as_slice())
+        .unwrap_or(&[]);
+    let torrent_row = column![]
+        .spacing(4)
         .push(
             text(fluent.get(Tr::OrTorrent))
                 .size(12)
                 .style(theme::style::text::secondary),
         )
-        .push(iced::widget::Space::new().width(Length::Fill))
-        .push(
-            button(text(fluent.get(Tr::Browse)).size(12))
-                .on_press(Message::BrowseTorrent)
-                .padding([6, 12])
-                .style(theme::style::button::secondary()),
-        )
-        .align_y(Alignment::Center)
-        .width(Length::Fill);
+        .push(path_picker::view(
+            fluent,
+            theme,
+            torrent_str,
+            Some(PathPickerId::Torrent),
+            true,
+            path_history_open == Some(PathPickerId::Torrent),
+            hist_torrent,
+        ));
 
-    let save_dir_str = state.save_dir.to_string_lossy().to_string();
-
-    let save_row = row![]
+    let hist_save: &[String] = path_history
+        .get("save_dir")
+        .map(|v| v.as_slice())
+        .unwrap_or(&[]);
+    let save_str: &str = state.save_dir.as_os_str().to_str().unwrap_or("");
+    let save_row = column![]
+        .spacing(4)
         .push(
-            column![]
-                .push(
-                    text(fluent.get(Tr::SaveTo))
-                        .size(12)
-                        .style(theme::style::text::secondary),
-                )
-                .push(text(save_dir_str.clone()).size(13))
-                .spacing(2)
-                .width(Length::Fill),
+            text(fluent.get(Tr::SaveTo))
+                .size(12)
+                .style(theme::style::text::secondary),
         )
-        .push(
-            button(text(fluent.get(Tr::Browse)).size(12))
-                .on_press(Message::BrowseSaveDir)
-                .padding([6, 12])
-                .style(theme::style::button::secondary()),
-        )
-        .align_y(Alignment::Center)
-        .width(Length::Fill);
+        .push(path_picker::view(
+            fluent,
+            theme,
+            save_str,
+            Some(PathPickerId::SaveDir),
+            true,
+            path_history_open == Some(PathPickerId::SaveDir),
+            hist_save,
+        ));
 
     let split_str = state.split.to_string();
     let split_input = row![]

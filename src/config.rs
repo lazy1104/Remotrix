@@ -271,6 +271,19 @@ pub struct Settings {
     pub window_height: f32,
     #[serde(default)]
     pub window_maximized: bool,
+    #[serde(default)]
+    pub path_history: std::collections::HashMap<String, Vec<String>>,
+}
+
+impl Settings {
+    pub fn record_path(&mut self, key: &str, path: &str) {
+        let e = self.path_history.entry(key.to_string()).or_default();
+        e.retain(|p| p != path);
+        e.insert(0, path.to_string());
+        if e.len() > 10 {
+            e.truncate(10);
+        }
+    }
 }
 
 impl Default for Settings {
@@ -295,6 +308,7 @@ impl Default for Settings {
             window_width: default_window_width(),
             window_height: default_window_height(),
             window_maximized: false,
+            path_history: std::collections::HashMap::new(),
         }
     }
 }

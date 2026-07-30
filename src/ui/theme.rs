@@ -121,6 +121,25 @@ pub mod style {
         }
     }
 
+    pub fn separator(t: &iced::Theme) -> iced::widget::container::Style {
+        iced::widget::container::Style {
+            background: Some(super::border_color(t).into()),
+            ..Default::default()
+        }
+    }
+
+    pub fn grouped_frame(t: &iced::Theme) -> iced::widget::container::Style {
+        iced::widget::container::Style {
+            background: Some(t.extended_palette().background.base.color.into()),
+            border: iced::Border {
+                color: super::border_color(t),
+                width: 1.0,
+                radius: super::RADIUS_BUTTON.into(),
+            },
+            ..Default::default()
+        }
+    }
+
     pub fn overlay(_t: &iced::Theme) -> iced::widget::container::Style {
         iced::widget::container::Style {
             background: Some(super::OVERLAY.into()),
@@ -381,6 +400,32 @@ pub mod style {
             }
         }
 
+        pub fn grouped_icon<'a>(trailing: bool) -> impl Fn(&iced::Theme, Status) -> Style + 'a {
+            move |t, status| {
+                let base_text = t.extended_palette().background.base.text;
+                let weak_bg = t.extended_palette().background.weak.color;
+                let radius = if trailing {
+                    iced::border::Radius::default().right(super::super::RADIUS_BUTTON)
+                } else {
+                    iced::border::Radius::default()
+                };
+                Style {
+                    background: match status {
+                        Status::Hovered => Some(super::lighten(weak_bg, 0.08).into()),
+                        Status::Pressed => Some(super::lighten(weak_bg, 0.14).into()),
+                        _ => Some(weak_bg.into()),
+                    },
+                    text_color: base_text,
+                    border: iced::Border {
+                        radius,
+                        ..Default::default()
+                    },
+                    shadow: Shadow::default(),
+                    ..Default::default()
+                }
+            }
+        }
+
         pub fn new_download<'a>() -> impl Fn(&iced::Theme, Status) -> Style + 'a {
             move |t: &iced::Theme, status: Status| -> Style {
                 let pal = t.extended_palette().primary;
@@ -420,6 +465,22 @@ pub mod style {
                     shadow,
                     ..Default::default()
                 }
+            }
+        }
+    }
+
+    pub mod input {
+        use iced::widget::text_input;
+
+        pub fn grouped(t: &iced::Theme, _status: text_input::Status) -> text_input::Style {
+            let p = t.extended_palette();
+            text_input::Style {
+                background: iced::Background::Color(iced::Color::TRANSPARENT),
+                border: iced::Border::default(),
+                icon: p.background.weak.text,
+                placeholder: p.secondary.base.color,
+                value: p.background.base.text,
+                selection: p.primary.weak.color,
             }
         }
     }

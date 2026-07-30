@@ -5,6 +5,27 @@ use crate::i18n::Locale;
 use crate::task::TaskStatus;
 use crate::ui::theme::ThemeMode;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PathPickerId {
+    DownloadDir,
+    SaveDir,
+    Torrent,
+}
+
+impl PathPickerId {
+    pub fn history_key(self) -> &'static str {
+        match self {
+            Self::DownloadDir => "download_dir",
+            Self::SaveDir => "save_dir",
+            Self::Torrent => "torrent",
+        }
+    }
+
+    pub fn is_folder(self) -> bool {
+        !matches!(self, Self::Torrent)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ConfirmAction {
     DeleteAll,
@@ -18,10 +39,12 @@ pub enum Message {
     NavigatePage(Page),
     SetTaskFilter(TaskFilter),
     SetSettingsCategory(SettingsCategory),
-    SaveDirChanged(String),
-    BrowseSaveDir,
-    BrowseTorrent,
-    FilePicked(FileKind, Option<PathBuf>),
+    BrowsePath(PathPickerId),
+    PathPicked(PathPickerId, Option<PathBuf>),
+    SelectPathHistory(PathPickerId, PathBuf),
+    TogglePathHistory(PathPickerId),
+    ClosePathHistory,
+    CopyPath(String),
     SplitChanged(String),
     AddDownload,
     CancelAdd,
@@ -157,14 +180,7 @@ impl std::fmt::Display for SortField {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FileKind {
-    SaveDir,
-    Torrent,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingKey {
-    DownloadDir,
     MaxConcurrent,
     DownloadLimit,
     UploadLimit,

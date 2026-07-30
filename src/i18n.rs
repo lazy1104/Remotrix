@@ -209,6 +209,7 @@ pub enum Tr {
     ConfirmUnappliedTitle,
     ConfirmUnappliedBody,
     Discard,
+    Copy,
 }
 
 impl Tr {
@@ -366,6 +367,7 @@ impl Tr {
             Tr::ConfirmUnappliedTitle => "confirm-unapplied-title",
             Tr::ConfirmUnappliedBody => "confirm-unapplied-body",
             Tr::Discard => "discard",
+            Tr::Copy => "copy",
         }
     }
 }

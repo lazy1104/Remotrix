@@ -14,7 +14,7 @@ use crate::db::Db;
 use crate::engine::{EngineCmd, EngineEvent, EngineHandle, EventRx};
 use crate::i18n::{Fluent, Locale};
 use crate::message::{
-    CloseDialogChoice, ConfirmAction, FileKind, Message, Page, SettingKey, SettingsCategory,
+    CloseDialogChoice, ConfirmAction, Message, Page, PathPickerId, SettingKey, SettingsCategory,
     SortField, SortOrder, TaskFilter, WindowCmd,
 };
 use crate::task::{DownloadTask, TaskStatus};
@@ -62,6 +62,7 @@ pub struct Remotrix {
     confirm: Option<ConfirmAction>,
     settings_dirty: bool,
     applied_settings: Settings,
+    path_history_open: Option<PathPickerId>,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
@@ -134,6 +135,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         pending_close: false,
         confirm: None,
         settings_dirty: false,
+        path_history_open: None,
     };
 
     (state, Task::none())
@@ -166,6 +168,7 @@ fn sync_geometry_to_settings(state: &mut Remotrix) {
 }
 
 fn revert_apply_settings(state: &mut Remotrix) {
+    state.settings.download_dir = state.applied_settings.download_dir.clone();
     state.settings.max_concurrent = state.applied_settings.max_concurrent;
     state.settings.download_limit_kb = state.applied_settings.download_limit_kb;
     state.settings.upload_limit_kb = state.applied_settings.upload_limit_kb;
@@ -192,6 +195,7 @@ fn clear_all_local(state: &mut Remotrix) {
 pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
     match message {
         Message::NavigatePage(page) => {
+            state.path_history_open = None;
             if page == Page::Tasks && state.page == Page::Settings && state.settings_dirty {
                 state.confirm = Some(ConfirmAction::LeaveSettings { target: page });
             } else {
@@ -202,51 +206,50 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.task_filter = filter;
         }
         Message::SetSettingsCategory(cat) => {
+            state.path_history_open = None;
             state.settings_cat = cat;
         }
         Message::OpenAddDialog => {
+            state.path_history_open = None;
             state
                 .add_dialog
                 .open(state.settings.download_dir.clone(), state.settings.split);
         }
         Message::CancelAdd => {
+            state.path_history_open = None;
             state.add_dialog.close();
         }
         Message::UrlEditor(action) => {
             state.add_dialog.url_editor.perform(action);
         }
-        Message::SaveDirChanged(value) => {
-            state.add_dialog.save_dir = PathBuf::from(value);
+        Message::BrowsePath(id) => {
+            tracing::debug!(?id, "ui: browse path");
+            return pick_path(id);
         }
-        Message::BrowseSaveDir => {
-            tracing::debug!("ui: browse save dir");
-            return pick_folder(FileKind::SaveDir);
+        Message::PathPicked(id, maybe_path) => {
+            tracing::debug!(?id, picked = maybe_path.is_some(), "ui: path picked");
+            if let Some(p) = maybe_path {
+                apply_path(state, id, p);
+            }
+            state.path_history_open = None;
         }
-        Message::BrowseTorrent => {
-            tracing::debug!("ui: browse torrent");
-            return pick_file(FileKind::Torrent);
+        Message::SelectPathHistory(id, p) => {
+            apply_path(state, id, p);
+            state.path_history_open = None;
         }
-        Message::FilePicked(kind, maybe_path) => {
-            tracing::debug!(?kind, picked = maybe_path.is_some(), "ui: file picked");
-            match kind {
-                FileKind::SaveDir => {
-                    if let Some(p) = maybe_path {
-                        state.add_dialog.save_dir = p;
-                    }
-                }
-                FileKind::Torrent => {
-                    if let Some(p) = maybe_path {
-                        state.add_dialog.torrent_path = Some(p.clone());
-                        if state.add_dialog.url_editor.text().trim().is_empty() {
-                            let fname = p
-                                .file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("")
-                                .to_string();
-                            state.add_dialog.url_editor = text_editor::Content::with_text(&fname);
-                        }
-                    }
-                }
+        Message::TogglePathHistory(id) => {
+            state.path_history_open = if state.path_history_open == Some(id) {
+                None
+            } else {
+                Some(id)
+            };
+        }
+        Message::ClosePathHistory => {
+            state.path_history_open = None;
+        }
+        Message::CopyPath(s) => {
+            if !s.is_empty() {
+                return iced::clipboard::write::<Message>(s);
             }
         }
         Message::SplitChanged(value) => {
@@ -431,12 +434,8 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.about_dialog_visible = false;
         }
         Message::SettingChanged(key, value) => {
-            if key == SettingKey::DownloadDir {
-                return pick_folder(FileKind::SaveDir);
-            }
             state.settings_dirty = true;
             match key {
-                SettingKey::DownloadDir => unreachable!(),
                 SettingKey::MaxConcurrent => {
                     if let Ok(n) = value.parse::<u32>() {
                         state.settings.max_concurrent = n.max(1);
@@ -992,6 +991,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::DiscardAndLeaveSettings => {
             if let Some(ConfirmAction::LeaveSettings { target }) = state.confirm.take() {
                 revert_apply_settings(state);
+                config::save(&state.settings);
                 state.page = target;
             }
         }
@@ -1074,6 +1074,8 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             state.update_pending.as_deref(),
             &state.ua_editor,
             &state.headers_editor,
+            &state.settings.path_history,
+            state.path_history_open,
         ),
     };
 
@@ -1123,7 +1125,13 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
     if state.add_dialog.is_visible() {
         stacked = stack![
             stacked,
-            crate::ui::add_dialog::view(&state.fluent, t, &state.add_dialog),
+            crate::ui::add_dialog::view(
+                &state.fluent,
+                t,
+                &state.add_dialog,
+                &state.settings.path_history,
+                state.path_history_open,
+            ),
         ]
         .width(Length::Fill)
         .height(Length::Fill)
@@ -1243,32 +1251,48 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
     ])
 }
 
-fn pick_folder(kind: FileKind) -> Task<Message> {
-    let prompt = match kind {
-        FileKind::SaveDir => "Select download folder",
-        _ => "Select folder",
-    };
-    Task::perform(
-        async move {
-            rfd::AsyncFileDialog::new()
-                .set_title(prompt)
-                .pick_folder()
-                .await
-                .map(|h| h.path().to_path_buf())
-        },
-        move |maybe| Message::FilePicked(kind, maybe),
-    )
+fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
+    let s = p.to_string_lossy().to_string();
+    state.settings.record_path(id.history_key(), &s);
+    match id {
+        PathPickerId::DownloadDir => {
+            state.settings.download_dir = p;
+            state.settings_dirty = true;
+        }
+        PathPickerId::SaveDir => {
+            state.add_dialog.save_dir = p;
+            config::save(&state.settings);
+        }
+        PathPickerId::Torrent => {
+            state.add_dialog.torrent_path = Some(p);
+            config::save(&state.settings);
+        }
+    }
 }
 
-fn pick_file(kind: FileKind) -> Task<Message> {
-    Task::perform(
-        async move {
-            rfd::AsyncFileDialog::new()
-                .add_filter("Torrent", &["torrent"])
-                .pick_file()
-                .await
-                .map(|h| h.path().to_path_buf())
-        },
-        move |maybe| Message::FilePicked(kind, maybe),
-    )
+fn pick_path(id: PathPickerId) -> Task<Message> {
+    if id.is_folder() {
+        Task::perform(
+            async move {
+                rfd::AsyncFileDialog::new()
+                    .set_title("Select folder")
+                    .pick_folder()
+                    .await
+                    .map(|h| h.path().to_path_buf())
+            },
+            move |maybe| Message::PathPicked(id, maybe),
+        )
+    } else {
+        Task::perform(
+            async move {
+                rfd::AsyncFileDialog::new()
+                    .set_title("Select torrent file")
+                    .add_filter("Torrent", &["torrent"])
+                    .pick_file()
+                    .await
+                    .map(|h| h.path().to_path_buf())
+            },
+            move |maybe| Message::PathPicked(id, maybe),
+        )
+    }
 }
