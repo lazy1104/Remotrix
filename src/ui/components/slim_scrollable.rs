@@ -8,9 +8,7 @@ pub fn slim_scrollable<'a, Message>(
 ) -> iced::widget::Scrollable<'a, Message> {
     iced::widget::scrollable(content)
         .direction(scrollable::Direction::Vertical(
-            Scrollbar::new()
-                .width(6.0)
-                .scroller_width(6.0)
+            Scrollbar::new().width(6.0).scroller_width(6.0),
         ))
         .spacing(5)
         .style(theme::style::scrollable::standard)

@@ -150,4 +150,5 @@ delete-files = Delete Files
 remove-record = Remove from List
 delete-all-files = Delete All Files
 remove-all-records = Remove All from List
+download-history = Download History
 copy = Copy

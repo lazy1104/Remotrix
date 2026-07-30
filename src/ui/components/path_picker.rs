@@ -1,8 +1,7 @@
 use std::path::PathBuf;
 
 use iced::widget::{
-    button, column, container, mouse_area, row, scrollable, text, text_input, Space,
-    Text,
+    button, column, container, mouse_area, row, scrollable, text, text_input, Space, Text,
 };
 use iced::{Alignment, Element, Length};
 
@@ -173,7 +172,11 @@ impl PathPicker {
             if !self.value.is_empty() {
                 btn = btn.on_press(map(PathPickerEvent::Copy(self.value.clone())));
             }
-            tooltip::standard(btn, text(fluent.get(Tr::Copy)), iced::widget::tooltip::Position::Bottom)
+            tooltip::standard(
+                btn,
+                text(fluent.get(Tr::Copy)),
+                iced::widget::tooltip::Position::Bottom,
+            )
         };
         row = row.push(copy_btn);
 
@@ -194,22 +197,24 @@ impl PathPicker {
 
             if self.show_history {
                 row = row.push(Self::separator());
-                if history.is_empty() {
-                    let disabled_btn = button(Self::icon_content(
+                let history_btn: Element<'a, M> = {
+                    let btn = button(Self::icon_content(
                         icon::folder_clock().size(15).color(text_secondary),
                     ))
                     .style(theme::style::button::grouped_icon(true))
                     .height(Length::Fill);
-                    row = row.push(disabled_btn);
-                } else {
-                    let trailing_btn = button(Self::icon_content(
-                        icon::folder_clock().size(15).color(text_secondary),
-                    ))
-                    .on_press(map(PathPickerEvent::ToggleHistory))
-                    .style(theme::style::button::grouped_icon(true))
-                    .height(Length::Fill);
-                    row = row.push(trailing_btn);
-                }
+                    if history.is_empty() {
+                        btn.into()
+                    } else {
+                        btn.on_press(map(PathPickerEvent::ToggleHistory)).into()
+                    }
+                };
+                let history_btn = tooltip::standard(
+                    history_btn,
+                    text(fluent.get(Tr::DownloadHistory)),
+                    iced::widget::tooltip::Position::Bottom,
+                );
+                row = row.push(history_btn);
             }
         }
 
@@ -239,15 +244,16 @@ impl PathPicker {
                     .collect();
 
                 let overlay = container(
-                    scrollable(column(overlay_items).spacing(2).width(Length::Fill))
-                        .direction(scrollable::Direction::Vertical(
-                            scrollable::Scrollbar::hidden(),
-                        )),
+                    scrollable(column(overlay_items).spacing(2).width(Length::Fill)).direction(
+                        scrollable::Direction::Vertical(scrollable::Scrollbar::hidden()),
+                    ),
                 )
                 .padding(6)
                 .style(theme::style::card);
 
                 drop_down::DropDown::new(group, overlay, self.history_open)
+                    .alignment(drop_down::Alignment::Bottom)
+                    .offset(drop_down::Offset::from(0.0))
                     .on_dismiss(map(PathPickerEvent::DismissHistory))
                     .into()
             } else {

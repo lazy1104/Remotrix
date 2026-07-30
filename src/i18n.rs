@@ -210,6 +210,7 @@ pub enum Tr {
     ConfirmUnappliedBody,
     Discard,
     Copy,
+    DownloadHistory,
 }
 
 impl Tr {
@@ -368,6 +369,7 @@ impl Tr {
             Tr::ConfirmUnappliedBody => "confirm-unapplied-body",
             Tr::Discard => "discard",
             Tr::Copy => "copy",
+            Tr::DownloadHistory => "download-history",
         }
     }
 }

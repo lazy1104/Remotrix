@@ -150,4 +150,5 @@ delete-files = 删除文件
 remove-record = 移除记录
 delete-all-files = 删除全部文件
 remove-all-records = 移除全部记录
+download-history = 下载历史
 copy = 复制
