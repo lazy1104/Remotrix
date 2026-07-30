@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use iced::widget::{button, column, container, row, text, text_input, tooltip, Space, Text};
+use iced::widget::{
+    button, column, container, mouse_area, row, text, text_input, tooltip, Space, Text,
+};
 use iced::{Alignment, Element, Length};
 
 use iced_aw::widget::drop_down;
@@ -23,6 +25,8 @@ pub enum PathPickerEvent {
     SelectHistory(PathBuf),
     Browse,
     Copy(String),
+    Entered,
+    Exited,
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +42,8 @@ pub struct PathPicker {
     mode: PickerMode,
     show_history: bool,
     history_open: bool,
+    focused: bool,
+    hovered: bool,
 }
 
 impl PathPicker {
@@ -47,6 +53,8 @@ impl PathPicker {
             mode: PickerMode::Folder,
             show_history,
             history_open: false,
+            focused: false,
+            hovered: false,
         }
     }
 
@@ -56,6 +64,8 @@ impl PathPicker {
             mode: PickerMode::File,
             show_history: false,
             history_open: false,
+            focused: false,
+            hovered: false,
         }
     }
 
@@ -65,6 +75,8 @@ impl PathPicker {
             mode: PickerMode::ReadOnly,
             show_history: false,
             history_open: false,
+            focused: false,
+            hovered: false,
         }
     }
 
@@ -87,26 +99,41 @@ impl PathPicker {
     pub fn update(&mut self, event: PathPickerEvent) -> Option<PathPickerAction> {
         match event {
             PathPickerEvent::ToggleHistory if self.mode != PickerMode::ReadOnly => {
+                self.focused = true;
                 self.history_open = !self.history_open;
                 None
             }
+            PathPickerEvent::ToggleHistory => None,
             PathPickerEvent::DismissHistory => {
                 self.history_open = false;
                 None
             }
             PathPickerEvent::SelectHistory(p) => {
+                self.focused = true;
                 self.history_open = false;
                 Some(PathPickerAction::Select(p))
             }
-            PathPickerEvent::Browse => Some(PathPickerAction::Browse),
+            PathPickerEvent::Browse => {
+                self.focused = true;
+                Some(PathPickerAction::Browse)
+            }
             PathPickerEvent::Copy(s) => {
+                self.focused = true;
                 if s.is_empty() {
                     None
                 } else {
                     Some(PathPickerAction::Copy(s))
                 }
             }
-            _ => None,
+            PathPickerEvent::Entered => {
+                self.hovered = true;
+                None
+            }
+            PathPickerEvent::Exited => {
+                self.hovered = false;
+                self.focused = false;
+                None
+            }
         }
     }
 
@@ -191,33 +218,46 @@ impl PathPicker {
             .width(Length::Fill)
             .height(Length::Fixed(36.0))
             .padding(1.0)
-            .style(theme::style::grouped_frame);
+            .style(theme::style::grouped_frame_state(
+                self.focused,
+                self.hovered,
+            ));
 
-        if self.mode != PickerMode::ReadOnly && self.show_history && !history.is_empty() {
-            let overlay_items: Vec<Element<'a, M>> = history
-                .iter()
-                .map(|p| {
-                    button(text(p.as_str()).size(12))
-                        .on_press(map(PathPickerEvent::SelectHistory(PathBuf::from(
-                            p.clone(),
-                        ))))
-                        .width(Length::Fill)
-                        .padding([6, 8])
-                        .style(theme::style::button::text())
-                        .into()
-                })
-                .collect();
+        let inner: Element<'a, M> =
+            if self.mode != PickerMode::ReadOnly && self.show_history && !history.is_empty() {
+                let overlay_items: Vec<Element<'a, M>> = history
+                    .iter()
+                    .map(|p| {
+                        button(text(p.as_str()).size(12))
+                            .on_press(map(PathPickerEvent::SelectHistory(PathBuf::from(
+                                p.clone(),
+                            ))))
+                            .width(Length::Fill)
+                            .padding([6, 8])
+                            .style(theme::style::button::text())
+                            .into()
+                    })
+                    .collect();
 
-            let overlay = container(column(overlay_items).spacing(2).width(Length::Fill))
-                .padding(6)
-                .style(theme::style::card);
+                let overlay = container(column(overlay_items).spacing(2).width(Length::Fill))
+                    .padding(6)
+                    .style(theme::style::card);
 
-            return drop_down::DropDown::new(group, overlay, self.history_open)
-                .on_dismiss(map(PathPickerEvent::DismissHistory))
-                .into();
+                drop_down::DropDown::new(group, overlay, self.history_open)
+                    .on_dismiss(map(PathPickerEvent::DismissHistory))
+                    .into()
+            } else {
+                group.into()
+            };
+
+        if self.mode != PickerMode::ReadOnly {
+            mouse_area(inner)
+                .on_enter(map(PathPickerEvent::Entered))
+                .on_exit(map(PathPickerEvent::Exited))
+                .into()
+        } else {
+            inner
         }
-
-        group.into()
     }
 
     fn icon_content<'a, M: 'a>(icon: Text<'a>) -> Element<'a, M> {

@@ -1,106 +1,90 @@
-# Plan: PathPicker hover + focus border color states
+# Plan: PathPicker transient focus border flash (simplified)
 
 ## Goal
-Make the active `PathPicker` fields (DownloadDir / SaveDir / Torrent) react like iced's native text input:
-- **Hover** (cursor over the grouped frame) → border color shifts.
-- **Focus** (after pressing any icon button inside the picker) → border shifts to a focus color, and clears when the user interacts elsewhere (`DismissHistory`, another picker, another input field, navigation/dialog open).
+Add a brief **focus** border color flash on the active `PathPicker` grouped frame when the user presses an icon button (Copy / Browse / SelectHistory / ToggleHistory). The border reverts to idle when the pointer leaves the picker.
 
-Read-only pickers (engine data dir / session file / log file in `labeled_readonly`) are **out of scope**: they are reconstructed each frame with no per-instance state and bypass `picker.update`, so they keep the current static border.
+**Hover stays as-is = no hover border implementation.** The current `grouped_frame` border is static; it is NOT changed for hover. Only focus drives the border (2 states: idle, focused).
+
+Read-only pickers (engine data dir / session / log via `labeled_readonly`) are out of scope — their Copy routes straight to `Message::CopyPath` (bypasses `picker.update`), so `focused` is never set; they keep the idle border.
 
 ## Decisions (confirmed)
-- Hover via `iced::widget::mouse_area` wrapping the grouped frame, `.on_enter`/`.on_exit` emit `PathPickerEvent::Hovered(bool)`. Inner buttons keep working (mouse_area defers to children first; verified in `iced_widget-0.14.2/src/mouse_area.rs:250-255`).
-- Focus is **synthetic** (display text_input stays disabled; no `on_input`). Pressing any icon button (Browse / SelectHistory / Copy / ToggleHistory) sets the owning picker `focused = true`.
-- **Reference study — `iced_aw::NumberInput` (confirmed rationale, approach unchanged):**
-  - `iced_aw-0.14.1/src/widget/number_input.rs` gets its input-frame hover/focus border from the inner `text_input`'s **native** `text_input::Status` (`Hovered` / `Focused { is_hovered }`), able to do so because its input has `on_input` and is genuinely focusable. The +/- buttons are drawn via a **custom `Widget`** that manually hit-tests `layout.bounds().contains(cursor)` and tracks `ModifierState { increase_pressed, decrease_pressed }` in `Tree::state`, painting button backgrounds in `draw` via `renderer.fill_quad` (`iced_aw-0.14.1/src/style/number_input.rs:11-16` defines `Style { button_background, icon_color }`, mapped over `Status { Active, Hovered, Pressed, Disabled }`).
-  - We **cannot** copy that directly: our `PathPicker` display input has no `on_input`, so `iced_widget-0.14.2:460-471` keeps its `text_input::Status` permanently `Disabled` → never reports native `Hovered`/`Focused`. Hence hover/focus must be **synthesized** via `mouse_area` (composition) rather than read from the input's own status machine.
-  - We also do **not** adopt the custom-`Widget`+`draw`+`Tree::state` route: that's heavyweight and our `PathPicker` is a plain function `view` returning composed elements, not a custom `Widget`. The `mouse_area` + struct-held state model fits the existing composition pattern.
-- Focus clears (`focused = false`) on:
-  1. `DismissHistory` — iced_aw `on_dismiss` fires on outside-click or Escape (verified `iced_aw-0.14.1/src/widget/drop_down.rs:413-432`), i.e. "click elsewhere" while the history dropdown is open.
-  2. An activating event on a *different* picker → that picker becomes focused, others lose focus (single global focus among the 3 active pickers).
-  3. Finger-keyboard interactions of OTHER (non-picker) inputs: `UrlEditor`, `SplitChanged`, `SettingChanged`, `UaEditor`, `HeadersEditor` (app clears all picker focus).
-  4. Navigation/dialog events that already call `close_history()` (`NavigatePage`, `SetSettingsCategory`, `OpenAddDialog`, `CancelAdd`) also clear all picker focus.
-- `PathPicked` (rfd result) **keeps** the picker focused (user just acted on that field). Listed as a deliberate decision; revisit if UX feels sticky.
-- **Limitation (noted honestly):** iced 0.14 has no broadcast focus event; we cannot clear picker focus on arbitrary blank-area clicks outside any control. The approximation covers the common cases (history dismiss, sibling picker, other inputs, navigation). Roaming clicks on empty window chrome are not covered.
-- `container::style()` accepts `impl Fn(&Theme) -> Style + 'a` (verified `iced_widget-0.14.2/src/container.rs:214`) — a stateful closure capturing `hovered`/`focused` (both `Copy`) is `'static`-friendly and type-correct.
+- **Revert mechanism = `mouse_area::on_exit`** (user choice), **no timer**, no cross-picker/other-input clearing, no new `Message` variants. `Exited` is a component-level `PathPickerEvent` carried by the existing `Message::PathPicker(PathPickerId, PathPickerEvent)` — zero `message.rs` change.
+- Verified `iced_widget-0.14.2/src/mouse_area.rs:310-340`: `on_exit` needs no attached `on_enter` because `state.is_hovered` is tracked internally every update; fires when `!is_hovered && was_hovered`. Inner disabled `text_input` never captures mouse-move → exit fires reliably. Inner buttons only capture press (not move), so `on_exit` on subsequent move-out still fires.
+- `container::style()` accepts `impl Fn(&Theme) -> Style + 'a` (`iced_widget-0.14.2/src/container.rs:214`); a closure capturing `focused: bool` (`Copy`) is `'static` and type-correct.
+- No `iced_aw::NumberInput`-style native-status approach: our display input has no `on_input` → its `text_input::Status` is permanently `Disabled` (`iced_widget-0.14.2:460-471`), so we synthesize via `mouse_area` + struct state (not a custom `Widget`/`draw`). Reference study recorded; approach unchanged.
+- `PathPicked` (rfd result) is irrelevant to focus now (no persistence). No app-side focus logic.
 
-## Palette (all verified present via existing usage)
-- idle border: `t.extended_palette().background.strong.color` (= current `border_color`, `theme.rs:84`)
-- hover border: `t.extended_palette().primary.weak.color` (used at `theme.rs:483`)
-- focus border: `t.extended_palette().primary.base.color` (= `accent`, `theme.rs:63`)
-- background + radius + width: unchanged from current `grouped_frame` (`background.base.color`, `RADIUS_BUTTON`, width `1.0`).
+## Palette (verified present via existing usage)
+- idle border (focused=false): `t.extended_palette().background.strong.color` (= current `border_color`, `theme.rs:84`).
+- focus border (focused=true): `t.extended_palette().primary.base.color` (= `accent`, `theme.rs:63`).
+- background: `t.extended_palette().background.base.color` (current `grouped_frame`).
+- radius `super::RADIUS_BUTTON`, border width `1.0` (current `grouped_frame`).
+
+## Acceptable, noted edge (do NOT add code to fix)
+- When the history dropdown is open, moving the cursor from the group onto the overlay leaves the group bounds → `on_exit` reverts focus briefly; selecting an item (`SelectHistory`) re-sets `focused=true`; then moving away reverts again. This is a minor cosmetic flicker, accepted for simplicity. Windows where the OS dialog (rfd) opens without cursor movement will keep focus until the cursor leaves — accepted (user choice).
 
 ## Implementation steps
 
 ### 1. `src/ui/components/path_picker.rs`
-- Add fields `hovered: bool` and `focused: bool` to `PathPicker` (`Default::default()` = false in `folder`/`file`/`read_only`).
-- Add `PathPickerEvent::Hovered(bool)` variant.
-- `update` rules (augment existing match):
-  - `Hovered(b)` → `self.hovered = b; None`
-  - `Browse` / `SelectHistory(_)` / `Copy(s)` / `ToggleHistory` → set `self.focused = true` before existing logic (Copy still returns `None` when empty, but empty Copy never fires since the button is disabled — keep guard).
-  - `DismissHistory` → `self.history_open = false; self.focused = false; None` (add focus clear).
-- Add `pub fn set_focused(&mut self, b: bool)`.
+- Import `iced::widget::mouse_area` (add to the existing `iced::widget::{...}` import line).
+- Add field `focused: bool` to `PathPicker`; init `false` in `folder`/`file`/`read_only`.
+- Add variant `PathPickerEvent::Exited` (unit variant; enum already derives `Clone`).
+- `update`:
+  - `PathPickerEvent::Exited => { self.focused = false; None }`
+  - Set `self.focused = true` at the top of each activating arm (before existing logic):
+    - `ToggleHistory` (guarded `mode != ReadOnly`) → `focused=true; history_open = !history_open; None`
+    - `SelectHistory(p)` → `focused=true; history_open=false; Some(Select(p))`
+    - `Browse` → `focused=true; Some(Browse)`
+    - `Copy(s)` → `focused=true`; keep existing empty-guard (returns `None` if empty, else `Some(Copy(s))`). Note: empty Copy never arrives (button disabled), guard retained defensively.
+  - `DismissHistory` → unchanged (`history_open=false; None`); do NOT touch `focused` here (the cursor-out `Exited` handles revert).
 - In `view`:
-  - Replace `.style(theme::style::grouped_frame)` on the group container with `.style(theme::style::grouped_frame_state(self.hovered, self.focused))`.
-  - Build the element so the DropDown case is also wrapped: `inner` = the group container (or `DropDown::new(group, overlay, open).on_dismiss(...)` when history shown). Then wrap the result: `mouse_area(inner).on_enter(map(PathPickerEvent::Hovered(true))).on_exit(map(PathPickerEvent::Hovered(false)))`. Return that. Import `iced::widget::mouse_area`.
-  - Keep existing `iced_aw::drop_down::DropDown` import; only the wrapping changes.
-- `read_only` pickers: unchanged map closure (`Copy → CopyPath`, else `Noop`); `update` never invoked for them → hovered/focused stay false → idle border. (Intentional, per scope.)
+  - Build `inner: Element<'a, M>`:
+    - group = `container(row)...style(theme::style::grouped_frame_state(self.focused))` (replace `grouped_frame`).
+    - history path → `drop_down::DropDown::new(group, overlay, self.history_open).on_dismiss(...)`.into()
+    - else → `group`.into()
+  - Wrap conditionally (skip readonly to avoid emitting `Noop` on their mouse-leave):
+    ```rust
+    if self.mode != PickerMode::ReadOnly {
+        mouse_area(inner)
+            .on_exit(map(PathPickerEvent::Exited))
+            .into()
+    } else {
+        inner
+    }
+    ```
+    This returns the final element (the current early `return` for the dropdown path must be folded into building `inner` first, then the single `mouse_area` wrap).
 
-### 2. `src/ui/theme.rs` — `style` module
-- Add `pub fn grouped_frame_state(hovered: bool, focused: bool) -> impl Fn(&iced::Theme) -> iced::widget::container::Style + 'a` returning a closure that computes border color:
-  - `if focused { primary.base.color } else if hovered { primary.weak.color } else { background.strong.color }`
-  - background `background.base.color`, radius `RADIUS_BUTTON`, border width `1.0` (mirror current `grouped_frame`).
-- Keep existing `grouped_frame` fn (idle) as the `hovered=false, focused=false` case OR delete it (only caller is path_picker). Prefer deleting after confirming no other callers (grep shows only `path_picker.rs:194`).
-
-### 3. `src/app.rs`
-- Add helpers (use existing `picker_mut`):
-  - `fn clear_other_pickers_focus(state: &mut Remotrix, except: PathPickerId)` — for each `id != except`, `picker_mut(state, id).set_focused(false)`.
-  - `fn clear_all_pickers_focus(state: &mut Remotrix)` — `set_focused(false)` on DownloadDir, SaveDir, Torrent.
-- `Message::PathPicker(id, event)` handler (rewrite existing):
+### 2. `src/ui/theme.rs` (`style` module)
+- Replace `pub fn grouped_frame(t) -> container::Style` with:
   ```rust
-  let is_activating = matches!(
-      &event,
-      PathPickerEvent::Browse
-          | PathPickerEvent::SelectHistory(_)
-          | PathPickerEvent::Copy(_)
-          | PathPickerEvent::ToggleHistory
-  );
-  let action = picker_mut(state, id).update(event);
-  if is_activating { clear_other_pickers_focus(state, id); }
-  match action {
-      Some(PathPickerAction::Copy(s)) => return iced::clipboard::write::<Message>(s),
-      Some(PathPickerAction::Browse) => return pick_path(id),
-      Some(PathPickerAction::Select(p)) => apply_path(state, id, p),
-      None => {}
+  pub fn grouped_frame_state(focused: bool) -> impl Fn(&iced::Theme) -> iced::widget::container::Style {
+      move |t| iced::widget::container::Style {
+          background: Some(t.extended_palette().background.base.color.into()),
+          border: iced::Border {
+              color: if focused { t.extended_palette().primary.base.color }
+                     else { super::border_color(t) },
+              width: 1.0,
+              radius: super::RADIUS_BUTTON.into(),
+          },
+          ..Default::default()
+      }
   }
   ```
-  (`Hovered` and `DismissHistory` are not activating → no cross-picker clear; `DismissHistory` clears this picker's own focus inside `update`.)
-- `Message::PathPicked` handler: keep existing apply_path; do NOT clear focus (decision above).
-- Add `clear_all_pickers_focus(state)` to handlers: `UrlEditor`, `SplitChanged`, `SettingChanged`, `UaEditor`, `HeadersEditor`, `SetSettingsCategory`, `OpenAddDialog`, `CancelAdd`, `NavigatePage` (next to the existing `close_history()` calls where present).
-- No structural/schema changes; `PathPickerEvent::Hovered` rides through `Message::PathPicker(PathPickerId, PathPickerEvent)` — no `message.rs` edit beyond the variant added in step 1.
+  `grouped_frame` had no other callers (grep: only `path_picker.rs:194`), so removal is safe.
 
-### 4. `src/message.rs`
-- No diff beyond what step 1's new `PathPickerEvent::Hovered` variant implies (enum lives in component; `Message::PathPicker` already carries it). No action required here.
+### 3. `src/app.rs` & `src/message.rs`
+- **No changes.** Verify by reading: `Message::PathPicker(id, event)` handler at `app.rs:234-245` calls `picker_mut(state, id).update(event)` and dispatches returned actions; `Exited` returns `None` → handled transparently. No new message needed.
 
 ## Affected files
-- `src/ui/components/path_picker.rs` (hovered/focused fields, Hovered event, update rules, mouse_area wrap, style fn swap)
-- `src/ui/theme.rs` (add `grouped_frame_state`; remove/keep `grouped_frame`)
-- `src/app.rs` (focus helpers, PathPicker handler rewrite, clear_all_pickers_focus in ~9 handlers)
-
-## Risks / watch
-- **mouse_area + DropDown composition**: verify the mouse_area does not swallow the dropdown overlay's outside-click dismissal (mouse_area only has on_enter/on_exit, no on_press; should be inert to the dismiss click). Test by opening history then clicking outside.
-- **on_exit while dropdown open**: cursor leaving the group while the overlay is shown sets `hovered=false` but `focused=true` (from ToggleHistory) stays → border remains focus-colored. Expected; verify rendering.
-- **`primary.weak` for light themes**: confirm the opaline builtin themes all define `primary.weak` (line 483 already uses it, so existing build proves it compiles; verify visual contrast in light theme at runtime).
-- **Single-focus assumption**: only 3 active pickers exist simultaneously that matter (save/torrent in add dialog; download in settings). When add dialog is closed, save/torrent pickers still hold focus flags — harmless, and `OpenAddDialog`/`CancelAdd` clear them. Verify no stale focus border leaks across dialog open/close.
-- **clippy no warnings; `cargo fmt` clean.**
+- `src/ui/components/path_picker.rs` (focused field, Exited event, update rules, mouse_area wrap, style fn swap)
+- `src/ui/theme.rs` (replace `grouped_frame` with `grouped_frame_state`)
 
 ## Validation
-- `cargo build`; `cargo clippy --workspace`; `cargo fmt --check`.
+- `cargo build`; `cargo clippy --workspace` (confirm `grouped_frame` removal leaves no unused-fn warning); `cargo fmt --check`.
 - Manual:
-  - Hover each active picker (settings download dir, add dialog save dir, add dialog torrent) → border shifts to hover color.
-  - Press Browse → border shifts to focus color; rfd opens.
-  - Open history dropdown, select an item → border focus color stays then field updates.
-  - Open history dropdown, click outside / press Esc → dropdown closes AND border returns to idle.
-  - Press Copy → border focus color; clipboard receives the path.
-  - Click into the URL editor / split input / a settings number input → previously-focused picker border returns to idle.
-  - Switch settings category / open add dialog / cancel add / navigate → all picker borders idle.
-  - Read-only engine-path pickers in Advanced → border stays idle on hover (expected per scope).
+  - Press Copy on an active picker → border flashes primary base color; move mouse out → reverts to idle.
+  - Press Browse → border flashes; rfd/OS dialog appears; on return + mouse-out → reverts.
+  - Press folder_clock → border flashes + dropdown opens; click an item → field updates + border flashes; move out → reverts.
+  - Open dropdown, click outside → closes (DismissHistory); cursor-out reverts focus.
+  - Read-only engine-path pickers (Advanced) → border stays idle throughout (expected).
+  - No `hover` border change appears (expected — hover out of scope).

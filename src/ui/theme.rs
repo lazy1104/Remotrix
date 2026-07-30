@@ -128,11 +128,20 @@ pub mod style {
         }
     }
 
-    pub fn grouped_frame(t: &iced::Theme) -> iced::widget::container::Style {
-        iced::widget::container::Style {
+    pub fn grouped_frame_state(
+        focused: bool,
+        hovered: bool,
+    ) -> impl Fn(&iced::Theme) -> iced::widget::container::Style {
+        move |t| iced::widget::container::Style {
             background: Some(t.extended_palette().background.base.color.into()),
             border: iced::Border {
-                color: super::border_color(t),
+                color: if focused {
+                    t.extended_palette().primary.base.color
+                } else if hovered {
+                    super::text_secondary(t)
+                } else {
+                    super::border_color(t)
+                },
                 width: 1.0,
                 radius: super::RADIUS_BUTTON.into(),
             },
