@@ -167,8 +167,10 @@ pub mod style {
         }
     }
 
-    pub fn tooltip(_t: &iced::Theme) -> iced::widget::container::Style {
+    pub fn tooltip(t: &iced::Theme) -> iced::widget::container::Style {
         iced::widget::container::Style {
+            background: Some(t.extended_palette().background.weak.color.into()),
+            text_color: Some(t.extended_palette().background.weak.text),
             border: iced::Border {
                 radius: super::RADIUS_BUTTON.into(),
                 ..Default::default()
