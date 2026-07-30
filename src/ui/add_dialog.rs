@@ -105,7 +105,7 @@ pub fn view<'a>(
             1..=128u16,
             1,
             |v| Message::SplitChanged(v.to_string()),
-            Length::Fixed(80.0),
+            Length::Fixed(120.0),
         ))
         .align_y(Alignment::Center)
         .width(Length::Fill);

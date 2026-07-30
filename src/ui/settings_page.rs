@@ -831,7 +831,7 @@ fn speed_labeled_input<'a>(
                 0..=u64::MAX,
                 step,
                 on_value,
-                Length::Fixed(120.0),
+                Length::Fixed(160.0),
             ))
             .push(
                 pick_list(unit_opts, sel, move |o| on_unit(o.value))
