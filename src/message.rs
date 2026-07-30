@@ -104,6 +104,13 @@ pub enum Message {
     ConfirmCancel,
     ApplyAndLeaveSettings,
     DiscardAndLeaveSettings,
+    SpeedUnitChanged(SettingKey, SpeedUnit),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpeedUnit {
+    Kbps,
+    Mbps,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -177,7 +184,7 @@ impl std::fmt::Display for SortField {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SettingKey {
     MaxConcurrent,
     DownloadLimit,

@@ -7,7 +7,7 @@ use iced::{Alignment, Element, Length};
 
 use crate::config::Settings;
 use crate::i18n::{Fluent, Locale, Tr};
-use crate::message::{Message, PathPickerId, SettingKey, SettingsCategory};
+use crate::message::{Message, PathPickerId, SettingKey, SettingsCategory, SpeedUnit};
 use iced::Color;
 
 use crate::ui::components::number_stepper::number_stepper;
@@ -17,15 +17,27 @@ use crate::ui::theme;
 #[derive(Debug, Clone)]
 pub struct SettingsUiState {
     pub download_picker: PathPicker,
+    pub speed_units: HashMap<SettingKey, SpeedUnit>,
 }
 
 impl SettingsUiState {
     pub fn new(settings: &Settings) -> Self {
+        let mut speed_units = HashMap::new();
+        for key in &[
+            SettingKey::DownloadLimit,
+            SettingKey::UploadLimit,
+            SettingKey::MaxDownloadLimit,
+            SettingKey::MaxUploadLimit,
+            SettingKey::LowestSpeedLimit,
+        ] {
+            speed_units.insert(*key, SpeedUnit::Kbps);
+        }
         Self {
             download_picker: PathPicker::folder(
                 settings.download_dir.to_string_lossy().into_owned(),
                 true,
             ),
+            speed_units,
         }
     }
 }
@@ -303,41 +315,85 @@ fn download_view<'a>(
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::SpeedLimits, accent))
-        .push(labeled_number(
-            fluent.get(Tr::DownloadLimit),
-            &settings.download_limit_kb,
-            0..=u64::MAX,
-            100,
-            SettingKey::DownloadLimit,
-        ))
-        .push(labeled_number(
-            fluent.get(Tr::UploadLimit),
-            &settings.upload_limit_kb,
-            0..=u64::MAX,
-            100,
-            SettingKey::UploadLimit,
-        ))
-        .push(labeled_number(
-            fluent.get(Tr::PerTaskDownloadLimit),
-            &settings.aria2.max_download_limit_kb,
-            0..=u64::MAX,
-            100,
-            SettingKey::MaxDownloadLimit,
-        ))
-        .push(labeled_number(
-            fluent.get(Tr::PerTaskUploadLimit),
-            &settings.aria2.max_upload_limit_kb,
-            0..=u64::MAX,
-            100,
-            SettingKey::MaxUploadLimit,
-        ))
-        .push(labeled_number(
-            fluent.get(Tr::LowestSpeedLimit),
-            &settings.aria2.lowest_speed_limit_kb,
-            0..=u64::MAX,
-            100,
-            SettingKey::LowestSpeedLimit,
-        ))
+        .push({
+            let unit = settings_ui
+                .speed_units
+                .get(&SettingKey::DownloadLimit)
+                .copied()
+                .unwrap_or(SpeedUnit::Kbps);
+            speed_labeled_input(
+                fluent.get(Tr::DownloadLimit),
+                &settings.download_limit_kb,
+                unit,
+                move |v| Message::SettingChanged(SettingKey::DownloadLimit, v.to_string()),
+                move |u| Message::SpeedUnitChanged(SettingKey::DownloadLimit, u),
+            )
+        })
+        .push({
+            let unit = settings_ui
+                .speed_units
+                .get(&SettingKey::UploadLimit)
+                .copied()
+                .unwrap_or(SpeedUnit::Kbps);
+            speed_labeled_input(
+                fluent.get(Tr::UploadLimit),
+                &settings.upload_limit_kb,
+                unit,
+                move |v| Message::SettingChanged(SettingKey::UploadLimit, v.to_string()),
+                move |u| Message::SpeedUnitChanged(SettingKey::UploadLimit, u),
+            )
+        })
+        .push({
+            let unit = settings_ui
+                .speed_units
+                .get(&SettingKey::MaxDownloadLimit)
+                .copied()
+                .unwrap_or(SpeedUnit::Kbps);
+            speed_labeled_input(
+                fluent.get(Tr::PerTaskDownloadLimit),
+                &settings.aria2.max_download_limit_kb,
+                unit,
+                move |v| {
+                    let kb = if unit == SpeedUnit::Kbps { v } else { v * 1024 };
+                    Message::SettingChanged(SettingKey::MaxDownloadLimit, kb.to_string())
+                },
+                move |u| Message::SpeedUnitChanged(SettingKey::MaxDownloadLimit, u),
+            )
+        })
+        .push({
+            let unit = settings_ui
+                .speed_units
+                .get(&SettingKey::MaxUploadLimit)
+                .copied()
+                .unwrap_or(SpeedUnit::Kbps);
+            speed_labeled_input(
+                fluent.get(Tr::PerTaskUploadLimit),
+                &settings.aria2.max_upload_limit_kb,
+                unit,
+                move |v| {
+                    let kb = if unit == SpeedUnit::Kbps { v } else { v * 1024 };
+                    Message::SettingChanged(SettingKey::MaxUploadLimit, kb.to_string())
+                },
+                move |u| Message::SpeedUnitChanged(SettingKey::MaxUploadLimit, u),
+            )
+        })
+        .push({
+            let unit = settings_ui
+                .speed_units
+                .get(&SettingKey::LowestSpeedLimit)
+                .copied()
+                .unwrap_or(SpeedUnit::Kbps);
+            speed_labeled_input(
+                fluent.get(Tr::LowestSpeedLimit),
+                &settings.aria2.lowest_speed_limit_kb,
+                unit,
+                move |v| {
+                    let kb = if unit == SpeedUnit::Kbps { v } else { v * 1024 };
+                    Message::SettingChanged(SettingKey::LowestSpeedLimit, kb.to_string())
+                },
+                move |u| Message::SpeedUnitChanged(SettingKey::LowestSpeedLimit, u),
+            )
+        })
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::Confirm, accent))
         .push(labeled_toggle(
@@ -711,6 +767,75 @@ fn labeled_readonly<'a>(
         .height(Length::Fixed(36.0))
         .align_y(Alignment::Center)
         .into()
+}
+
+#[derive(Debug, Clone, Copy)]
+struct UnitOption {
+    value: SpeedUnit,
+    label: &'static str,
+}
+
+impl std::fmt::Display for UnitOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.label)
+    }
+}
+
+impl PartialEq for UnitOption {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+
+fn speed_labeled_input<'a>(
+    label: String,
+    value_kb: &'a u64,
+    unit: SpeedUnit,
+    on_value: impl Fn(u64) -> Message + 'a,
+    on_unit: impl Fn(SpeedUnit) -> Message + 'a,
+) -> Element<'a, Message> {
+    let unit_opts = [
+        UnitOption {
+            value: SpeedUnit::Kbps,
+            label: "KB/s",
+        },
+        UnitOption {
+            value: SpeedUnit::Mbps,
+            label: "MB/s",
+        },
+    ];
+    let sel = unit_opts.iter().find(|o| o.value == unit).copied();
+
+    let (display_val, step) = match unit {
+        SpeedUnit::Kbps => (*value_kb, 100),
+        SpeedUnit::Mbps => {
+            if *value_kb == 0 {
+                (0, 1)
+            } else {
+                (*value_kb / 1024, 1)
+            }
+        }
+    };
+    let display: &'a u64 = &*Box::leak(Box::new(display_val));
+
+    setting_row(
+        label,
+        row![]
+            .spacing(8)
+            .push(number_stepper(
+                display,
+                0..=u64::MAX,
+                step,
+                on_value,
+                Length::Fixed(120.0),
+            ))
+            .push(
+                pick_list(unit_opts, sel, move |o| on_unit(o.value))
+                    .width(Length::Fixed(80.0)),
+            )
+            .align_y(Alignment::Center)
+            .into(),
+    )
 }
 
 fn group_title<'a>(fluent: &'a Fluent, key: Tr, accent: Color) -> Element<'a, Message> {

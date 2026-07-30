@@ -7,6 +7,7 @@ use iced::{Alignment, Element, Length};
 
 use iced_aw::widget::drop_down;
 
+use super::CONTROL_HEIGHT;
 use crate::i18n::{Fluent, Tr};
 use crate::ui::icon;
 use crate::ui::theme;
@@ -216,7 +217,7 @@ impl PathPicker {
 
         let group = container(row)
             .width(Length::Fill)
-            .height(Length::Fixed(36.0))
+            .height(Length::Fixed(CONTROL_HEIGHT))
             .padding(1.0)
             .style(theme::style::grouped_frame_state(
                 self.focused,

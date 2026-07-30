@@ -10,6 +10,7 @@ use iced::{
     Alignment, Background, Color, Element, Event, Length, Padding, Point, Rectangle, Size, Vector,
 };
 
+use super::CONTROL_HEIGHT;
 use crate::ui::icon;
 use crate::ui::theme;
 
@@ -299,7 +300,7 @@ where
     }
 
     fn size(&self) -> Size<Length> {
-        Size::new(self.width, Length::Fixed(36.0))
+        Size::new(self.width, Length::Fixed(CONTROL_HEIGHT))
     }
 
     fn layout(
@@ -308,13 +309,13 @@ where
         renderer: &iced::Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
-        let limits = limits.width(self.width).height(Length::Fixed(36.0));
+        let limits = limits.width(self.width).height(Length::Fixed(CONTROL_HEIGHT));
         let content = self.child.as_widget_mut().layout(
             &mut tree.children[0],
             renderer,
             &limits.shrink(Padding::new(1.0)),
         );
-        let size = limits.resolve(self.width, Length::Fixed(36.0), content.size());
+        let size = limits.resolve(self.width, Length::Fixed(CONTROL_HEIGHT), content.size());
         layout::Node::with_children(size, vec![content.move_to(Point::new(1.0, 1.0))])
     }
 

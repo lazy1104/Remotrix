@@ -842,6 +842,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.fluent = Fluent::new(locale);
             config::save(&state.settings);
         }
+        Message::SpeedUnitChanged(key, unit) => {
+            state.settings_ui.speed_units.insert(key, unit);
+        }
         Message::UaEditor(action) => {
             state.ua_editor.perform(action);
             state.settings.aria2.user_agent = state.ua_editor.text();
