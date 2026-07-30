@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use iced::widget::{button, column, container, row, text, text_editor, text_input};
+use iced::widget::{button, column, container, row, text, text_editor};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, PathPickerId};
+use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::path_picker::PathPicker;
 use crate::ui::theme;
 
@@ -91,7 +92,6 @@ pub fn view<'a>(
             Message::PathPicker(PathPickerId::SaveDir, e)
         }));
 
-    let split_str = state.split.to_string();
     let split_input = row![]
         .push(
             text(fluent.get(Tr::SplitConnections))
@@ -99,13 +99,13 @@ pub fn view<'a>(
                 .style(theme::style::text::secondary),
         )
         .push(iced::widget::Space::new().width(Length::Fill))
-        .push(
-            text_input("16", split_str.as_str())
-                .on_input(Message::SplitChanged)
-                .width(Length::Fixed(80.0))
-                .padding(8)
-                .size(14),
-        )
+        .push(number_stepper(
+            &state.split,
+            1..=128u16,
+            1,
+            |v| Message::SplitChanged(v.to_string()),
+            Length::Fixed(80.0),
+        ))
         .align_y(Alignment::Center)
         .width(Length::Fill);
 

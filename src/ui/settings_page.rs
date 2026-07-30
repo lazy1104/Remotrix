@@ -10,6 +10,7 @@ use crate::i18n::{Fluent, Locale, Tr};
 use crate::message::{Message, PathPickerId, SettingKey, SettingsCategory};
 use iced::Color;
 
+use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::path_picker::{PathPicker, PathPickerEvent};
 use crate::ui::theme;
 
@@ -616,18 +617,20 @@ where
         + std::fmt::Display
         + std::str::FromStr
         + Clone
+        + Copy
         + num_traits::Bounded
         + 'static,
     <T as std::str::FromStr>::Err: std::fmt::Debug,
 {
     setting_row(
         label,
-        iced_aw::NumberInput::new(value, bounds, move |v| {
-            Message::SettingChanged(key, v.to_string())
-        })
-        .step(step)
-        .width(Length::Fixed(160.0))
-        .into(),
+        number_stepper(
+            value,
+            bounds,
+            step,
+            move |v| Message::SettingChanged(key, v.to_string()),
+            Length::Fixed(160.0),
+        ),
     )
 }
 
