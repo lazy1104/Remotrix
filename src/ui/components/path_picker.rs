@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use iced::widget::{
-    button, column, container, mouse_area, row, text, text_input, Space, Text,
+    button, column, container, mouse_area, row, scrollable, text, text_input, Space,
+    Text,
 };
 use iced::{Alignment, Element, Length};
 
@@ -237,9 +238,14 @@ impl PathPicker {
                     })
                     .collect();
 
-                let overlay = container(column(overlay_items).spacing(2).width(Length::Fill))
-                    .padding(6)
-                    .style(theme::style::card);
+                let overlay = container(
+                    scrollable(column(overlay_items).spacing(2).width(Length::Fill))
+                        .direction(scrollable::Direction::Vertical(
+                            scrollable::Scrollbar::hidden(),
+                        )),
+                )
+                .padding(6)
+                .style(theme::style::card);
 
                 drop_down::DropDown::new(group, overlay, self.history_open)
                     .on_dismiss(map(PathPickerEvent::DismissHistory))
