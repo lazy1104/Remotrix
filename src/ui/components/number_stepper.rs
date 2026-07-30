@@ -150,7 +150,11 @@ where
         .style(theme::style::button::grouped_icon(false))
         .height(Length::Fill);
     if !read_only {
-        let minus_val = if *value >= min + step { *value - step } else { min };
+        let minus_val = if *value >= min + step {
+            *value - step
+        } else {
+            min
+        };
         let clamped = clamp_value(minus_val, min, max);
         r = r.push(minus_btn.on_press((on_change)(clamped)));
     } else {
@@ -163,7 +167,11 @@ where
         .style(theme::style::button::grouped_icon(true))
         .height(Length::Fill);
     if !read_only {
-        let plus_val = if *value <= max - step { *value + step } else { max };
+        let plus_val = if *value <= max - step {
+            *value + step
+        } else {
+            max
+        };
         let clamped = clamp_value(plus_val, min, max);
         r = r.push(plus_btn.on_press((on_change)(clamped)));
     } else {
@@ -309,7 +317,9 @@ where
         renderer: &iced::Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
-        let limits = limits.width(self.width).height(Length::Fixed(CONTROL_HEIGHT));
+        let limits = limits
+            .width(self.width)
+            .height(Length::Fixed(CONTROL_HEIGHT));
         let content = self.child.as_widget_mut().layout(
             &mut tree.children[0],
             renderer,

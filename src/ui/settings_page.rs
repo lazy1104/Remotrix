@@ -708,6 +708,7 @@ fn labeled_text_input<'a>(label: String, value: &'a str, key: SettingKey) -> Ele
             .width(Length::Fill)
             .padding(8)
             .size(13)
+            .style(theme::style::input::standard)
             .into(),
     )
 }
@@ -724,7 +725,8 @@ fn labeled_editor<'a>(
                 .on_action(on_edit)
                 .height(Length::Fixed(80.0))
                 .padding(8)
-                .size(13),
+                .size(13)
+                .style(theme::style::text_editor::standard),
         )
         .align_y(Alignment::Start)
         .into()
@@ -747,6 +749,8 @@ where
         pick_list(options, sel, on_select)
             .placeholder(&placeholder)
             .width(Length::Fixed(180.0))
+            .style(theme::style::pick_list::standard)
+            .menu_style(theme::style::pick_list::menu)
             .into(),
     )
 }
@@ -831,7 +835,9 @@ fn speed_labeled_input<'a>(
             ))
             .push(
                 pick_list(unit_opts, sel, move |o| on_unit(o.value))
-                    .width(Length::Fixed(80.0)),
+                    .width(Length::Fixed(80.0))
+                    .style(theme::style::pick_list::standard)
+                    .menu_style(theme::style::pick_list::menu),
             )
             .align_y(Alignment::Center)
             .into(),

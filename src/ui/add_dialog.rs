@@ -64,7 +64,8 @@ pub fn view<'a>(
         .on_action(Message::UrlEditor)
         .height(Length::Fixed(120.0))
         .padding(10)
-        .size(14);
+        .size(14)
+        .style(theme::style::text_editor::standard);
 
     let torrent_row = column![]
         .spacing(4)

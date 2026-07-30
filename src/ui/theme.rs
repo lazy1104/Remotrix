@@ -492,6 +492,39 @@ pub mod style {
                 selection: p.primary.weak.color,
             }
         }
+
+        pub fn standard(t: &iced::Theme, status: text_input::Status) -> text_input::Style {
+            let mut s = text_input::default(t, status);
+            s.border.radius = super::super::RADIUS_BUTTON.into();
+            s
+        }
+    }
+
+    pub mod text_editor {
+        use iced::widget::text_editor;
+
+        pub fn standard(t: &iced::Theme, status: text_editor::Status) -> text_editor::Style {
+            let mut s = text_editor::default(t, status);
+            s.border.radius = super::super::RADIUS_BUTTON.into();
+            s
+        }
+    }
+
+    pub mod pick_list {
+        use iced::widget::overlay::menu;
+        use iced::widget::pick_list;
+
+        pub fn standard(t: &iced::Theme, status: pick_list::Status) -> pick_list::Style {
+            let mut s = pick_list::default(t, status);
+            s.border.radius = super::super::RADIUS_BUTTON.into();
+            s
+        }
+
+        pub fn menu(t: &iced::Theme) -> menu::Style {
+            let mut s = menu::default(t);
+            s.border.radius = super::super::RADIUS_BUTTON.into();
+            s
+        }
     }
 
     pub mod progress {
