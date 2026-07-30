@@ -1,12 +1,13 @@
 use std::path::PathBuf;
 
 use iced::widget::{
-    button, column, container, mouse_area, row, text, text_input, tooltip, Space, Text,
+    button, column, container, mouse_area, row, text, text_input, Space, Text,
 };
 use iced::{Alignment, Element, Length};
 
 use iced_aw::widget::drop_down;
 
+use super::tooltip;
 use super::CONTROL_HEIGHT;
 use crate::i18n::{Fluent, Tr};
 use crate::ui::icon;
@@ -171,16 +172,14 @@ impl PathPicker {
             if !self.value.is_empty() {
                 btn = btn.on_press(map(PathPickerEvent::Copy(self.value.clone())));
             }
-            tooltip(btn, text(fluent.get(Tr::Copy)), tooltip::Position::Bottom)
-                .style(container::rounded_box)
-                .into()
+            tooltip::standard(btn, text(fluent.get(Tr::Copy)), iced::widget::tooltip::Position::Bottom)
         };
         row = row.push(copy_btn);
 
         if self.mode != PickerMode::ReadOnly {
             row = row.push(Self::separator());
 
-            let browse_btn: Element<'a, M> = tooltip(
+            let browse_btn: Element<'a, M> = tooltip::standard(
                 button(Self::icon_content(
                     icon::folder_open().size(15).color(text_secondary),
                 ))
@@ -188,10 +187,8 @@ impl PathPicker {
                 .style(theme::style::button::grouped_icon(false))
                 .height(Length::Fill),
                 text(fluent.get(Tr::Browse)),
-                tooltip::Position::Bottom,
-            )
-            .style(container::rounded_box)
-            .into();
+                iced::widget::tooltip::Position::Bottom,
+            );
             row = row.push(browse_btn);
 
             if self.show_history {

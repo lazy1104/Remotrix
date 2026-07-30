@@ -5,6 +5,7 @@ use iced_aw::widget::drop_down;
 use crate::i18n::{Fluent, Tr};
 use crate::message::{ConfirmAction, Message, SortField, SortOrder};
 use crate::task::{format_duration, format_size, format_speed, DownloadTask, TaskStatus};
+use crate::ui::components::tooltip as tip;
 use crate::ui::icon;
 use crate::ui::theme;
 
@@ -30,9 +31,7 @@ pub fn view<'a>(
                 .on_press(msg)
                 .padding([6_u16, 8])
                 .style(theme::style::button::toolbar_icon(active));
-            tooltip(btn, text(tip), tooltip::Position::Bottom)
-                .style(container::rounded_box)
-                .into()
+            tip::standard(btn, text(tip), tooltip::Position::Bottom)
         };
 
     let sort_active = sort_menu_open || sort_field != SortField::AddedTime;
@@ -96,13 +95,11 @@ pub fn view<'a>(
             .on_press(Message::OpenAddDialog)
             .padding([6_u16, 8])
             .style(theme::style::button::toolbar_icon(true));
-        tooltip(
+        tip::standard(
             btn,
             text(fluent.get(Tr::NewDownload)),
             tooltip::Position::Bottom,
         )
-        .style(container::rounded_box)
-        .into()
     };
 
     let toolbar = row![]
@@ -225,7 +222,7 @@ fn task_card<'a>(
 
     let show_in_folder_btn: Element<'a, Message> = if !t.save_dir.as_os_str().is_empty() {
         let glyph = icon::folder_open().size(15).color(text_secondary);
-        tooltip(
+        tip::standard(
             button(glyph)
                 .on_press(Message::OpenTaskFolder(t.gid.clone()))
                 .padding(4)
@@ -233,8 +230,6 @@ fn task_card<'a>(
             text(fluent.get(Tr::ShowInFolder)).size(12),
             tooltip::Position::Bottom,
         )
-        .style(container::rounded_box)
-        .into()
     } else {
         let glyph = icon::folder_open().size(15).color(text_secondary);
         button(glyph)
@@ -245,7 +240,7 @@ fn task_card<'a>(
 
     let copy_link_btn: Element<'a, Message> = if !t.url.is_empty() {
         let glyph = icon::copy().size(15).color(text_secondary);
-        tooltip(
+        tip::standard(
             button(glyph)
                 .on_press(Message::CopyTaskLink(t.gid.clone()))
                 .padding(4)
@@ -253,8 +248,6 @@ fn task_card<'a>(
             text(fluent.get(Tr::CopyLink)).size(12),
             tooltip::Position::Bottom,
         )
-        .style(container::rounded_box)
-        .into()
     } else {
         let glyph = icon::copy().size(15).color(text_secondary);
         button(glyph)
@@ -265,7 +258,7 @@ fn task_card<'a>(
 
     let details_btn: Element<'a, Message> = {
         let glyph = icon::details().size(15).color(text_secondary);
-        tooltip(
+        tip::standard(
             button(glyph)
                 .on_press(Message::OpenTaskDetails(t.gid.clone()))
                 .padding(4)
@@ -273,13 +266,11 @@ fn task_card<'a>(
             text(fluent.get(Tr::Details)).size(12),
             tooltip::Position::Bottom,
         )
-        .style(container::rounded_box)
-        .into()
     };
 
     let delete_btn: Element<'a, Message> = {
         let glyph = icon::trash().size(15).color(text_secondary);
-        tooltip(
+        tip::standard(
             button(glyph)
                 .on_press(Message::RequestConfirm(ConfirmAction::DeleteTask(
                     t.gid.clone(),
@@ -289,8 +280,6 @@ fn task_card<'a>(
             text(fluent.get(Tr::Delete)).size(12),
             tooltip::Position::Bottom,
         )
-        .style(container::rounded_box)
-        .into()
     };
 
     let toolbar = row![]

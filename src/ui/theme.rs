@@ -35,6 +35,7 @@ pub const RADIUS_CARD: f32 = 8.0;
 pub const RADIUS_BUTTON: f32 = 6.0;
 pub const RADIUS_PILL: f32 = 40.0;
 pub const RADIUS_PROGRESS: f32 = 4.0;
+pub const RADIUS_NAV: f32 = 20.0;
 
 pub fn build_iced(theme_id: &str) -> iced::Theme {
     let opaline = opaline::builtins::load_by_name(theme_id).unwrap_or_default();
@@ -162,6 +163,16 @@ pub mod style {
             background: Some(Color::from_rgba(accent.r, accent.g, accent.b, 0.18).into()),
             text_color: Some(accent),
             border: iced::border::rounded(super::RADIUS_BUTTON),
+            ..Default::default()
+        }
+    }
+
+    pub fn tooltip(_t: &iced::Theme) -> iced::widget::container::Style {
+        iced::widget::container::Style {
+            border: iced::Border {
+                radius: super::RADIUS_BUTTON.into(),
+                ..Default::default()
+            },
             ..Default::default()
         }
     }
@@ -370,7 +381,7 @@ pub mod style {
                             Color::from_rgba(accent.r, accent.g, accent.b, 0.25).into(),
                         ),
                         text_color: accent,
-                        border: iced::border::rounded(20.0),
+                        border: iced::border::rounded(super::super::RADIUS_NAV),
                         ..Default::default()
                     }
                 } else {
@@ -383,7 +394,7 @@ pub mod style {
                             _ => None,
                         },
                         text_color: text,
-                        border: iced::border::rounded(20.0),
+                        border: iced::border::rounded(super::super::RADIUS_NAV),
                         ..Default::default()
                     }
                 }

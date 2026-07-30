@@ -1,8 +1,9 @@
-use iced::widget::{button, column, container, image, text, tooltip};
+use iced::widget::{button, column, container, image, text};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, Page};
+use crate::ui::components::tooltip;
 use crate::ui::theme;
 
 pub fn view<'a>(
@@ -38,9 +39,7 @@ pub fn view<'a>(
                 .height(Length::Fixed(40.0))
                 .style(theme::style::button::sidebar_nav(active));
 
-            tooltip(btn, text(tip), tooltip::Position::Right)
-                .style(container::rounded_box)
-                .into()
+            tooltip::standard(btn, text(tip), iced::widget::tooltip::Position::Right)
         };
 
     let list_area = icon_btn(
