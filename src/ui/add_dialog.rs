@@ -120,13 +120,11 @@ pub fn view<'a>(
         )
         .push({
             let mut btn = button(text(fluent.get(Tr::Download)).size(14))
-                .on_press(Message::AddDownload)
-                .padding([8, 18]);
-            btn = if state.can_submit() {
-                btn.style(theme::style::button::primary())
-            } else {
-                btn.style(theme::style::button::secondary())
-            };
+                .padding([8, 18])
+                .style(theme::style::button::primary());
+            if state.can_submit() {
+                btn = btn.on_press(Message::AddDownload);
+            }
             btn
         })
         .spacing(10)

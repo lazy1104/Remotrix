@@ -363,8 +363,25 @@ pub mod style {
 
         pub fn secondary<'a>() -> impl Fn(&iced::Theme, Status) -> Style + 'a {
             move |t: &iced::Theme, status: Status| -> Style {
-                let p = t.extended_palette().secondary;
-                filled(p.base.color, p.strong.color, p.base.text, status)
+                let base_text = t.extended_palette().background.base.text;
+                Style {
+                    background: match status {
+                        Status::Hovered => Some(Color::from_rgba(1.0, 1.0, 1.0, 0.08).into()),
+                        Status::Pressed => Some(Color::from_rgba(1.0, 1.0, 1.0, 0.14).into()),
+                        _ => None,
+                    },
+                    text_color: match status {
+                        Status::Disabled => scale_alpha(base_text, 0.5),
+                        _ => base_text,
+                    },
+                    border: iced::Border {
+                        color: super::super::border_color(t),
+                        width: 1.0,
+                        radius: iced::border::rounded(super::super::RADIUS_BUTTON).radius,
+                    },
+                    shadow: Shadow::default(),
+                    ..Default::default()
+                }
             }
         }
 
