@@ -293,9 +293,9 @@ fn task_card<'a>(
         .align_y(Alignment::Center);
 
     let bar_color = match t.status {
-        TaskStatus::Paused => theme::warning(theme),
+        TaskStatus::Paused => theme::primary_weak(theme),
         TaskStatus::Error => theme::danger(theme),
-        _ => theme::success(theme),
+        _ => theme::primary(theme),
     };
     let bar = progress_bar(0.0..=100.0, pct)
         .girth(Length::Fixed(8.0))

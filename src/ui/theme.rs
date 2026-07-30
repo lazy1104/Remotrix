@@ -77,6 +77,14 @@ pub fn danger(t: &Theme) -> Color {
     t.extended_palette().danger.base.color
 }
 
+pub fn primary(t: &Theme) -> Color {
+    t.extended_palette().primary.base.color
+}
+
+pub fn primary_weak(t: &Theme) -> Color {
+    t.extended_palette().primary.weak.color
+}
+
 pub fn text_secondary(t: &Theme) -> Color {
     t.extended_palette().background.base.text
 }
