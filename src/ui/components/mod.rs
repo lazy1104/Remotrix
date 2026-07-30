@@ -1,3 +1,4 @@
+pub mod drop_down;
 pub mod number_stepper;
 pub mod path_picker;
 pub mod slim_scrollable;

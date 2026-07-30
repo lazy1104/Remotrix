@@ -5,7 +5,7 @@ use iced::widget::{
 };
 use iced::{Alignment, Element, Length};
 
-use iced_aw::widget::drop_down;
+use super::drop_down;
 
 use super::tooltip;
 use super::CONTROL_HEIGHT;
