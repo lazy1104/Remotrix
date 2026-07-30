@@ -20,8 +20,10 @@ use crate::message::{
 use crate::task::{DownloadTask, TaskStatus};
 use crate::ui::add_dialog::AddDialogState;
 use crate::ui::category_bar::Counts;
+use crate::ui::components::path_picker::PathPickerAction;
 use crate::ui::details_dialog::DetailsDialogState;
 use crate::ui::icons::{CATEGORY_W, SIDEBAR_W};
+use crate::ui::settings_page::SettingsUiState;
 use crate::ui::theme::{self, ThemeMode};
 pub struct Remotrix {
     page: Page,
@@ -62,7 +64,7 @@ pub struct Remotrix {
     confirm: Option<ConfirmAction>,
     settings_dirty: bool,
     applied_settings: Settings,
-    path_history_open: Option<PathPickerId>,
+    settings_ui: SettingsUiState,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
@@ -78,6 +80,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
 
     let (handle, event_rx) = crate::engine::spawn_engine();
 
+    let settings_ui = SettingsUiState::new(&settings);
     let add_dialog = AddDialogState::new(settings.download_dir.clone());
     let fluent = Fluent::new(settings.locale);
 
@@ -135,7 +138,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         pending_close: false,
         confirm: None,
         settings_dirty: false,
-        path_history_open: None,
+        settings_ui,
     };
 
     (state, Task::none())
@@ -169,6 +172,10 @@ fn sync_geometry_to_settings(state: &mut Remotrix) {
 
 fn revert_apply_settings(state: &mut Remotrix) {
     state.settings.download_dir = state.applied_settings.download_dir.clone();
+    state
+        .settings_ui
+        .download_picker
+        .set_value(state.settings.download_dir.to_string_lossy());
     state.settings.max_concurrent = state.applied_settings.max_concurrent;
     state.settings.download_limit_kb = state.applied_settings.download_limit_kb;
     state.settings.upload_limit_kb = state.applied_settings.upload_limit_kb;
@@ -195,7 +202,7 @@ fn clear_all_local(state: &mut Remotrix) {
 pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
     match message {
         Message::NavigatePage(page) => {
-            state.path_history_open = None;
+            state.settings_ui.download_picker.close_history();
             if page == Page::Tasks && state.page == Page::Settings && state.settings_dirty {
                 state.confirm = Some(ConfirmAction::LeaveSettings { target: page });
             } else {
@@ -206,46 +213,44 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.task_filter = filter;
         }
         Message::SetSettingsCategory(cat) => {
-            state.path_history_open = None;
+            state.settings_ui.download_picker.close_history();
             state.settings_cat = cat;
         }
         Message::OpenAddDialog => {
-            state.path_history_open = None;
+            state.add_dialog.save_picker.close_history();
+            state.add_dialog.torrent_picker.close_history();
             state
                 .add_dialog
                 .open(state.settings.download_dir.clone(), state.settings.split);
         }
         Message::CancelAdd => {
-            state.path_history_open = None;
+            state.add_dialog.save_picker.close_history();
+            state.add_dialog.torrent_picker.close_history();
             state.add_dialog.close();
         }
         Message::UrlEditor(action) => {
             state.add_dialog.url_editor.perform(action);
         }
-        Message::BrowsePath(id) => {
-            tracing::debug!(?id, "ui: browse path");
-            return pick_path(id);
+        Message::PathPicker(id, event) => {
+            let action = picker_mut(state, id).update(event);
+            match action {
+                Some(PathPickerAction::Copy(s)) => {
+                    return iced::clipboard::write::<Message>(s);
+                }
+                Some(PathPickerAction::Browse) => {
+                    return pick_path(id);
+                }
+                Some(PathPickerAction::Select(p)) => {
+                    apply_path(state, id, p);
+                }
+                None => {}
+            }
         }
         Message::PathPicked(id, maybe_path) => {
             tracing::debug!(?id, picked = maybe_path.is_some(), "ui: path picked");
             if let Some(p) = maybe_path {
                 apply_path(state, id, p);
             }
-            state.path_history_open = None;
-        }
-        Message::SelectPathHistory(id, p) => {
-            apply_path(state, id, p);
-            state.path_history_open = None;
-        }
-        Message::TogglePathHistory(id) => {
-            state.path_history_open = if state.path_history_open == Some(id) {
-                None
-            } else {
-                Some(id)
-            };
-        }
-        Message::ClosePathHistory => {
-            state.path_history_open = None;
         }
         Message::CopyPath(s) => {
             if !s.is_empty() {
@@ -261,14 +266,17 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             if state.add_dialog.can_submit() {
                 let nav = state.settings.nav_to_tasks_after_add;
 
-                if let Some(tpath) = state.add_dialog.torrent_path.clone() {
+                let tpath_str = state.add_dialog.torrent_picker.value().to_string();
+                if !tpath_str.is_empty() {
+                    let tpath = PathBuf::from(&tpath_str);
+                    let save_dir = PathBuf::from(state.add_dialog.save_picker.value());
                     state.pending_torrent_path = Some(tpath.clone());
                     if state
                         .handle
                         .cmd_tx
                         .send(EngineCmd::AddTorrent {
                             path: tpath,
-                            save_dir: state.add_dialog.save_dir.clone(),
+                            save_dir,
                             split: state.add_dialog.split,
                         })
                         .is_err()
@@ -292,12 +300,13 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     .filter(|l| !l.is_empty())
                     .collect();
                 if !urls.is_empty() {
+                    let save_dir = PathBuf::from(state.add_dialog.save_picker.value());
                     if state
                         .handle
                         .cmd_tx
                         .send(EngineCmd::AddDownload {
                             urls: urls.clone(),
-                            save_dir: state.add_dialog.save_dir.clone(),
+                            save_dir,
                             split: state.add_dialog.split,
                         })
                         .is_err()
@@ -1063,6 +1072,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             &state.fluent,
             t,
             &state.settings,
+            &state.settings_ui,
             state.settings_cat,
             state.aria2_version.as_deref(),
             state.aria2_check_msg.as_deref(),
@@ -1075,7 +1085,6 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             &state.ua_editor,
             &state.headers_editor,
             &state.settings.path_history,
-            state.path_history_open,
         ),
     };
 
@@ -1130,7 +1139,6 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                 t,
                 &state.add_dialog,
                 &state.settings.path_history,
-                state.path_history_open,
             ),
         ]
         .width(Length::Fill)
@@ -1251,21 +1259,42 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
     ])
 }
 
+fn picker_mut(
+    state: &mut Remotrix,
+    id: PathPickerId,
+) -> &mut crate::ui::components::path_picker::PathPicker {
+    match id {
+        PathPickerId::DownloadDir => &mut state.settings_ui.download_picker,
+        PathPickerId::SaveDir => &mut state.add_dialog.save_picker,
+        PathPickerId::Torrent => &mut state.add_dialog.torrent_picker,
+    }
+}
+
 fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
     let s = p.to_string_lossy().to_string();
     match id {
         PathPickerId::DownloadDir => {
             state.settings.record_path(id.history_key(), &s);
-            state.settings.download_dir = p;
+            state.settings.download_dir = p.clone();
+            state
+                .settings_ui
+                .download_picker
+                .set_value(p.to_string_lossy());
+            state.settings_ui.download_picker.close_history();
             state.settings_dirty = true;
         }
         PathPickerId::SaveDir => {
             state.settings.record_path(id.history_key(), &s);
-            state.add_dialog.save_dir = p;
+            state.add_dialog.save_picker.set_value(p.to_string_lossy());
+            state.add_dialog.save_picker.close_history();
             config::save(&state.settings);
         }
         PathPickerId::Torrent => {
-            state.add_dialog.torrent_path = Some(p);
+            state
+                .add_dialog
+                .torrent_picker
+                .set_value(p.to_string_lossy());
+            state.add_dialog.torrent_picker.close_history();
             config::save(&state.settings);
         }
     }

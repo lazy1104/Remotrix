@@ -10,8 +10,24 @@ use crate::i18n::{Fluent, Locale, Tr};
 use crate::message::{Message, PathPickerId, SettingKey, SettingsCategory};
 use iced::Color;
 
-use crate::ui::path_picker;
+use crate::ui::components::path_picker::{PathPicker, PathPickerEvent};
 use crate::ui::theme;
+
+#[derive(Debug, Clone)]
+pub struct SettingsUiState {
+    pub download_picker: PathPicker,
+}
+
+impl SettingsUiState {
+    pub fn new(settings: &Settings) -> Self {
+        Self {
+            download_picker: PathPicker::folder(
+                settings.download_dir.to_string_lossy().into_owned(),
+                true,
+            ),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 struct Labeled<T> {
@@ -39,6 +55,7 @@ pub fn view<'a>(
     fluent: &'a Fluent,
     theme: &'a iced::Theme,
     settings: &'a Settings,
+    settings_ui: &'a SettingsUiState,
     category: SettingsCategory,
     aria2_version: Option<&'a str>,
     aria2_check_msg: Option<&'a str>,
@@ -48,13 +65,12 @@ pub fn view<'a>(
     ua_editor: &'a text_editor::Content,
     headers_editor: &'a text_editor::Content,
     path_history: &'a HashMap<String, Vec<String>>,
-    path_history_open: Option<PathPickerId>,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
     let content = match category {
         SettingsCategory::General => general_view(fluent, theme, settings),
         SettingsCategory::Download => {
-            download_view(fluent, theme, settings, path_history, path_history_open)
+            download_view(fluent, theme, settings, settings_ui, path_history)
         }
         SettingsCategory::BitTorrent => bittorrent_view(fluent, settings, accent),
         SettingsCategory::Ed2k => ed2k_view(fluent),
@@ -190,15 +206,14 @@ fn download_view<'a>(
     fluent: &'a Fluent,
     theme: &'a iced::Theme,
     settings: &'a Settings,
+    settings_ui: &'a SettingsUiState,
     path_history: &'a HashMap<String, Vec<String>>,
-    path_history_open: Option<PathPickerId>,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
     let download_hist: &[String] = path_history
         .get("download_dir")
         .map(|v| v.as_slice())
         .unwrap_or(&[]);
-    let dir_str: &str = settings.download_dir.as_os_str().to_str().unwrap_or("");
     column![]
         .spacing(4)
         .push(group_title(fluent, Tr::DownloadFolder, accent))
@@ -209,15 +224,13 @@ fn download_view<'a>(
                         .size(13)
                         .width(Length::Fixed(200.0)),
                 )
-                .push(path_picker::view(
-                    fluent,
-                    theme,
-                    dir_str,
-                    Some(PathPickerId::DownloadDir),
-                    true,
-                    path_history_open == Some(PathPickerId::DownloadDir),
-                    download_hist,
-                ))
+                .push(
+                    settings_ui
+                        .download_picker
+                        .view(fluent, theme, download_hist, |e| {
+                            Message::PathPicker(PathPickerId::DownloadDir, e)
+                        }),
+                )
                 .height(Length::Fixed(36.0))
                 .align_y(Alignment::Center),
         )
@@ -685,17 +698,13 @@ fn labeled_readonly<'a>(
     label: String,
     value: &str,
 ) -> Element<'a, Message> {
+    let picker = PathPicker::read_only(value.to_string());
     row![]
         .push(text(label).size(13).width(Length::Fixed(200.0)))
-        .push(path_picker::view(
-            fluent,
-            theme,
-            value,
-            None,
-            false,
-            false,
-            &[],
-        ))
+        .push(picker.view(fluent, theme, &[], |e| match e {
+            PathPickerEvent::Copy(s) => Message::CopyPath(s),
+            _ => Message::Noop,
+        }))
         .height(Length::Fixed(36.0))
         .align_y(Alignment::Center)
         .into()

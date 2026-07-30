@@ -6,16 +6,16 @@ use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, PathPickerId};
-use crate::ui::path_picker;
+use crate::ui::components::path_picker::PathPicker;
 use crate::ui::theme;
 
 #[derive(Debug, Clone)]
 pub struct AddDialogState {
     pub visible: bool,
     pub url_editor: text_editor::Content,
-    pub save_dir: PathBuf,
+    pub save_picker: PathPicker,
     pub split: u16,
-    pub torrent_path: Option<PathBuf>,
+    pub torrent_picker: PathPicker,
 }
 
 impl AddDialogState {
@@ -23,18 +23,18 @@ impl AddDialogState {
         Self {
             visible: false,
             url_editor: text_editor::Content::new(),
-            save_dir: default_dir,
+            save_picker: PathPicker::folder(default_dir.to_string_lossy(), true),
             split: 16,
-            torrent_path: None,
+            torrent_picker: PathPicker::file(String::new()),
         }
     }
 
     pub fn open(&mut self, default_dir: PathBuf, default_split: u16) {
         self.visible = true;
         self.url_editor = text_editor::Content::new();
-        self.save_dir = default_dir;
+        self.save_picker.set_value(default_dir.to_string_lossy());
         self.split = default_split;
-        self.torrent_path = None;
+        self.torrent_picker.set_value("");
     }
 
     pub fn close(&mut self) {
@@ -46,8 +46,8 @@ impl AddDialogState {
     }
 
     pub fn can_submit(&self) -> bool {
-        (!self.url_editor.text().trim().is_empty() && !self.save_dir.as_os_str().is_empty())
-            || self.torrent_path.is_some()
+        (!self.url_editor.text().trim().is_empty() && !self.save_picker.value().is_empty())
+            || !self.torrent_picker.value().is_empty()
     }
 }
 
@@ -56,7 +56,6 @@ pub fn view<'a>(
     theme: &'a iced::Theme,
     state: &'a AddDialogState,
     path_history: &'a HashMap<String, Vec<String>>,
-    path_history_open: Option<PathPickerId>,
 ) -> Element<'a, Message> {
     let placeholder = fluent.get(Tr::UrlPlaceholder);
     let url_input = text_editor(&state.url_editor)
@@ -66,11 +65,6 @@ pub fn view<'a>(
         .padding(10)
         .size(14);
 
-    let torrent_str: &str = state
-        .torrent_path
-        .as_ref()
-        .and_then(|p| p.as_os_str().to_str())
-        .unwrap_or("");
     let torrent_row = column![]
         .spacing(4)
         .push(
@@ -78,21 +72,14 @@ pub fn view<'a>(
                 .size(12)
                 .style(theme::style::text::secondary),
         )
-        .push(path_picker::view(
-            fluent,
-            theme,
-            torrent_str,
-            Some(PathPickerId::Torrent),
-            false,
-            false,
-            &[],
-        ));
+        .push(state.torrent_picker.view(fluent, theme, &[], |e| {
+            Message::PathPicker(PathPickerId::Torrent, e)
+        }));
 
     let hist_save: &[String] = path_history
         .get("save_dir")
         .map(|v| v.as_slice())
         .unwrap_or(&[]);
-    let save_str: &str = state.save_dir.as_os_str().to_str().unwrap_or("");
     let save_row = column![]
         .spacing(4)
         .push(
@@ -100,15 +87,9 @@ pub fn view<'a>(
                 .size(12)
                 .style(theme::style::text::secondary),
         )
-        .push(path_picker::view(
-            fluent,
-            theme,
-            save_str,
-            Some(PathPickerId::SaveDir),
-            true,
-            path_history_open == Some(PathPickerId::SaveDir),
-            hist_save,
-        ));
+        .push(state.save_picker.view(fluent, theme, hist_save, |e| {
+            Message::PathPicker(PathPickerId::SaveDir, e)
+        }));
 
     let split_str = state.split.to_string();
     let split_input = row![]

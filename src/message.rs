@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use crate::engine::EngineEvent;
 use crate::i18n::Locale;
 use crate::task::TaskStatus;
+use crate::ui::components::path_picker::PathPickerEvent;
 use crate::ui::theme::ThemeMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,11 +40,8 @@ pub enum Message {
     NavigatePage(Page),
     SetTaskFilter(TaskFilter),
     SetSettingsCategory(SettingsCategory),
-    BrowsePath(PathPickerId),
+    PathPicker(PathPickerId, PathPickerEvent),
     PathPicked(PathPickerId, Option<PathBuf>),
-    SelectPathHistory(PathPickerId, PathBuf),
-    TogglePathHistory(PathPickerId),
-    ClosePathHistory,
     CopyPath(String),
     SplitChanged(String),
     AddDownload,
