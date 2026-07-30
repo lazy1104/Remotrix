@@ -1,10 +1,11 @@
-use iced::widget::{button, column, container, progress_bar, row, scrollable, text, tooltip};
+use iced::widget::{button, column, container, progress_bar, row, text, tooltip};
 use iced::{Alignment, Element, Length};
 use iced_aw::widget::drop_down;
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{ConfirmAction, Message, SortField, SortOrder};
 use crate::task::{format_duration, format_size, format_speed, DownloadTask, TaskStatus};
+use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::components::tooltip as tip;
 use crate::ui::icon;
 use crate::ui::theme;
@@ -176,7 +177,7 @@ pub fn view<'a>(
         list = list.push(task_card(fluent, theme, t));
     }
 
-    let body = scrollable(column![].spacing(10).push(list)).height(Length::Fill);
+    let body = slim_scrollable(column![].spacing(10).push(list)).height(Length::Fill);
 
     container(column![].push(toolbar).push(body))
         .width(Length::Fill)

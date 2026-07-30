@@ -1,4 +1,4 @@
-use iced::widget::{button, column, container, progress_bar, row, scrollable, text};
+use iced::widget::{button, column, container, progress_bar, row, text};
 use iced::{Alignment, Element, Length, Padding};
 
 use crate::i18n::{Fluent, Tr};
@@ -6,6 +6,7 @@ use crate::message::{DetailsTab, Message};
 use crate::task::{
     completed_pieces, format_add_time, format_size, format_speed, DownloadTask, TaskDetails,
 };
+use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::theme;
 
 pub struct DetailsDialogState {
@@ -384,7 +385,7 @@ fn files_tab<'a>(
                 .width(Length::Fill);
             col = col.push(file_row);
         }
-        scrollable(column![].push(col).spacing(6))
+        slim_scrollable(column![].push(col).spacing(6))
             .height(Length::Fill)
             .into()
     } else {

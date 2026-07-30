@@ -552,6 +552,50 @@ pub mod style {
         }
     }
 
+    pub mod scrollable {
+        use iced::widget::scrollable::{self, AutoScroll, Rail, Scroller};
+        use iced::{Border, Shadow, Vector};
+
+        pub fn standard(t: &iced::Theme, _status: scrollable::Status) -> scrollable::Style {
+            let p = t.extended_palette();
+
+            let scroller = Scroller {
+                background: p.primary.base.color.into(),
+                border: Border {
+                    radius: super::super::RADIUS_BUTTON.into(),
+                    ..Default::default()
+                },
+            };
+
+            let rail = Rail {
+                background: None,
+                border: Border::default(),
+                scroller,
+            };
+
+            let auto_scroll = AutoScroll {
+                background: p.background.base.color.into(),
+                border: iced::border::rounded(u32::MAX)
+                    .width(1)
+                    .color(p.background.base.text.scale_alpha(0.8)),
+                shadow: Shadow {
+                    color: iced::Color::BLACK.scale_alpha(0.7),
+                    offset: Vector::ZERO,
+                    blur_radius: 2.0,
+                },
+                icon: p.background.base.text.scale_alpha(0.8),
+            };
+
+            scrollable::Style {
+                container: iced::widget::container::Style::default(),
+                vertical_rail: rail,
+                horizontal_rail: rail,
+                gap: None,
+                auto_scroll,
+            }
+        }
+    }
+
     pub mod text {
         pub fn secondary(t: &iced::Theme) -> iced::widget::text::Style {
             iced::widget::text::Style {

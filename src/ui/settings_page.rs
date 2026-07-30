@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use iced::widget::{
-    button, column, container, pick_list, row, scrollable, text, text_editor, text_input, toggler,
+    button, column, container, pick_list, row, text, text_editor, text_input, toggler,
 };
 use iced::{Alignment, Element, Length};
 
@@ -12,6 +12,7 @@ use iced::Color;
 
 use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::path_picker::{PathPicker, PathPickerEvent};
+use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::theme;
 
 #[derive(Debug, Clone)]
@@ -127,7 +128,7 @@ pub fn view<'a>(
         column![]
             .push(text(fluent.get(Tr::SettingsTitle)).size(22))
             .push(iced::widget::Space::new().height(Length::Fixed(20.0)))
-            .push(scrollable(col).height(Length::Fill)),
+            .push(slim_scrollable(col).height(Length::Fill)),
     )
     .width(Length::Fill)
     .height(Length::Fill)
