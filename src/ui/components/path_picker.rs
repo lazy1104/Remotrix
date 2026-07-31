@@ -155,11 +155,11 @@ impl PathPicker {
             .align_y(Alignment::Center)
             .height(Length::Fill);
 
-        let input = text_input("", &self.value)
-            .style(theme::style::input::grouped)
-            .width(Length::Fill)
-            .padding([0, 10])
-            .size(13);
+        let input = theme::grouped_input_layout(
+            text_input("", &self.value)
+                .style(theme::style::input::grouped)
+                .width(Length::Fill),
+        );
         row = row.push(input);
         row = row.push(Self::separator());
 

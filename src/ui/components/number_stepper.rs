@@ -141,11 +141,11 @@ where
         + 'static,
     <T as std::str::FromStr>::Err: std::fmt::Debug,
 {
-    let mut input = text_input("", &value.to_string())
-        .style(theme::style::input::grouped)
-        .width(Length::Fill)
-        .padding([0, 10])
-        .size(13);
+    let mut input = theme::grouped_input_layout(
+        text_input("", &value.to_string())
+            .style(theme::style::input::grouped)
+            .width(Length::Fill),
+    );
 
     if !read_only {
         let oc = on_change.clone();

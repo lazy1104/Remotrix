@@ -146,12 +146,12 @@ pub fn view<'a>(
         .align_y(Alignment::Center)
         .width(Length::Fill);
 
-    let rename_input = text_input("", &state.out)
-        .on_input(move |s| Message::AddFieldChanged(AddField::Out, s))
-        .width(Length::Fill)
-        .padding(8)
-        .size(13)
-        .style(theme::style::input::standard);
+    let rename_input = theme::input_layout(
+        text_input("", &state.out)
+            .on_input(move |s| Message::AddFieldChanged(AddField::Out, s))
+            .width(Length::Fill)
+            .style(theme::style::input::standard),
+    );
     let rename_row = row![]
         .push(
             text(fluent.get(Tr::RenameFile))
@@ -237,12 +237,12 @@ fn advanced_field<'a>(
     field: AddField,
     secure: bool,
 ) -> Element<'a, Message> {
-    let mut input = text_input("", value)
-        .on_input(move |s| Message::AddFieldChanged(field, s))
-        .width(Length::Fill)
-        .padding(8)
-        .size(13)
-        .style(theme::style::input::standard);
+    let mut input = theme::input_layout(
+        text_input("", value)
+            .on_input(move |s| Message::AddFieldChanged(field, s))
+            .width(Length::Fill)
+            .style(theme::style::input::standard),
+    );
     if secure {
         input = input.secure(true);
     }

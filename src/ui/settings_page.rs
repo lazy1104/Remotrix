@@ -293,7 +293,6 @@ fn download_view<'a>(
                     move |v| Message::SettingChanged(SettingKey::MinSplitSize, v.to_string()),
                     Length::Fixed(160.0),
                 ))
-                .push(text("M").size(13).style(theme::style::text::secondary))
                 .align_y(Alignment::Center)
                 .into(),
         ))
@@ -720,13 +719,13 @@ fn labeled_toggle<'a>(label: String, value: bool, key: SettingKey) -> Element<'a
 fn labeled_text_input<'a>(label: String, value: &'a str, key: SettingKey) -> Element<'a, Message> {
     setting_row(
         label,
-        text_input("", value)
-            .on_input(move |s| Message::SettingChanged(key, s))
-            .width(Length::Fill)
-            .padding(8)
-            .size(13)
-            .style(theme::style::input::standard)
-            .into(),
+        theme::input_layout(
+            text_input("", value)
+                .on_input(move |s| Message::SettingChanged(key, s))
+                .width(Length::Fill)
+                .style(theme::style::input::standard),
+        )
+        .into(),
     )
 }
 
@@ -737,14 +736,12 @@ fn labeled_editor<'a>(
 ) -> Element<'a, Message> {
     row![]
         .push(text(label).size(13).width(Length::Fixed(200.0)))
-        .push(
+        .push(theme::editor_layout(
             text_editor(content)
                 .on_action(on_edit)
                 .height(Length::Fixed(80.0))
-                .padding(8)
-                .size(13)
                 .style(theme::style::text_editor::standard),
-        )
+        ))
         .align_y(Alignment::Start)
         .into()
 }

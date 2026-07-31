@@ -37,6 +37,36 @@ pub const RADIUS_PILL: f32 = 40.0;
 pub const RADIUS_PROGRESS: f32 = 4.0;
 pub const RADIUS_NAV: f32 = 20.0;
 
+pub const INPUT_SIZE: u32 = 13;
+pub const INPUT_PADDING: iced::Padding = iced::Padding::new(8.0);
+pub const INPUT_PADDING_GROUPED: iced::Padding = iced::Padding {
+    top: 0.0,
+    right: 10.0,
+    bottom: 0.0,
+    left: 10.0,
+};
+
+pub fn input_layout<'a, Message: Clone>(
+    input: iced::widget::TextInput<'a, Message>,
+) -> iced::widget::TextInput<'a, Message> {
+    input.padding(INPUT_PADDING).size(INPUT_SIZE)
+}
+
+pub fn grouped_input_layout<'a, Message: Clone>(
+    input: iced::widget::TextInput<'a, Message>,
+) -> iced::widget::TextInput<'a, Message> {
+    input.padding(INPUT_PADDING_GROUPED).size(INPUT_SIZE)
+}
+
+pub fn editor_layout<'a, H, Message>(
+    editor: iced::widget::TextEditor<'a, H, Message>,
+) -> iced::widget::TextEditor<'a, H, Message>
+where
+    H: iced::advanced::text::Highlighter,
+{
+    editor.padding(INPUT_PADDING).size(INPUT_SIZE)
+}
+
 pub fn build_iced(theme_id: &str) -> iced::Theme {
     let opaline = opaline::builtins::load_by_name(theme_id).unwrap_or_default();
     let custom = opaline::adapters::iced::to_iced_custom(&opaline);

@@ -106,12 +106,12 @@ pub fn view<'a>(
 
     let has_query = !search_query.trim().is_empty();
 
-    let search_input = text_input(&fluent.get(Tr::Search), search_query)
-        .on_input(Message::SearchChanged)
-        .width(Length::Fixed(220.0))
-        .padding([6, 10])
-        .size(13)
-        .style(theme::style::input::standard);
+    let search_input = theme::input_layout(
+        text_input(&fluent.get(Tr::Search), search_query)
+            .on_input(Message::SearchChanged)
+            .width(Length::Fixed(220.0))
+            .style(theme::style::input::standard),
+    );
 
     let mut search_group = row![search_input].spacing(4).align_y(Alignment::Center);
     if has_query {
