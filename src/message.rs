@@ -108,6 +108,9 @@ pub enum Message {
     SpeedUnitChanged(SettingKey, SpeedUnit),
     ShowToast(Toast),
     DismissToast(u64),
+    ToastHovered(u64),
+    ToastUnhovered(u64),
+    ToastTick,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

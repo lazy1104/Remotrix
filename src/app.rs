@@ -13,7 +13,7 @@ use iced::{Element, Length, Padding, Subscription, Task};
 use crate::config::{self, Settings};
 use crate::db::Db;
 use crate::engine::{EngineCmd, EngineEvent, EngineHandle, EventRx};
-use crate::i18n::{Fluent, Locale};
+use crate::i18n::{Fluent, Locale, Tr};
 use crate::message::{
     CloseDialogChoice, ConfirmAction, Message, Page, PathPickerId, SettingKey, SettingsCategory,
     SortField, SortOrder, TaskFilter, WindowCmd,
@@ -22,6 +22,7 @@ use crate::task::{DownloadTask, TaskStatus};
 use crate::ui::add_dialog::AddDialogState;
 use crate::ui::category_bar::Counts;
 use crate::ui::components::path_picker::PathPickerAction;
+use crate::ui::components::toast::{Toast, ToastKind, ToastPosition};
 use crate::ui::details_dialog::DetailsDialogState;
 use crate::ui::icons::{CATEGORY_W, SIDEBAR_W};
 use crate::ui::settings_page::SettingsUiState;
@@ -73,6 +74,10 @@ pub struct Remotrix {
     active_count: usize,
     toasts: Vec<crate::ui::components::toast::Toast>,
     next_toast_id: u64,
+    hovered_toast_id: Option<u64>,
+    downloading_toast_id: Option<u64>,
+    startup_error_toast_id: Option<u64>,
+    startup_starting_toast_shown: bool,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
@@ -158,6 +163,10 @@ pub fn init() -> (Remotrix, Task<Message>) {
         active_count,
         toasts: Vec::new(),
         next_toast_id: 0,
+        hovered_toast_id: None,
+        downloading_toast_id: None,
+        startup_error_toast_id: None,
+        startup_starting_toast_shown: false,
     };
 
     (state, Task::none())
@@ -617,6 +626,22 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 state.aria2_fetch_error = None;
                 state.synced_gids.clear();
                 state.sync_done = false;
+                if let Some(id) = state.downloading_toast_id.take() {
+                    dismiss_toast(state, id);
+                }
+                if let Some(id) = state.startup_error_toast_id.take() {
+                    dismiss_toast(state, id);
+                }
+                state.startup_starting_toast_shown = false;
+                state.aria2_status = Some(("ready".to_string(), state.fluent.get(Tr::Aria2Ready)));
+                let (_, task) = spawn_toast(
+                    state,
+                    ToastKind::Success,
+                    state.fluent.get(Tr::EngineStarted),
+                    Some(Duration::from_secs(3)),
+                    false,
+                );
+                return task;
             }
             EngineEvent::EngineStopped => {
                 tracing::info!("engine stopped");
@@ -831,7 +856,18 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 state.aria2_check_msg = None;
             }
             EngineEvent::Aria2FetchFailed { error } => {
+                let msg = format!("{}: {error}", state.fluent.get(Tr::EngineStartFailed));
                 state.aria2_fetch_error = Some(error);
+                state.startup_starting_toast_shown = false;
+                if let Some(id) = state.downloading_toast_id.take() {
+                    dismiss_toast(state, id);
+                }
+                if let Some(id) = state.startup_error_toast_id.take() {
+                    dismiss_toast(state, id);
+                }
+                let (id, task) = spawn_toast(state, ToastKind::Error, msg, None, true);
+                state.startup_error_toast_id = Some(id);
+                return task;
             }
             EngineEvent::EngineDegraded { reason } => {
                 state.aria2_fetch_error = Some(reason);
@@ -843,7 +879,38 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 if stage == "ready" {
                     state.aria2_fetch_error = None;
                 }
+                if stage == "ready" || stage == "starting" {
+                    if let Some(id) = state.downloading_toast_id.take() {
+                        dismiss_toast(state, id);
+                    }
+                }
+                let mut toast_task = None;
+                if stage == "downloading" && state.downloading_toast_id.is_none() {
+                    let (id, task) = spawn_toast(
+                        state,
+                        ToastKind::Normal,
+                        state.fluent.get(Tr::DownloadingAria2),
+                        None,
+                        false,
+                    );
+                    state.downloading_toast_id = Some(id);
+                    toast_task = Some(task);
+                }
+                if stage == "starting" && !state.startup_starting_toast_shown {
+                    state.startup_starting_toast_shown = true;
+                    let (_, task) = spawn_toast(
+                        state,
+                        ToastKind::Normal,
+                        state.fluent.get(Tr::EngineStarting),
+                        Some(Duration::from_secs(3)),
+                        false,
+                    );
+                    toast_task = Some(task);
+                }
                 state.aria2_status = Some((stage, message));
+                if let Some(task) = toast_task {
+                    return task;
+                }
             }
         },
         Message::WindowResized(size) => {
@@ -1125,20 +1192,37 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::ShowToast(mut toast) => {
             toast.id = state.next_toast_id;
             state.next_toast_id += 1;
-            let id = toast.id;
-            let close_after = toast.close_after;
             push_toast(state, toast);
-            if let Some(d) = close_after {
-                return Task::perform(
-                    async move {
-                        tokio::time::sleep(d).await;
-                    },
-                    move |_| Message::DismissToast(id),
-                );
-            }
         }
         Message::DismissToast(id) => {
-            state.toasts.retain(|t| t.id != id);
+            dismiss_toast(state, id);
+        }
+        Message::ToastHovered(id) => {
+            state.hovered_toast_id = Some(id);
+        }
+        Message::ToastUnhovered(id) => {
+            if state.hovered_toast_id == Some(id) {
+                state.hovered_toast_id = None;
+            }
+        }
+        Message::ToastTick => {
+            const TICK: Duration = Duration::from_millis(200);
+            let mut expired = Vec::new();
+            for toast in state.toasts.iter_mut() {
+                if let Some(rem) = toast.remaining.as_mut() {
+                    if Some(toast.id) != state.hovered_toast_id {
+                        if *rem <= TICK {
+                            *rem = Duration::ZERO;
+                            expired.push(toast.id);
+                        } else {
+                            *rem -= TICK;
+                        }
+                    }
+                }
+            }
+            for id in expired {
+                dismiss_toast(state, id);
+            }
         }
         Message::Noop => {}
     }
@@ -1412,6 +1496,12 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         Subscription::none()
     };
 
+    let toast_tick = if state.toasts.iter().any(|t| t.remaining.is_some()) {
+        iced::time::every(Duration::from_millis(200)).map(|_| Message::ToastTick)
+    } else {
+        Subscription::none()
+    };
+
     Subscription::batch(vec![
         engine,
         open,
@@ -1420,6 +1510,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         resizes,
         persist_periodic,
         refresh,
+        toast_tick,
     ])
 }
 
@@ -1464,23 +1555,56 @@ fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
     }
 }
 
-fn push_toast(state: &mut Remotrix, toast: crate::ui::components::toast::Toast) {
+fn push_toast(state: &mut Remotrix, toast: Toast) {
     const CAP: usize = 6;
-    let at_pos = state
+    let pos = toast.position;
+    let removed_hovered = matches!(
+        state.hovered_toast_id,
+        Some(h)
+            if state.toasts.iter().any(|t| t.id == h && t.position == pos && t.close_after.is_some())
+    );
+    state
         .toasts
-        .iter()
-        .filter(|t| t.position == toast.position)
-        .count();
+        .retain(|t| !(t.position == pos && t.close_after.is_some()));
+    if removed_hovered {
+        state.hovered_toast_id = None;
+    }
+    let at_pos = state.toasts.iter().filter(|t| t.position == pos).count();
     if at_pos >= CAP {
-        if let Some(idx) = state
-            .toasts
-            .iter()
-            .position(|t| t.position == toast.position)
-        {
+        if let Some(idx) = state.toasts.iter().position(|t| t.position == pos) {
             state.toasts.remove(idx);
         }
     }
+    let mut toast = toast;
+    toast.remaining = toast.close_after;
     state.toasts.push(toast);
+}
+
+fn spawn_toast(
+    state: &mut Remotrix,
+    kind: ToastKind,
+    message: String,
+    close_after: Option<Duration>,
+    show_close: bool,
+) -> (u64, Task<Message>) {
+    let id = state.next_toast_id;
+    state.next_toast_id += 1;
+    let mut toast = Toast::new(kind, message)
+        .position(ToastPosition::Top)
+        .close_after(close_after);
+    if show_close {
+        toast = toast.show_close();
+    }
+    toast.id = id;
+    push_toast(state, toast);
+    (id, Task::none())
+}
+
+fn dismiss_toast(state: &mut Remotrix, id: u64) {
+    state.toasts.retain(|t| t.id != id);
+    if state.hovered_toast_id == Some(id) {
+        state.hovered_toast_id = None;
+    }
 }
 
 fn pick_path(id: PathPickerId) -> Task<Message> {

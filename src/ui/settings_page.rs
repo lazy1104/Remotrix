@@ -585,7 +585,10 @@ fn advanced_view<'a>(
     }
 
     if let Some((stage, message)) = aria2_status {
-        let status_color = if stage == "update-downloading" || stage == "update-verifying" {
+        let status_color = if stage == "update-downloading"
+            || stage == "update-verifying"
+            || stage == "starting"
+        {
             accent
         } else if stage == "ready" {
             theme::success(theme)

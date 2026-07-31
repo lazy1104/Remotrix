@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use iced::alignment::{Horizontal, Vertical};
-use iced::widget::{button, column, container, row, stack, text};
+use iced::widget::{button, column, container, mouse_area, row, stack, text};
 use iced::{Element, Length, Padding};
 
 use crate::message::Message;
@@ -67,6 +67,7 @@ pub struct Toast {
     pub position: ToastPosition,
     pub show_close: bool,
     pub close_after: Option<Duration>,
+    pub remaining: Option<Duration>,
 }
 
 impl Toast {
@@ -78,6 +79,7 @@ impl Toast {
             position: ToastPosition::BottomRight,
             show_close: false,
             close_after: Some(Duration::from_secs(3)),
+            remaining: None,
         }
     }
 
@@ -135,12 +137,12 @@ fn card<'a>(theme: &'a iced::Theme, toast: &'a Toast) -> Element<'a, Message> {
     .size(16)
     .color(kind_color(theme, toast.kind));
 
-    let icon_col = container(icon).align_y(Vertical::Top);
+    let icon_col = container(icon).align_y(Vertical::Center);
     let message_col = text(&toast.message).size(13).width(Length::Fill);
 
     let mut content = row![icon_col, message_col]
         .spacing(8)
-        .align_y(Vertical::Top);
+        .align_y(Vertical::Center);
 
     if toast.show_close {
         let close_btn = button(icon::x().size(14).line_height(1.0))
@@ -150,16 +152,20 @@ fn card<'a>(theme: &'a iced::Theme, toast: &'a Toast) -> Element<'a, Message> {
         content = content.push(close_btn);
     }
 
-    container(content)
-        .width(Length::Fixed(CARD_WIDTH))
-        .padding(Padding {
-            top: 10.0,
-            right: 12.0,
-            bottom: 10.0,
-            left: 12.0,
-        })
-        .style(theme::style::toast)
-        .into()
+    mouse_area(
+        container(content)
+            .width(Length::Fixed(CARD_WIDTH))
+            .padding(Padding {
+                top: 10.0,
+                right: 12.0,
+                bottom: 10.0,
+                left: 12.0,
+            })
+            .style(theme::style::toast),
+    )
+    .on_enter(Message::ToastHovered(toast.id))
+    .on_exit(Message::ToastUnhovered(toast.id))
+    .into()
 }
 
 fn kind_color(theme: &iced::Theme, kind: ToastKind) -> iced::Color {

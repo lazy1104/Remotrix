@@ -640,6 +640,10 @@ async fn boot(
     event_tx: &EventTx,
 ) -> Result<(Sidecar, Option<String>), String> {
     let (bin_path, applied) = crate::aria2_fetcher::ensure_aria2_next(event_tx).await?;
+    let _ = event_tx.send(EngineEvent::Aria2Status {
+        stage: "starting".to_string(),
+        message: "Starting aria2-next engine...".to_string(),
+    });
     let mut sidecar = Sidecar::spawn(&bin_path, config).await?;
 
     if let Some(mut child) = sidecar.child.take() {
