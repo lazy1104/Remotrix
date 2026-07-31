@@ -88,6 +88,8 @@ pub enum Message {
     WindowAction(WindowCmd),
     CloseRequested,
     CloseDialog(CloseDialogChoice),
+    ShutdownRequested,
+    ShutdownTimeout,
 
     ThemeModeChanged(ThemeMode),
     LightThemeChanged(String),

@@ -34,6 +34,7 @@ opaline = { version = "0.4", default-features = false, features = ["builtin-them
 rusqlite = { version = "0.32", features = ["bundled"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 open = "5"
+libc = "0.2"
 
 [build-dependencies]
 iced_lucide = "0.1"

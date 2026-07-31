@@ -4304,6 +4304,7 @@ dependencies = [
  "iced",
  "iced_lucide",
  "image 0.24.9",
+ "libc",
  "num-traits",
  "opaline",
  "open",

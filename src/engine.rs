@@ -224,7 +224,11 @@ impl Sidecar {
         let dir_str = config.download_dir.to_string_lossy();
         tracing::info!(port, session = %session_str, dir = %dir_str, "spawning aria2-next sidecar");
 
-        let mut child = Command::new(bin_path)
+        let mut cmd = Command::new(bin_path);
+        #[cfg(unix)]
+        cmd.arg("--stop-with-process")
+            .arg(std::process::id().to_string());
+        let mut child = cmd
             .arg("--enable-rpc")
             .arg("--rpc-listen-all=false")
             .arg("--rpc-listen-port")
@@ -265,6 +269,12 @@ impl Sidecar {
                     let _ = client.get_version().await.map(|v| {
                         tracing::info!(enabled_features = ?v.enabled_features, version = ?v.version, "aria2-next version");
                     });
+                    if let Some(pid) = child.id() {
+                        let pid_path = config.session_path.join("aria2.pid");
+                        if let Err(e) = std::fs::write(&pid_path, pid.to_string()) {
+                            tracing::warn!(?e, "write aria2 pid file failed");
+                        }
+                    }
                     return Ok(Sidecar {
                         client,
                         child: Some(child),
@@ -692,12 +702,50 @@ async fn handle_check_update(event_tx: &EventTx) {
     }
 }
 
+#[cfg(not(unix))]
+async fn cleanup_stale_aria2(_bin_path: &Path, _pid_path: &Path) {}
+
+#[cfg(unix)]
+async fn cleanup_stale_aria2(bin_path: &Path, pid_path: &Path) {
+    let Ok(content) = std::fs::read_to_string(pid_path) else {
+        return;
+    };
+    let Ok(pid) = content.trim().parse::<i32>() else {
+        let _ = std::fs::remove_file(pid_path);
+        return;
+    };
+    let alive = std::path::Path::new(&format!("/proc/{pid}")).exists();
+    let is_ours = std::fs::read_link(format!("/proc/{pid}/exe"))
+        .map(|p| p == bin_path)
+        .unwrap_or(false);
+    if alive && is_ours {
+        tracing::warn!(%pid, "stale aria2-next from previous run detected, SIGTERM");
+        unsafe { libc::kill(pid, libc::SIGTERM) };
+        let mut waited = 0;
+        while std::path::Path::new(&format!("/proc/{pid}")).exists() && waited < 50 {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            waited += 1;
+        }
+        let still_ours = std::path::Path::new(&format!("/proc/{pid}")).exists()
+            && std::fs::read_link(format!("/proc/{pid}/exe"))
+                .map(|p| p == bin_path)
+                .unwrap_or(false);
+        if still_ours {
+            tracing::warn!(%pid, "stale aria2-next still alive, SIGKILL");
+            unsafe { libc::kill(pid, libc::SIGKILL) };
+        }
+    }
+    let _ = std::fs::remove_file(pid_path);
+}
+
 async fn boot(
     config: &SidecarConfig,
     restart_tx: &mpsc::UnboundedSender<()>,
     event_tx: &EventTx,
 ) -> Result<(Sidecar, Option<String>), String> {
     let (bin_path, applied) = crate::aria2_fetcher::ensure_aria2_next(event_tx).await?;
+    let pid_path = config.session_path.join("aria2.pid");
+    cleanup_stale_aria2(&bin_path, &pid_path).await;
     let _ = event_tx.send(EngineEvent::Aria2Status {
         stage: "starting".to_string(),
         message: "Starting aria2-next engine...".to_string(),
@@ -840,6 +888,26 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                 match &cmd {
                     EngineCmd::Shutdown => {
                         if let Some(ref s) = sidecar {
+                            if let Err(e) = s.client.pause_all().await {
+                                tracing::warn!("pause_all failed before shutdown: {e}");
+                            }
+                            let mut paused = false;
+                            for _ in 0..10 {
+                                match s.client.tell_active().await {
+                                    Ok(list) if list.is_empty() => {
+                                        paused = true;
+                                        break;
+                                    }
+                                    _ => {}
+                                }
+                                tokio::time::sleep(Duration::from_millis(200)).await;
+                            }
+                            if !paused {
+                                tracing::warn!("tasks did not fully pause before session save");
+                            }
+                            for status in fetch_all_tasks(&s.client).await {
+                                emit_progress(&event_tx, &status).await;
+                            }
                             let _ = s.client.save_session().await;
                             let _ = s.client.shutdown().await;
                         }
@@ -939,5 +1007,6 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
     for h in poll_handles {
         h.abort();
     }
+    let _ = std::fs::remove_file(config.session_path.join("aria2.pid"));
     tracing::info!("engine supervisor stopped");
 }

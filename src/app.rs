@@ -63,6 +63,7 @@ pub struct Remotrix {
     last_resize: Option<iced::Size>,
     geometry_dirty: bool,
     pending_close: bool,
+    closing: bool,
     confirm: Option<ConfirmAction>,
     applied_settings: Settings,
     settings_ui: SettingsUiState,
@@ -151,6 +152,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         last_resize: None,
         geometry_dirty: false,
         pending_close: false,
+        closing: false,
         confirm: None,
         settings_ui,
         global_speed: None,
@@ -220,6 +222,85 @@ fn clear_all_local(state: &mut Remotrix) {
     state.paused_gids.clear();
     if let Some(ref db) = state.db {
         db.delete_all();
+    }
+}
+
+fn flush_dirty(state: &mut Remotrix) {
+    if state.dirty.is_empty() {
+        return;
+    }
+    let batch: Vec<(String, u64, u64, u64, u64, u64, String)> = state
+        .dirty
+        .iter()
+        .filter_map(|gid| {
+            state.tasks.get(gid).map(|t| {
+                let status = match t.status {
+                    TaskStatus::Waiting => "waiting",
+                    TaskStatus::Active => "active",
+                    TaskStatus::Paused => "paused",
+                    TaskStatus::Completed => "complete",
+                    TaskStatus::Error => "error",
+                    TaskStatus::Removed => "removed",
+                };
+                (
+                    gid.clone(),
+                    t.downloaded,
+                    t.total,
+                    t.speed,
+                    t.upload_speed,
+                    t.connections,
+                    status.to_string(),
+                )
+            })
+        })
+        .collect();
+    if let Some(ref db) = state.db {
+        db.flush(&batch);
+    }
+    state.dirty.clear();
+}
+
+fn begin_close(state: &mut Remotrix) -> Task<Message> {
+    if state.closing {
+        return Task::none();
+    }
+    state.closing = true;
+    state.show_close_dialog = false;
+    tracing::info!("ui: shutdown requested");
+    if state.handle.cmd_tx.send(EngineCmd::Shutdown).is_err() {
+        tracing::warn!("ui: shutdown cmd send failed");
+    }
+    shutdown_timeout_task()
+}
+
+fn shutdown_timeout_task() -> Task<Message> {
+    Task::perform(
+        async move {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        },
+        |_| Message::ShutdownTimeout,
+    )
+}
+
+fn finalize_close(state: &mut Remotrix) -> Task<Message> {
+    if !state.closing {
+        return Task::none();
+    }
+    state.closing = false;
+    flush_dirty(state);
+    if state.geometry_dirty {
+        state.pending_close = true;
+        if let Some(id) = state.window_id {
+            return iced::window::is_maximized(id)
+                .then(|max| Task::done(Message::WindowMaximized(max)));
+        }
+    }
+    sync_geometry_to_settings(state);
+    config::save(&state.settings);
+    if let Some(id) = state.window_id {
+        iced::window::close::<Message>(id)
+    } else {
+        Task::none()
     }
 }
 
@@ -673,6 +754,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 tracing::info!("engine stopped");
                 state.global_speed = None;
                 state.paused_gids.clear();
+                if state.closing {
+                    return finalize_close(state);
+                }
             }
             EngineEvent::SyncComplete => {
                 tracing::info!("engine sync complete");
@@ -970,34 +1054,27 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
         }
         Message::CloseRequested => {
+            if state.closing {
+                return Task::none();
+            }
             state.show_close_dialog = true;
         }
         Message::CloseDialog(choice) => {
             state.show_close_dialog = false;
             return match choice {
-                CloseDialogChoice::Close => {
-                    tracing::info!("ui: shutdown requested");
-                    if state.handle.cmd_tx.send(EngineCmd::Shutdown).is_err() {
-                        tracing::warn!("ui: shutdown cmd send failed");
-                    }
-                    if state.geometry_dirty {
-                        state.pending_close = true;
-                        if let Some(id) = state.window_id {
-                            return iced::window::is_maximized(id)
-                                .then(|max| Task::done(Message::WindowMaximized(max)));
-                        }
-                    }
-                    sync_geometry_to_settings(state);
-                    config::save(&state.settings);
-                    if let Some(id) = state.window_id {
-                        iced::window::close::<Message>(id)
-                    } else {
-                        Task::none()
-                    }
-                }
+                CloseDialogChoice::Close => begin_close(state),
                 CloseDialogChoice::Cancel => Task::none(),
                 CloseDialogChoice::MinimizeToTray => Task::none(),
             };
+        }
+        Message::ShutdownRequested => {
+            return begin_close(state);
+        }
+        Message::ShutdownTimeout => {
+            if state.closing {
+                tracing::warn!("engine did not stop in time, closing anyway");
+            }
+            return finalize_close(state);
         }
         Message::PersistWindowGeometry => {
             if state.geometry_dirty {
@@ -1116,38 +1193,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
         }
         Message::FlushDirty => {
-            if state.dirty.is_empty() {
-                return Task::none();
-            }
-            let batch: Vec<(String, u64, u64, u64, u64, u64, String)> = state
-                .dirty
-                .iter()
-                .filter_map(|gid| {
-                    state.tasks.get(gid).map(|t| {
-                        let status = match t.status {
-                            TaskStatus::Waiting => "waiting",
-                            TaskStatus::Active => "active",
-                            TaskStatus::Paused => "paused",
-                            TaskStatus::Completed => "complete",
-                            TaskStatus::Error => "error",
-                            TaskStatus::Removed => "removed",
-                        };
-                        (
-                            gid.clone(),
-                            t.downloaded,
-                            t.total,
-                            t.speed,
-                            t.upload_speed,
-                            t.connections,
-                            status.to_string(),
-                        )
-                    })
-                })
-                .collect();
-            if let Some(ref db) = state.db {
-                db.flush(&batch);
-            }
-            state.dirty.clear();
+            flush_dirty(state);
         }
         Message::SelectDetailsTab(tab) => {
             state.details.active_tab = tab;
@@ -1494,6 +1540,41 @@ fn build_engine_stream(slot: &EventSlot) -> impl iced::futures::Stream<Item = Me
     )
 }
 
+fn signal_stream() -> impl iced::futures::Stream<Item = Message> {
+    iced::stream::channel(
+        4,
+        |mut sender: iced::futures::channel::mpsc::Sender<Message>| async move {
+            #[cfg(unix)]
+            {
+                use tokio::signal::unix::{signal, SignalKind};
+                let mut term = signal(SignalKind::terminate()).ok();
+                let mut int = signal(SignalKind::interrupt()).ok();
+                tokio::select! {
+                    _ = async {
+                        if let Some(ref mut t) = term {
+                            let _ = t.recv().await;
+                        }
+                    }, if term.is_some() => {}
+                    _ = async {
+                        if let Some(ref mut i) = int {
+                            let _ = i.recv().await;
+                        }
+                    }, if int.is_some() => {}
+                    else => {
+                        std::future::pending::<()>().await;
+                    }
+                }
+                tracing::info!("termination signal received");
+            }
+            #[cfg(not(unix))]
+            {
+                std::future::pending::<()>().await;
+            }
+            let _ = sender.send(Message::ShutdownRequested).await;
+        },
+    )
+}
+
 pub fn subscription(state: &Remotrix) -> Subscription<Message> {
     let engine =
         Subscription::run_with(EventSlot(state.event_rx_slot.clone()), build_engine_stream);
@@ -1519,6 +1600,8 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         Subscription::none()
     };
 
+    let signals = Subscription::run_with((), |_| signal_stream());
+
     Subscription::batch(vec![
         engine,
         open,
@@ -1528,6 +1611,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         persist_periodic,
         refresh,
         toast_tick,
+        signals,
     ])
 }
 
