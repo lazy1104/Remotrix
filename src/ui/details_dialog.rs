@@ -6,7 +6,9 @@ use crate::message::{DetailsTab, Message};
 use crate::task::{
     completed_pieces, format_add_time, format_size, format_speed, DownloadTask, TaskDetails,
 };
+use crate::ui::components::dialog::overlay;
 use crate::ui::components::slim_scrollable::slim_scrollable;
+use crate::ui::icon;
 use crate::ui::theme;
 
 pub struct DetailsDialogState {
@@ -54,14 +56,10 @@ pub fn view<'a>(
     task: Option<&'a DownloadTask>,
     state: &'a DetailsDialogState,
 ) -> Element<'a, Message> {
-    let close_btn = button(
-        text('\u{E10B}')
-            .font(iced::Font::with_name("lucide"))
-            .size(18),
-    )
-    .on_press(Message::CloseTaskDetails)
-    .padding(6)
-    .style(theme::style::button::sidebar_icon(false));
+    let close_btn = button(icon::x().size(18).line_height(1.0))
+        .on_press(Message::CloseTaskDetails)
+        .padding(6)
+        .style(theme::style::button::sidebar_icon(false));
 
     let title_text = text(fluent.get(Tr::Details)).size(16);
 
@@ -132,13 +130,7 @@ pub fn view<'a>(
     .padding(20)
     .style(theme::style::card);
 
-    container(panel)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(theme::style::overlay)
-        .into()
+    overlay(panel)
 }
 
 fn key_value_row(key: String, value: String) -> Element<'static, Message> {

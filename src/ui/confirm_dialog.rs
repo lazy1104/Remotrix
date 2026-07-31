@@ -1,8 +1,9 @@
-use iced::widget::{button, column, container, row, text};
-use iced::{Alignment, Element, Length};
+use iced::widget::{button, row, text};
+use iced::{Alignment, Element};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{ConfirmAction, Message};
+use crate::ui::components::dialog::{overlay, Dialog};
 use crate::ui::theme;
 
 pub fn view<'a>(
@@ -19,7 +20,6 @@ pub fn view<'a>(
         }
     };
 
-    let title = text(fluent.get(title_key)).size(20);
     let body = text(fluent.get(body_key))
         .size(13)
         .style(theme::style::text::secondary);
@@ -40,14 +40,9 @@ pub fn view<'a>(
                 .padding([10, 22])
                 .style(theme::style::button::danger());
 
-            row![]
-                .push(iced::widget::Space::new().width(Length::Fill))
-                .push(cancel_btn)
-                .push(remove_record_btn)
-                .push(delete_files_btn)
+            row![cancel_btn, remove_record_btn, delete_files_btn]
                 .spacing(10)
                 .align_y(Alignment::Center)
-                .width(Length::Fill)
                 .into()
         }
         ConfirmAction::DeleteAll => {
@@ -60,14 +55,9 @@ pub fn view<'a>(
                 .padding([10, 22])
                 .style(theme::style::button::danger());
 
-            row![]
-                .push(iced::widget::Space::new().width(Length::Fill))
-                .push(cancel_btn)
-                .push(remove_all_records_btn)
-                .push(delete_all_files_btn)
+            row![cancel_btn, remove_all_records_btn, delete_all_files_btn]
                 .spacing(10)
                 .align_y(Alignment::Center)
-                .width(Length::Fill)
                 .into()
         }
         ConfirmAction::ClearCompleted => {
@@ -76,13 +66,9 @@ pub fn view<'a>(
                 .padding([10, 22])
                 .style(theme::style::button::danger());
 
-            row![]
-                .push(iced::widget::Space::new().width(Length::Fill))
-                .push(cancel_btn)
-                .push(confirm_btn)
+            row![cancel_btn, confirm_btn]
                 .spacing(10)
                 .align_y(Alignment::Center)
-                .width(Length::Fill)
                 .into()
         }
         ConfirmAction::LeaveSettings { .. } => {
@@ -95,35 +81,19 @@ pub fn view<'a>(
                 .padding([10, 22])
                 .style(theme::style::button::primary());
 
-            row![]
-                .push(iced::widget::Space::new().width(Length::Fill))
-                .push(cancel_btn)
-                .push(discard_btn)
-                .push(apply_btn)
+            row![cancel_btn, discard_btn, apply_btn]
                 .spacing(10)
                 .align_y(Alignment::Center)
-                .width(Length::Fill)
                 .into()
         }
     };
 
-    let panel = container(
-        column![]
-            .spacing(16)
-            .push(title)
-            .push(body)
-            .push(iced::widget::Space::new().height(Length::Fixed(4.0)))
-            .push(buttons),
+    overlay(
+        Dialog::new()
+            .title(fluent.get(title_key))
+            .with_close(Message::ConfirmCancel)
+            .body(body)
+            .footer(buttons)
+            .build(),
     )
-    .width(Length::Fixed(420.0))
-    .padding(28)
-    .style(theme::style::card);
-
-    container(panel)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(theme::style::overlay)
-        .into()
 }

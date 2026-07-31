@@ -1,8 +1,9 @@
-use iced::widget::{button, column, container, row, text};
-use iced::{Element, Length};
+use iced::widget::{button, column, text};
+use iced::Element;
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::Message;
+use crate::ui::components::dialog::{overlay, Dialog};
 use crate::ui::theme;
 
 pub fn view<'a>(
@@ -15,47 +16,36 @@ pub fn view<'a>(
         None => "Engine: aria2-next (--)".to_string(),
     };
 
-    let panel = container(
-        column![]
-            .spacing(16)
-            .push(text(fluent.get(Tr::AboutTitle)).size(20))
-            .push(
-                text(format!("Remotrix {}", env!("CARGO_PKG_VERSION")))
-                    .size(14)
-                    .style(theme::style::text::secondary),
-            )
-            .push(
-                text(engine_text)
-                    .size(13)
-                    .style(theme::style::text::secondary),
-            )
-            .push(
-                text("GUI: iced 0.14")
-                    .size(13)
-                    .style(theme::style::text::secondary),
-            )
-            .push(iced::widget::Space::new().height(Length::Fixed(8.0)))
-            .push(
-                row![]
-                    .push(iced::widget::Space::new().width(Length::Fill))
-                    .push(
-                        button(text(fluent.get(Tr::CloseAbout)).size(14))
-                            .on_press(Message::CloseAbout)
-                            .padding([10, 22])
-                            .style(theme::style::button::secondary()),
-                    )
-                    .width(Length::Fill),
-            ),
-    )
-    .width(Length::Fixed(380.0))
-    .padding(28)
-    .style(theme::style::card);
+    let body = column![]
+        .spacing(16)
+        .push(
+            text(format!("Remotrix {}", env!("CARGO_PKG_VERSION")))
+                .size(14)
+                .style(theme::style::text::secondary),
+        )
+        .push(
+            text(engine_text)
+                .size(13)
+                .style(theme::style::text::secondary),
+        )
+        .push(
+            text("GUI: iced 0.14")
+                .size(13)
+                .style(theme::style::text::secondary),
+        );
 
-    container(panel)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(theme::style::overlay)
-        .into()
+    let close_btn = button(text(fluent.get(Tr::CloseAbout)).size(14))
+        .on_press(Message::CloseAbout)
+        .padding([10, 22])
+        .style(theme::style::button::secondary());
+
+    overlay(
+        Dialog::new()
+            .width(380.0)
+            .title(fluent.get(Tr::AboutTitle))
+            .with_close(Message::CloseAbout)
+            .body(body)
+            .footer(close_btn)
+            .build(),
+    )
 }

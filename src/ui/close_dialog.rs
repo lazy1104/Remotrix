@@ -1,12 +1,12 @@
-use iced::widget::{button, column, container, row, text};
-use iced::{Alignment, Element, Length};
+use iced::widget::{button, column, row, text};
+use iced::{Alignment, Element};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{CloseDialogChoice, Message};
+use crate::ui::components::dialog::{overlay, Dialog};
 use crate::ui::theme;
 
 pub fn view<'a>(fluent: &'a Fluent, _theme: &iced::Theme) -> Element<'a, Message> {
-    let title = text(fluent.get(Tr::ConfirmCloseTitle)).size(20);
     let body = text(fluent.get(Tr::ConfirmCloseBody))
         .size(13)
         .style(theme::style::text::secondary);
@@ -40,31 +40,18 @@ pub fn view<'a>(fluent: &'a Fluent, _theme: &iced::Theme) -> Element<'a, Message
     .style(theme::style::button::text());
 
     let buttons = row![]
-        .push(iced::widget::Space::new().width(Length::Fill))
         .push(cancel_btn)
         .push(tray_btn)
         .push(close_btn)
         .spacing(10)
-        .align_y(Alignment::Center)
-        .width(Length::Fill);
+        .align_y(Alignment::Center);
 
-    let panel = container(
-        column![]
-            .spacing(16)
-            .push(title)
-            .push(body)
-            .push(iced::widget::Space::new().height(Length::Fixed(4.0)))
-            .push(buttons),
+    overlay(
+        Dialog::new()
+            .title(fluent.get(Tr::ConfirmCloseTitle))
+            .with_close(Message::CloseDialog(CloseDialogChoice::Cancel))
+            .body(body)
+            .footer(buttons)
+            .build(),
     )
-    .width(Length::Fixed(420.0))
-    .padding(28)
-    .style(theme::style::card);
-
-    container(panel)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(theme::style::overlay)
-        .into()
 }

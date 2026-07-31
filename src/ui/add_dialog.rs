@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use iced::widget::{button, column, container, row, text, text_editor};
+use iced::widget::{button, column, row, text, text_editor};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, PathPickerId};
+use crate::ui::components::dialog::{overlay, Dialog};
 use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::path_picker::PathPicker;
 use crate::ui::theme;
@@ -110,8 +111,11 @@ pub fn view<'a>(
         .align_y(Alignment::Center)
         .width(Length::Fill);
 
+    let body = column![url_input, torrent_row, save_row, split_input]
+        .spacing(14)
+        .width(Length::Fill);
+
     let buttons = row![]
-        .push(iced::widget::Space::new().width(Length::Fill))
         .push(
             button(text(fluent.get(Tr::Cancel)).size(14))
                 .on_press(Message::CancelAdd)
@@ -128,28 +132,16 @@ pub fn view<'a>(
             btn
         })
         .spacing(10)
-        .align_y(Alignment::Center)
-        .width(Length::Fill);
+        .align_y(Alignment::Center);
 
-    let panel = container(
-        column![]
-            .spacing(14)
-            .push(text(fluent.get(Tr::NewDownload)).size(20))
-            .push(url_input)
-            .push(torrent_row)
-            .push(save_row)
-            .push(split_input)
-            .push(buttons),
+    overlay(
+        Dialog::new()
+            .width(520.0)
+            .spacing(14.0)
+            .title(fluent.get(Tr::NewDownload))
+            .with_close(Message::CancelAdd)
+            .body(body)
+            .footer(buttons)
+            .build(),
     )
-    .width(Length::Fixed(520.0))
-    .padding(28)
-    .style(theme::style::card);
-
-    container(panel)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(theme::style::overlay)
-        .into()
 }

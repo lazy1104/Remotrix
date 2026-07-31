@@ -1,4 +1,4 @@
-use iced::widget::scrollable::{self, Anchor, Scrollbar};
+use iced::widget::scrollable::{self, Scrollbar};
 use iced::Element;
 
 use crate::ui::theme;

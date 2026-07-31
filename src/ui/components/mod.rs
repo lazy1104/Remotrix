@@ -1,3 +1,4 @@
+pub mod dialog;
 pub mod drop_down;
 pub mod number_stepper;
 pub mod path_picker;
