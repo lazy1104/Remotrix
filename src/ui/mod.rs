@@ -12,6 +12,7 @@ pub mod resize_frame;
 pub mod settings_page;
 pub mod sidebar;
 pub mod sort;
+pub mod speed_hud;
 pub mod task_list;
 pub mod theme;
 pub mod title_bar;

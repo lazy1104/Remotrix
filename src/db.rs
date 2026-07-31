@@ -35,6 +35,20 @@ impl Db {
             );",
         )
         .map_err(|e| format!("create table: {e}"))?;
+
+        let has_col: bool = conn
+            .prepare("PRAGMA table_info(tasks)")
+            .map_err(|e| format!("pragma: {e}"))?
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| format!("query map: {e}"))?
+            .filter_map(|r| r.ok())
+            .any(|c| c == "upload_speed");
+        if !has_col {
+            conn.execute_batch(
+                "ALTER TABLE tasks ADD COLUMN upload_speed INTEGER NOT NULL DEFAULT 0;",
+            )
+            .map_err(|e| format!("add column: {e}"))?;
+        }
         Ok(Db {
             conn: std::sync::Mutex::new(conn),
         })
@@ -43,14 +57,14 @@ impl Db {
     pub fn load_all(&self) -> Vec<DownloadTask> {
         let conn = self.conn.lock().expect("db lock");
         let mut stmt = match conn.prepare(
-            "SELECT gid, name, url, dir, downloaded, total, speed, connections, status, added_at
+            "SELECT gid, name, url, dir, downloaded, total, speed, upload_speed, connections, status, added_at
              FROM tasks ORDER BY added_at DESC",
         ) {
             Ok(s) => s,
             Err(_) => return Vec::new(),
         };
         let rows = match stmt.query_map([], |row| {
-            let status_str: String = row.get(8)?;
+            let status_str: String = row.get(9)?;
             let status = match status_str.as_str() {
                 "waiting" => TaskStatus::Waiting,
                 "active" => TaskStatus::Active,
@@ -68,9 +82,10 @@ impl Db {
                 downloaded: row.get(4)?,
                 total: row.get(5)?,
                 speed: row.get(6)?,
-                connections: row.get(7)?,
+                upload_speed: row.get(7)?,
+                connections: row.get(8)?,
                 status,
-                added_at: row.get(9)?,
+                added_at: row.get(10)?,
             })
         }) {
             Ok(r) => r,
@@ -98,29 +113,31 @@ impl Db {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn upsert_progress(
         &self,
         gid: &str,
         downloaded: u64,
         total: u64,
         speed: u64,
+        upload_speed: u64,
         connections: u64,
         status: &str,
     ) {
         let conn = self.conn.lock().expect("db lock");
         let _ = conn.execute(
-            "UPDATE tasks SET downloaded=?1, total=?2, speed=?3, connections=?4, status=?5 WHERE gid=?6",
-            rusqlite::params![downloaded, total, speed, connections, status, gid],
+            "UPDATE tasks SET downloaded=?1, total=?2, speed=?3, upload_speed=?4, connections=?5, status=?6 WHERE gid=?7",
+            rusqlite::params![downloaded, total, speed, upload_speed, connections, status, gid],
         );
     }
 
-    pub fn flush(&self, dirty: &[(String, u64, u64, u64, u64, String)]) {
+    pub fn flush(&self, dirty: &[(String, u64, u64, u64, u64, u64, String)]) {
         let conn = self.conn.lock().expect("db lock");
         let _ = conn.execute_batch("BEGIN");
-        for (gid, downloaded, total, speed, connections, status) in dirty {
+        for (gid, downloaded, total, speed, upload_speed, connections, status) in dirty {
             let _ = conn.execute(
-                "UPDATE tasks SET downloaded=?1, total=?2, speed=?3, connections=?4, status=?5 WHERE gid=?6",
-                rusqlite::params![downloaded, total, speed, connections, status, gid],
+                "UPDATE tasks SET downloaded=?1, total=?2, speed=?3, upload_speed=?4, connections=?5, status=?6 WHERE gid=?7",
+                rusqlite::params![downloaded, total, speed, upload_speed, connections, status, gid],
             );
         }
         let _ = conn.execute_batch("COMMIT");

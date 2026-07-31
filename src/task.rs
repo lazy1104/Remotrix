@@ -9,6 +9,7 @@ pub struct DownloadTask {
     pub downloaded: u64,
     pub total: u64,
     pub speed: u64,
+    pub upload_speed: u64,
     pub status: TaskStatus,
     pub connections: u64,
     pub added_at: i64,

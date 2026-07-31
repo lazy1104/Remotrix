@@ -58,6 +58,7 @@ pub enum EngineEvent {
         downloaded: u64,
         total: u64,
         speed: u64,
+        upload_speed: u64,
         status: String,
         connections: u64,
     },
@@ -90,6 +91,10 @@ pub enum EngineEvent {
     },
     Aria2FetchFailed {
         error: String,
+    },
+    GlobalSpeed {
+        download: u64,
+        upload: u64,
     },
     Aria2UpdateStaged {
         version: String,
@@ -293,6 +298,7 @@ async fn emit_progress(event_tx: &EventTx, s: &aria2_ws::response::Status) {
         downloaded: s.completed_length,
         total: s.total_length,
         speed: s.download_speed,
+        upload_speed: s.upload_speed,
         status: status_to_string(&s.status).to_string(),
         connections: s.connections,
     });
@@ -453,14 +459,7 @@ async fn handle_client_cmd(
         EngineCmd::Snapshot => {
             tracing::debug!("snapshot");
             for s in fetch_all_tasks(client).await {
-                let _ = event_tx.send(EngineEvent::Progress {
-                    gid: s.gid,
-                    downloaded: s.completed_length,
-                    total: s.total_length,
-                    speed: s.download_speed,
-                    status: status_to_string(&s.status).to_string(),
-                    connections: s.connections,
-                });
+                emit_progress(event_tx, &s).await;
             }
         }
         EngineCmd::AddTorrent {
@@ -672,6 +671,14 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
             };
             for s in &active {
                 emit_progress(&poll_event_tx, s).await;
+            }
+            if let Ok(stat) = poll_client.get_global_stat().await {
+                let _ = poll_event_tx.send(EngineEvent::GlobalSpeed {
+                    download: stat.download_speed,
+                    upload: stat.upload_speed,
+                });
+            } else {
+                tracing::debug!("get_global_stat failed");
             }
         }
     }));

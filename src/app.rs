@@ -4,10 +4,11 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use iced::alignment::{Horizontal, Vertical};
 use iced::futures::SinkExt;
 use iced::widget::{column, container, row, stack, text_editor};
 use iced::window::Id;
-use iced::{Element, Length, Subscription, Task};
+use iced::{Element, Length, Padding, Subscription, Task};
 
 use crate::config::{self, Settings};
 use crate::db::Db;
@@ -65,6 +66,9 @@ pub struct Remotrix {
     settings_dirty: bool,
     applied_settings: Settings,
     settings_ui: SettingsUiState,
+    global_speed: Option<(u64, u64)>,
+    paused_gids: HashSet<String>,
+    active_count: usize,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
@@ -98,6 +102,10 @@ pub fn init() -> (Remotrix, Task<Message>) {
     } else {
         (HashMap::new(), Vec::new())
     };
+    let active_count = tasks
+        .values()
+        .filter(|t| t.status == TaskStatus::Active)
+        .count();
 
     let state = Remotrix {
         page: Page::Tasks,
@@ -139,6 +147,9 @@ pub fn init() -> (Remotrix, Task<Message>) {
         confirm: None,
         settings_dirty: false,
         settings_ui,
+        global_speed: None,
+        paused_gids: HashSet::new(),
+        active_count,
     };
 
     (state, Task::none())
@@ -194,6 +205,8 @@ fn clear_all_local(state: &mut Remotrix) {
     state.tasks.clear();
     state.task_order.clear();
     state.dirty.clear();
+    state.active_count = 0;
+    state.paused_gids.clear();
     if let Some(ref db) = state.db {
         db.delete_all();
     }
@@ -324,16 +337,19 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
         }
         Message::PauseTask(gid) => {
+            state.paused_gids.insert(gid.clone());
             if state.handle.cmd_tx.send(EngineCmd::Pause(gid)).is_err() {
                 tracing::warn!("ui: pause cmd send failed");
             }
         }
         Message::ResumeTask(gid) => {
+            state.paused_gids.remove(&gid);
             if state.handle.cmd_tx.send(EngineCmd::Resume(gid)).is_err() {
                 tracing::warn!("ui: resume cmd send failed");
             }
         }
         Message::RemoveTask(gid) => {
+            state.paused_gids.remove(&gid);
             if state
                 .handle
                 .cmd_tx
@@ -348,6 +364,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.confirm = None;
         }
         Message::DeleteTask(gid) => {
+            state.paused_gids.remove(&gid);
             if state
                 .handle
                 .cmd_tx
@@ -362,11 +379,19 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.confirm = None;
         }
         Message::StartAll => {
+            state.paused_gids.clear();
             if state.handle.cmd_tx.send(EngineCmd::ResumeAll).is_err() {
                 tracing::warn!("ui: resume all cmd send failed");
             }
         }
         Message::PauseAll => {
+            state.paused_gids.extend(
+                state
+                    .tasks
+                    .values()
+                    .filter(|t| t.status == TaskStatus::Active)
+                    .map(|t| t.gid.clone()),
+            );
             if state.handle.cmd_tx.send(EngineCmd::PauseAll).is_err() {
                 tracing::warn!("ui: pause all cmd send failed");
             }
@@ -585,6 +610,8 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             EngineEvent::EngineStopped => {
                 tracing::info!("engine stopped");
+                state.global_speed = None;
+                state.paused_gids.clear();
             }
             EngineEvent::Added {
                 gid,
@@ -612,6 +639,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         downloaded: 0,
                         total: 0,
                         speed: 0,
+                        upload_speed: 0,
                         status: TaskStatus::Waiting,
                         connections: 0,
                         added_at: now,
@@ -636,6 +664,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 downloaded,
                 total,
                 speed,
+                upload_speed,
                 status,
                 connections,
             } => {
@@ -648,22 +677,45 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     }
                 }
                 if let Some(t) = state.tasks.get_mut(&gid) {
+                    let was_active = t.status == TaskStatus::Active;
                     if total == 0 && t.total > 0 {
                         t.status = TaskStatus::from_engine(&status);
                         t.speed = speed;
+                        t.upload_speed = upload_speed;
                         t.connections = connections;
                     } else {
                         t.downloaded = downloaded;
                         t.total = total;
                         t.speed = speed;
+                        t.upload_speed = upload_speed;
                         t.status = TaskStatus::from_engine(&status);
                         t.connections = connections;
+                    }
+                    if state.paused_gids.contains(&gid) {
+                        t.status = TaskStatus::Paused;
+                    }
+                    if t.status == TaskStatus::Paused {
+                        t.speed = 0;
+                        t.upload_speed = 0;
+                    }
+                    if was_active != (t.status == TaskStatus::Active) {
+                        if t.status == TaskStatus::Active {
+                            state.active_count += 1;
+                        } else {
+                            state.active_count = state.active_count.saturating_sub(1);
+                        }
                     }
                     state.dirty.insert(gid);
                 }
             }
             EngineEvent::Removed(gid) => {
                 tracing::info!(?gid, "ui: task removed");
+                if let Some(t) = state.tasks.get(&gid) {
+                    if t.status == TaskStatus::Active {
+                        state.active_count = state.active_count.saturating_sub(1);
+                    }
+                }
+                state.paused_gids.remove(&gid);
                 state.tasks.remove(&gid);
                 state.task_order.retain(|g| g != &gid);
                 state.dirty.remove(&gid);
@@ -724,6 +776,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             EngineEvent::EngineDegraded { reason } => {
                 state.aria2_fetch_error = Some(reason);
+            }
+            EngineEvent::GlobalSpeed { download, upload } => {
+                state.global_speed = Some((download, upload));
             }
             EngineEvent::Aria2Status { stage, message } => {
                 if stage == "ready" {
@@ -924,7 +979,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             if state.dirty.is_empty() {
                 return Task::none();
             }
-            let batch: Vec<(String, u64, u64, u64, u64, String)> = state
+            let batch: Vec<(String, u64, u64, u64, u64, u64, String)> = state
                 .dirty
                 .iter()
                 .filter_map(|gid| {
@@ -942,6 +997,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             t.downloaded,
                             t.total,
                             t.speed,
+                            t.upload_speed,
                             t.connections,
                             status.to_string(),
                         )
@@ -1132,7 +1188,26 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             .height(Length::Fill)
             .into()
     };
-    let mut stacked = framed;
+    let (dl, up) = if state.active_count > 0 {
+        state.global_speed.unwrap_or((0, 0))
+    } else {
+        (0, 0)
+    };
+    let hud_overlay = container(crate::ui::speed_hud::view(t, dl, up))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(Horizontal::Right)
+        .align_y(Vertical::Bottom)
+        .padding(Padding {
+            top: 0.0,
+            right: 16.0,
+            bottom: 16.0,
+            left: 0.0,
+        });
+    let mut stacked: iced::Element<'_, Message> = stack![framed, hud_overlay]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into();
 
     if state.add_dialog.is_visible() {
         stacked = stack![

@@ -1,8 +1,8 @@
 use iced::advanced::{
     layout::{Limits, Node},
-    renderer, Clipboard, Layout, Shell, Widget,
-    mouse,
-    overlay, widget::{self, Operation, Tree},
+    mouse, overlay, renderer,
+    widget::{self, Operation, Tree},
+    Clipboard, Layout, Shell, Widget,
 };
 use iced::keyboard::{self, key::Named};
 use iced::mouse::Cursor;
@@ -242,13 +242,8 @@ where
     }
 }
 
-struct DropDownOverlay<
-    'a,
-    'b,
-    Message,
-    Theme = iced::Theme,
-    Renderer = iced::Renderer,
-> where
+struct DropDownOverlay<'a, 'b, Message, Theme = iced::Theme, Renderer = iced::Renderer>
+where
     Message: Clone,
 {
     state: &'b mut Tree,

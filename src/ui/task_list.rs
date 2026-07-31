@@ -1,6 +1,6 @@
+use crate::ui::components::drop_down;
 use iced::widget::{button, column, container, progress_bar, row, text, tooltip};
 use iced::{Alignment, Element, Length};
-use crate::ui::components::drop_down;
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{ConfirmAction, Message, SortField, SortOrder};

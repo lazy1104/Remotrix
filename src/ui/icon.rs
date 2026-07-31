@@ -1,6 +1,6 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// 55de3005b689ea26c5d3a384c2fe57a1202f4f73c5c90c4d44cfd7beffbfaefa
+// 208e928ca1c4901556de0dcc4d39dbc1e6e29dce52452e7beedf510f59adbfe3
 use iced::widget::{text, Text};
 use iced::Font;
 
@@ -10,6 +10,7 @@ pub const FONT: &[u8] = include_bytes!("../../fonts/lucide.ttf");
 /// Use this to populate an icon-picker widget.
 #[allow(dead_code)]
 pub const ALL_ICONS: &[(&str, &str)] = &[
+    ("arrow_up", "\u{E45A}"),
     ("circle_check", "\u{E226}"),
     ("connections", "\u{E37F}"),
     ("copy", "\u{E09E}"),
@@ -38,6 +39,10 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("wrench", "\u{E1B1}"),
     ("x", "\u{E1B2}"),
 ];
+
+pub fn arrow_up<'a>() -> Text<'a> {
+    icon("\u{E45A}")
+}
 
 pub fn circle_check<'a>() -> Text<'a> {
     icon("\u{E226}")
