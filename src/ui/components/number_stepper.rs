@@ -40,6 +40,25 @@ fn clamp_value<T: PartialOrd>(v: T, min: T, max: T) -> T {
     }
 }
 
+struct FocusInput;
+
+impl widget::Operation for FocusInput {
+    fn focusable(
+        &mut self,
+        _id: Option<&iced::widget::Id>,
+        _bounds: Rectangle,
+        state: &mut dyn iced::advanced::widget::operation::Focusable,
+    ) {
+        if !state.is_focused() {
+            state.focus();
+        }
+    }
+
+    fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn widget::Operation)) {
+        operate(self);
+    }
+}
+
 struct FocusProbe {
     focused: bool,
 }
@@ -418,9 +437,28 @@ where
             );
         }
 
+        let refocus = !self.read_only
+            && matches!(
+                event,
+                Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left))
+            )
+            && cursor.is_over(layout.bounds());
+
+        if refocus {
+            let mut op = FocusInput;
+            if let Some(child_layout) = layout.children().next() {
+                self.child.as_widget_mut().operate(
+                    &mut tree.children[0],
+                    child_layout,
+                    renderer,
+                    &mut op,
+                );
+            }
+        }
+
         if !state.focused && probe.focused {
             state.buffer = self.value.to_string();
-        } else if state.focused && !probe.focused {
+        } else if state.focused && !probe.focused && !refocus {
             let parsed = state
                 .buffer
                 .parse::<T>()
@@ -430,7 +468,7 @@ where
             state.buffer = clamped.to_string();
             shell.publish((self.on_change)(clamped));
         }
-        state.focused = probe.focused;
+        state.focused = if refocus { true } else { probe.focused };
     }
 
     fn operate(
