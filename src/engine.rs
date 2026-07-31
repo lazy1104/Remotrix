@@ -427,10 +427,9 @@ async fn handle_client_cmd(
             advanced,
         } => {
             tracing::info!(?urls, ?save_dir, split, "add download");
-            let uri = match urls.first() {
-                Some(u) => u.clone(),
-                None => return Err("no URLs provided".into()),
-            };
+            if urls.is_empty() {
+                return Err("no URLs provided".into());
+            }
             let mut options = TaskOptions {
                 dir: Some(save_dir.to_string_lossy().to_string()),
                 split: Some(split as i32),
@@ -438,18 +437,31 @@ async fn handle_client_cmd(
                 ..Default::default()
             };
             advanced.apply(&mut options);
-            let gid = client
-                .add_uri(urls, Some(options), None, None)
-                .await
-                .map_err(|e| format!("add_uri: {e}"))?;
-            let name = basename(&uri).unwrap_or_else(|| gid.clone());
             let dir = save_dir.to_string_lossy().to_string();
-            let _ = event_tx.send(EngineEvent::Added {
-                gid,
-                name,
-                url: uri,
-                dir,
-            });
+            let mut added = 0;
+            for url in urls {
+                match client
+                    .add_uri(vec![url.clone()], Some(options.clone()), None, None)
+                    .await
+                {
+                    Ok(gid) => {
+                        let name = basename(&url).unwrap_or_else(|| gid.clone());
+                        let _ = event_tx.send(EngineEvent::Added {
+                            gid,
+                            name,
+                            url,
+                            dir: dir.clone(),
+                        });
+                        added += 1;
+                    }
+                    Err(e) => {
+                        tracing::error!(url = %url, error = %e, "add_uri failed");
+                    }
+                }
+            }
+            if added == 0 {
+                return Err("all add_uri calls failed".into());
+            }
         }
         EngineCmd::Pause(gid) => {
             tracing::info!(?gid, "pause");
@@ -835,7 +847,10 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                         break;
                     }
                     EngineCmd::CheckAria2Update => {
-                        handle_check_update(&event_tx).await;
+                        let tx = event_tx.clone();
+                        tokio::spawn(async move {
+                            handle_check_update(&tx).await;
+                        });
                     }
                     EngineCmd::RetryAria2Fetch => {
                         for h in poll_handles.drain(..) { h.abort(); }

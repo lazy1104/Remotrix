@@ -26,6 +26,7 @@ pub async fn fetch_latest_release(repo: &str, slug: &str) -> Result<ReleaseInfo,
     let api_url = format!("https://api.github.com/repos/{repo}/releases/latest");
     let client = reqwest::Client::builder()
         .user_agent("remotrix-updater")
+        .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| format!("create reqwest client: {e}"))?;
 
