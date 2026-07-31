@@ -39,6 +39,13 @@ pub enum EngineCmd {
         split: u16,
     },
     FetchTaskDetails(String),
+    ReaddTask {
+        gid: String,
+        url: String,
+        save_dir: PathBuf,
+        split: u16,
+        paused: bool,
+    },
     Shutdown,
     CheckAria2Update,
     RetryAria2Fetch,
@@ -71,6 +78,7 @@ pub enum EngineEvent {
         gid: String,
     },
     EngineReady,
+    SyncComplete,
     EngineStopped,
     Aria2Status {
         stage: String,
@@ -186,7 +194,7 @@ impl Sidecar {
             .arg("--save-session")
             .arg(&session_str)
             .arg("--save-session-interval")
-            .arg("60")
+            .arg("5")
             .arg("--dir")
             .arg(&config.download_dir)
             .arg("--continue=true")
@@ -528,6 +536,49 @@ async fn handle_client_cmd(
                 }
             }
         }
+        EngineCmd::ReaddTask {
+            gid,
+            url,
+            save_dir,
+            split,
+            paused,
+        } => {
+            tracing::info!(?gid, ?url, ?save_dir, split, paused, "re-add ghost task");
+            let options = TaskOptions {
+                gid: Some(gid.clone()),
+                dir: Some(save_dir.to_string_lossy().to_string()),
+                split: Some(split as i32),
+                max_connection_per_server: Some((split as i32).max(1)),
+                r#continue: Some(true),
+                auto_file_renaming: Some(true),
+                ..Default::default()
+            };
+            match client
+                .add_uri(vec![url.clone()], Some(options), None, None)
+                .await
+            {
+                Ok(_) => {
+                    if paused {
+                        let _ = client.pause(&gid).await;
+                    }
+                    let name = basename(&url).unwrap_or_else(|| gid.clone());
+                    let dir = save_dir.to_string_lossy().to_string();
+                    let _ = event_tx.send(EngineEvent::Added {
+                        gid: gid.clone(),
+                        name,
+                        url,
+                        dir,
+                    });
+                    if let Ok(status) = client.tell_status(&gid).await {
+                        emit_progress(event_tx, &status).await;
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(?gid, error = ?e, "re-add ghost task failed");
+                    let _ = event_tx.send(EngineEvent::TaskDetailsFailed { gid });
+                }
+            }
+        }
         EngineCmd::ApplyAria2Options { options } => {
             tracing::info!("apply aria2 options");
             if let Err(e) = client.change_global_option(options.clone()).await {
@@ -613,6 +664,7 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
     let sync_event_tx = event_tx.clone();
     tokio::spawn(async move {
         sync_existing_tasks(&sync_client, &sync_event_tx).await;
+        let _ = sync_event_tx.send(EngineEvent::SyncComplete);
     });
 
     let boot_client = sidecar.client.clone();
@@ -726,6 +778,7 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                 match &cmd {
                     EngineCmd::Shutdown => {
                         if let Some(ref s) = sidecar {
+                            let _ = s.client.save_session().await;
                             let _ = s.client.shutdown().await;
                         }
                         let _ = event_tx.send(EngineEvent::EngineStopped);
@@ -754,6 +807,7 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                     EngineCmd::RestartEngine => {
                         if let Some(ref s) = sidecar {
                             for h in poll_handles.drain(..) { h.abort(); }
+                            let _ = s.client.save_session().await;
                             let _ = s.client.shutdown().await;
                             sidecar = None;
                         } else {

@@ -68,6 +68,8 @@ pub struct Remotrix {
     settings_ui: SettingsUiState,
     global_speed: Option<(u64, u64)>,
     paused_gids: HashSet<String>,
+    synced_gids: HashSet<String>,
+    sync_done: bool,
     active_count: usize,
     toasts: Vec<crate::ui::components::toast::Toast>,
     next_toast_id: u64,
@@ -151,6 +153,8 @@ pub fn init() -> (Remotrix, Task<Message>) {
         settings_ui,
         global_speed: None,
         paused_gids: HashSet::new(),
+        synced_gids: HashSet::new(),
+        sync_done: false,
         active_count,
         toasts: Vec::new(),
         next_toast_id: 0,
@@ -611,11 +615,60 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             EngineEvent::EngineReady => {
                 tracing::info!("engine ready");
                 state.aria2_fetch_error = None;
+                state.synced_gids.clear();
+                state.sync_done = false;
             }
             EngineEvent::EngineStopped => {
                 tracing::info!("engine stopped");
                 state.global_speed = None;
                 state.paused_gids.clear();
+            }
+            EngineEvent::SyncComplete => {
+                tracing::info!("engine sync complete");
+                if state.sync_done {
+                    return Task::none();
+                }
+                state.sync_done = true;
+                let split = state.settings.split;
+                let ghost: Vec<(String, String, PathBuf, bool)> = state
+                    .tasks
+                    .iter()
+                    .filter(|(gid, t)| {
+                        !state.synced_gids.contains(*gid)
+                            && !t.url.is_empty()
+                            && matches!(
+                                t.status,
+                                TaskStatus::Waiting | TaskStatus::Active | TaskStatus::Paused
+                            )
+                    })
+                    .map(|(gid, t)| {
+                        (
+                            gid.clone(),
+                            t.url.clone(),
+                            t.save_dir.clone(),
+                            t.status == TaskStatus::Paused,
+                        )
+                    })
+                    .collect();
+                for (gid, url, save_dir, paused) in ghost {
+                    if paused {
+                        state.paused_gids.insert(gid.clone());
+                    }
+                    if state
+                        .handle
+                        .cmd_tx
+                        .send(EngineCmd::ReaddTask {
+                            gid,
+                            url,
+                            save_dir,
+                            split,
+                            paused,
+                        })
+                        .is_err()
+                    {
+                        tracing::warn!("ui: re-add ghost task cmd send failed");
+                    }
+                }
             }
             EngineEvent::Added {
                 gid,
@@ -624,6 +677,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 dir,
             } => {
                 tracing::info!(?gid, ?name, "ui: task added");
+                state.synced_gids.insert(gid.clone());
                 if let Some(tpath) = state.pending_torrent_path.take() {
                     state.torrent_files.insert(gid.clone(), tpath);
                 }
@@ -672,6 +726,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 status,
                 connections,
             } => {
+                state.synced_gids.insert(gid.clone());
                 if status == "complete"
                     && state.settings.delete_torrent_after_complete
                     && state.torrent_files.contains_key(&gid)
