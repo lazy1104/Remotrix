@@ -77,6 +77,7 @@ pub enum Message {
     SearchChanged(String),
     SettingChanged(SettingKey, String),
     ApplySettings,
+    ResetSettings,
     OpenAbout,
     CloseAbout,
     Engine(EngineEvent),

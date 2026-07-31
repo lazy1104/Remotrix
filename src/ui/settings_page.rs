@@ -71,6 +71,7 @@ pub fn view<'a>(
     settings: &'a Settings,
     settings_ui: &'a SettingsUiState,
     category: SettingsCategory,
+    applied_settings: &'a Settings,
     aria2_version: Option<&'a str>,
     aria2_check_msg: Option<&'a str>,
     aria2_status: Option<(&'a str, &'a str)>,
@@ -80,6 +81,7 @@ pub fn view<'a>(
     path_history: &'a HashMap<String, Vec<String>>,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
+    let dirty = !settings.apply_fields_equal(applied_settings);
     let content = match category {
         SettingsCategory::General => general_view(fluent, theme, settings),
         SettingsCategory::Download => {
@@ -100,29 +102,31 @@ pub fn view<'a>(
         ),
     };
 
-    let needs_apply = matches!(
-        category,
-        SettingsCategory::Download | SettingsCategory::BitTorrent | SettingsCategory::Network
-    );
-
     let mut body = column![]
         .push(text(settings_title(fluent, category)).size(22))
         .push(iced::widget::Space::new().height(Length::Fixed(20.0)))
         .push(slim_scrollable(content).height(Length::Fill));
 
-    if needs_apply {
-        // body = body.push(iced::widget::Space::new().height(Length::Fixed(16.0)));
-        body = body.push(
-            row![]
-                .push(
-                    button(text(fluent.get(Tr::Apply)).size(14))
-                        .on_press(Message::ApplySettings)
-                        .padding([10, 24])
-                        .style(theme::style::button::primary()),
-                )
-                .width(Length::Fill),
+    let mut actions = row![].spacing(12).width(Length::Fill);
+    actions = actions.push(
+        button(text(fluent.get(Tr::Apply)).size(14))
+            .on_press_maybe(if dirty {
+                Some(Message::ApplySettings)
+            } else {
+                None
+            })
+            .padding([10, 24])
+            .style(theme::style::button::primary()),
+    );
+    if dirty {
+        actions = actions.push(
+            button(text(fluent.get(Tr::Reset)).size(14))
+                .on_press(Message::ResetSettings)
+                .padding([10, 24])
+                .style(theme::style::button::secondary()),
         );
     }
+    body = body.push(actions);
 
     container(body)
         .width(Length::Fill)

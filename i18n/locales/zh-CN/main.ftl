@@ -75,6 +75,7 @@ connect-timeout = 连接超时（秒）
 auto-check-update = 自动检查更新
 about = 关于
 apply = 应用
+reset = 重置
 appearance = 外观
 light-theme = 浅色主题
 dark-theme = 深色主题

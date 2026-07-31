@@ -8,7 +8,7 @@ use serde_json::{Map, Value};
 use crate::i18n::Locale;
 use crate::ui::theme::ThemeMode;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Aria2Options {
     #[serde(default = "default_max_connection_per_server")]
     pub max_connection_per_server: u32,
@@ -270,6 +270,17 @@ pub struct Settings {
 }
 
 impl Settings {
+    pub fn apply_fields_equal(&self, other: &Settings) -> bool {
+        self.download_dir == other.download_dir
+            && self.max_concurrent == other.max_concurrent
+            && self.download_limit_kb == other.download_limit_kb
+            && self.upload_limit_kb == other.upload_limit_kb
+            && self.split == other.split
+            && self.nav_to_tasks_after_add == other.nav_to_tasks_after_add
+            && self.delete_torrent_after_complete == other.delete_torrent_after_complete
+            && self.aria2 == other.aria2
+    }
+
     pub fn record_path(&mut self, key: &str, path: &str) {
         let e = self.path_history.entry(key.to_string()).or_default();
         e.retain(|p| p != path);

@@ -75,6 +75,7 @@ connect-timeout = Connect timeout (seconds)
 auto-check-update = Auto-check for updates
 about = About
 apply = Apply
+reset = Reset
 appearance = Appearance
 light-theme = Light Theme
 dark-theme = Dark Theme
