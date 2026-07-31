@@ -378,6 +378,13 @@ async fn fetch_all_tasks(client: &Client) -> Vec<aria2_ws::response::Status> {
     all
 }
 
+fn url_host(uri: &str) -> Option<String> {
+    reqwest::Url::parse(uri)
+        .ok()?
+        .host_str()
+        .map(|h| h.to_ascii_lowercase())
+}
+
 async fn sync_existing_tasks(client: &Client, event_tx: &EventTx) {
     let all = fetch_all_tasks(client).await;
     for s in &all {
@@ -510,10 +517,45 @@ async fn handle_client_cmd(
             }
         }
         EngineCmd::ResumeAll => {
-            tracing::info!("resume all");
-            let _ = client.unpause_all().await;
-            for s in fetch_all_tasks(client).await {
-                emit_progress(event_tx, &s).await;
+            tracing::info!("resume all (staggered by host)");
+            let tasks = fetch_all_tasks(client).await;
+            let mut groups: Vec<(Option<String>, Vec<aria2_ws::response::Status>)> = Vec::new();
+            for s in tasks {
+                if s.status != Aria2TaskStatus::Paused {
+                    continue;
+                }
+                let url = s
+                    .files
+                    .first()
+                    .and_then(|f| f.uris.first())
+                    .map(|u| u.uri.clone())
+                    .unwrap_or_default();
+                let host = url_host(&url);
+                match groups.iter_mut().find(|(h, _)| *h == host) {
+                    Some((_, v)) => v.push(s),
+                    None => groups.push((host, vec![s])),
+                }
+            }
+            if groups.is_empty() {
+                return Ok(());
+            }
+            const RESUME_GROUP_INTERVAL: Duration = Duration::from_millis(500);
+            tracing::info!(groups = groups.len(), "resume all staggered groups");
+            for (host, group) in groups {
+                tracing::info!(?host, count = group.len(), "resuming group");
+                let client = client.clone();
+                let tx = event_tx.clone();
+                tokio::spawn(async move {
+                    for (i, s) in group.iter().enumerate() {
+                        if i > 0 {
+                            tokio::time::sleep(RESUME_GROUP_INTERVAL).await;
+                        }
+                        let _ = client.unpause(&s.gid).await;
+                        if let Ok(st) = client.tell_status(&s.gid).await {
+                            emit_progress(&tx, &st).await;
+                        }
+                    }
+                });
             }
         }
         EngineCmd::RemoveAll { delete_files } => {
