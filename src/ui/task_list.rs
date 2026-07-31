@@ -1,5 +1,5 @@
 use crate::ui::components::drop_down;
-use iced::widget::{button, column, container, progress_bar, row, text, tooltip};
+use iced::widget::{button, column, container, progress_bar, row, text, text_input, tooltip};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
@@ -17,6 +17,7 @@ pub fn view<'a>(
     sort_field: SortField,
     sort_order: SortOrder,
     sort_menu_open: bool,
+    search_query: &str,
 ) -> Element<'a, Message> {
     let lucide_font = iced::Font::with_name("lucide");
 
@@ -103,7 +104,27 @@ pub fn view<'a>(
         )
     };
 
+    let has_query = !search_query.trim().is_empty();
+
+    let search_input = text_input(&fluent.get(Tr::Search), search_query)
+        .on_input(Message::SearchChanged)
+        .width(Length::Fixed(220.0))
+        .padding([6, 10])
+        .size(13)
+        .style(theme::style::input::standard);
+
+    let mut search_group = row![search_input].spacing(4).align_y(Alignment::Center);
+    if has_query {
+        search_group = search_group.push(
+            button(icon::x().size(15))
+                .on_press(Message::SearchChanged(String::new()))
+                .padding([6_u16, 8])
+                .style(theme::style::button::toolbar_icon(false)),
+        );
+    }
+
     let toolbar = row![]
+        .push(search_group)
         .push(iced::widget::Space::new().width(Length::Fill))
         .push(new_btn)
         .push(
@@ -142,27 +163,32 @@ pub fn view<'a>(
                 .align_y(Alignment::Center)
                 .spacing(4),
         )
+        .align_y(Alignment::Center)
+        .spacing(4)
         .width(Length::Fill)
         .padding(iced::Padding::new(0.0).bottom(12.0));
 
     if tasks.is_empty() {
-        let empty = container(
-            column![]
-                .spacing(8)
-                .push(
-                    text(fluent.get(Tr::NoTasks))
-                        .size(18)
-                        .style(theme::style::text::secondary),
-                )
-                .push(
-                    text(fluent.get(Tr::NoTasksHint))
-                        .size(13)
-                        .style(theme::style::text::secondary),
-                ),
-        )
-        .center_x(Length::Fill)
-        .width(Length::Fill)
-        .padding([80_u16, 0]);
+        let mut empty_col = column![].spacing(8).push(
+            text(fluent.get(if has_query {
+                Tr::NoResults
+            } else {
+                Tr::NoTasks
+            }))
+            .size(18)
+            .style(theme::style::text::secondary),
+        );
+        if !has_query {
+            empty_col = empty_col.push(
+                text(fluent.get(Tr::NoTasksHint))
+                    .size(13)
+                    .style(theme::style::text::secondary),
+            );
+        }
+        let empty = container(empty_col)
+            .center_x(Length::Fill)
+            .width(Length::Fill)
+            .padding([80_u16, 0]);
 
         return container(column![].push(toolbar).push(empty))
             .width(Length::Fill)

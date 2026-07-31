@@ -74,6 +74,7 @@ pub enum Message {
     ToggleSortMenu,
     CloseSortMenu,
     ToggleSortOrder,
+    SearchChanged(String),
     SettingChanged(SettingKey, String),
     ApplySettings,
     OpenAbout,

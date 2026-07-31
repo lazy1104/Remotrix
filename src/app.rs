@@ -46,6 +46,7 @@ pub struct Remotrix {
     sort_menu_open: bool,
     sort_field: SortField,
     sort_order: SortOrder,
+    search_query: String,
     aria2_version: Option<String>,
     aria2_check_msg: Option<String>,
     update_pending: Option<String>,
@@ -136,6 +137,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         sort_menu_open: false,
         sort_field: SortField::AddedTime,
         sort_order: SortOrder::Desc,
+        search_query: String::new(),
         aria2_version: None,
         aria2_check_msg: None,
         update_pending: None,
@@ -508,6 +510,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 SortOrder::Asc => SortOrder::Desc,
                 SortOrder::Desc => SortOrder::Asc,
             };
+        }
+        Message::SearchChanged(query) => {
+            state.search_query = query;
         }
         Message::OpenAbout => {
             state.about_dialog_visible = true;
@@ -1295,6 +1300,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
 
     let right_col: Element<'_, Message> = match state.page {
         Page::Tasks => {
+            let query = state.search_query.trim().to_lowercase();
             let filtered: Vec<DownloadTask> = state
                 .task_order
                 .iter()
@@ -1307,6 +1313,11 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                     ),
                     TaskFilter::Completed => matches!(t.status, TaskStatus::Completed),
                 })
+                .filter(|t| {
+                    query.is_empty()
+                        || t.name.to_lowercase().contains(&query)
+                        || t.url.to_lowercase().contains(&query)
+                })
                 .cloned()
                 .collect();
             let sorted = crate::ui::sort::sort_tasks(&filtered, state.sort_field, state.sort_order);
@@ -1317,6 +1328,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                 state.sort_field,
                 state.sort_order,
                 state.sort_menu_open,
+                &state.search_query,
             )
         }
         Page::Settings => crate::ui::settings_page::view(
