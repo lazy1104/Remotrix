@@ -21,6 +21,14 @@ or-torrent = 或选择 .torrent 文件
 browse = 浏览
 save-to = 保存到
 split-connections = 分片 / 最大连接数
+rename-file = 重命名
+rename-multi-url-hint = 仅单链接时可用
+advanced-options = 高级选项
+http-auth = HTTP 认证
+http-auth-account = 账号
+http-auth-password = 密码
+referer = 来源页面
+cookie = Cookie
 cancel = 取消
 download = 下载
 settings-title = 设置
@@ -44,7 +52,7 @@ check-integrity = 校验文件完整性
 file = 文件
 auto-file-renaming = 自动重命名文件
 allow-overwrite = 允许覆盖文件
-speed-limits = 速度限制 (KB/s, 0 = 不限)
+speed-limits = 速度限制 (0 = 不限)
 download-limit = 全局下载限速
 upload-limit = 全局上传限速
 per-task-download-limit = 每任务下载限速

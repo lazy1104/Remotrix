@@ -11,12 +11,53 @@ use tokio::time::{interval, Duration};
 
 use crate::aria2_fetcher;
 
+#[derive(Debug, Clone, Default)]
+pub struct TaskAdvancedOptions {
+    pub out: String,
+    pub user_agent: String,
+    pub http_user: String,
+    pub http_passwd: String,
+    pub referer: String,
+    pub cookie: String,
+}
+
+impl TaskAdvancedOptions {
+    pub fn is_empty(&self) -> bool {
+        self.out.is_empty()
+            && self.user_agent.is_empty()
+            && self.http_user.is_empty()
+            && self.http_passwd.is_empty()
+            && self.referer.is_empty()
+            && self.cookie.is_empty()
+    }
+
+    pub fn apply(&self, opts: &mut TaskOptions) {
+        if !self.out.is_empty() {
+            opts.out = Some(self.out.clone());
+        }
+        let mut extra = vec![
+            ("user-agent", &self.user_agent),
+            ("http-user", &self.http_user),
+            ("http-passwd", &self.http_passwd),
+            ("referer", &self.referer),
+            ("cookie", &self.cookie),
+        ];
+        for (key, value) in extra.drain(..) {
+            if !value.is_empty() {
+                opts.extra_options
+                    .insert(key.to_string(), serde_json::Value::String(value.clone()));
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum EngineCmd {
     AddDownload {
         urls: Vec<String>,
         save_dir: PathBuf,
         split: u16,
+        advanced: TaskAdvancedOptions,
     },
     Pause(String),
     Resume(String),
@@ -37,6 +78,7 @@ pub enum EngineCmd {
         path: PathBuf,
         save_dir: PathBuf,
         split: u16,
+        advanced: TaskAdvancedOptions,
     },
     FetchTaskDetails(String),
     ReaddTask {
@@ -382,18 +424,20 @@ async fn handle_client_cmd(
             urls,
             save_dir,
             split,
+            advanced,
         } => {
             tracing::info!(?urls, ?save_dir, split, "add download");
             let uri = match urls.first() {
                 Some(u) => u.clone(),
                 None => return Err("no URLs provided".into()),
             };
-            let options = TaskOptions {
+            let mut options = TaskOptions {
                 dir: Some(save_dir.to_string_lossy().to_string()),
                 split: Some(split as i32),
                 max_connection_per_server: Some((split as i32).max(1)),
                 ..Default::default()
             };
+            advanced.apply(&mut options);
             let gid = client
                 .add_uri(urls, Some(options), None, None)
                 .await
@@ -474,17 +518,19 @@ async fn handle_client_cmd(
             path,
             save_dir,
             split,
+            advanced,
         } => {
             tracing::info!(?path, ?save_dir, split, "add torrent");
             let bytes = tokio::fs::read(&path)
                 .await
                 .map_err(|e| format!("read torrent: {e}"))?;
-            let options = TaskOptions {
+            let mut options = TaskOptions {
                 dir: Some(save_dir.to_string_lossy().to_string()),
                 split: Some(split as i32),
                 max_connection_per_server: Some((split as i32).max(1)),
                 ..Default::default()
             };
+            advanced.apply(&mut options);
             let gid = client
                 .add_torrent(bytes, None, Some(options), None, None)
                 .await

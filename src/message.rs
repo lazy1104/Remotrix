@@ -14,6 +14,16 @@ pub enum PathPickerId {
     Torrent,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AddField {
+    Out,
+    UserAgent,
+    HttpUser,
+    HttpPasswd,
+    Referer,
+    Cookie,
+}
+
 impl PathPickerId {
     pub fn history_key(self) -> &'static str {
         match self {
@@ -46,6 +56,8 @@ pub enum Message {
     CopyPath(String),
     SplitChanged(String),
     AddDownload,
+    AddFieldChanged(AddField, String),
+    ToggleAdvanced(bool),
     CancelAdd,
     OpenAddDialog,
     PauseTask(String),

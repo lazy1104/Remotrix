@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use iced::widget::{button, column, row, text, text_editor};
+use iced::widget::{button, column, row, text, text_editor, text_input};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
-use crate::message::{Message, PathPickerId};
+use crate::message::{AddField, Message, PathPickerId};
 use crate::ui::components::dialog::{overlay, Dialog};
 use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::path_picker::PathPicker;
+use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::theme;
 
 #[derive(Debug, Clone)]
@@ -18,6 +19,13 @@ pub struct AddDialogState {
     pub save_picker: PathPicker,
     pub split: u16,
     pub torrent_picker: PathPicker,
+    pub out: String,
+    pub advanced_open: bool,
+    pub user_agent: String,
+    pub http_user: String,
+    pub http_passwd: String,
+    pub referer: String,
+    pub cookie: String,
 }
 
 impl AddDialogState {
@@ -28,6 +36,13 @@ impl AddDialogState {
             save_picker: PathPicker::folder(default_dir.to_string_lossy(), true),
             split: 16,
             torrent_picker: PathPicker::file(String::new()),
+            out: String::new(),
+            advanced_open: false,
+            user_agent: String::new(),
+            http_user: String::new(),
+            http_passwd: String::new(),
+            referer: String::new(),
+            cookie: String::new(),
         }
     }
 
@@ -37,6 +52,13 @@ impl AddDialogState {
         self.save_picker.set_value(default_dir.to_string_lossy());
         self.split = default_split;
         self.torrent_picker.set_value("");
+        self.out.clear();
+        self.advanced_open = false;
+        self.user_agent.clear();
+        self.http_user.clear();
+        self.http_passwd.clear();
+        self.referer.clear();
+        self.cookie.clear();
     }
 
     pub fn close(&mut self) {
@@ -50,6 +72,19 @@ impl AddDialogState {
     pub fn can_submit(&self) -> bool {
         (!self.url_editor.text().trim().is_empty() && !self.save_picker.value().is_empty())
             || !self.torrent_picker.value().is_empty()
+    }
+
+    pub fn url_count(&self) -> usize {
+        self.url_editor
+            .text()
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .count()
+    }
+
+    pub fn has_torrent(&self) -> bool {
+        !self.torrent_picker.value().is_empty()
     }
 }
 
@@ -111,9 +146,58 @@ pub fn view<'a>(
         .align_y(Alignment::Center)
         .width(Length::Fill);
 
-    let body = column![url_input, torrent_row, save_row, split_input]
-        .spacing(14)
+    let rename_input = text_input("", &state.out)
+        .on_input(move |s| Message::AddFieldChanged(AddField::Out, s))
+        .width(Length::Fill)
+        .padding(8)
+        .size(13)
+        .style(theme::style::input::standard);
+    let rename_row = row![]
+        .push(
+            text(fluent.get(Tr::RenameFile))
+                .size(12)
+                .style(theme::style::text::secondary)
+                .width(Length::Fixed(140.0)),
+        )
+        .push(if state.url_count() > 1 {
+            let mut input = rename_input;
+            input = input.on_input_maybe(Option::<fn(String) -> Message>::None);
+            row![]
+                .push(input)
+                .push(
+                    text(fluent.get(Tr::RenameMultiUrlHint))
+                        .size(11)
+                        .style(theme::style::text::secondary),
+                )
+                .spacing(6)
+                .align_y(Alignment::Center)
+                .width(Length::Fill)
+        } else {
+            row![rename_input].width(Length::Fill)
+        })
+        .align_y(Alignment::Center)
         .width(Length::Fill);
+
+    let advanced_checkbox = iced::widget::checkbox(state.advanced_open)
+        .label(fluent.get(Tr::AdvancedOptions))
+        .on_toggle(Message::ToggleAdvanced);
+
+    let mut body_items = vec![
+        url_input.into(),
+        torrent_row.into(),
+        save_row.into(),
+        split_input.into(),
+    ];
+    if !state.has_torrent() {
+        body_items.push(rename_row.into());
+    }
+    body_items.push(advanced_checkbox.into());
+    if state.advanced_open {
+        body_items.push(advanced_form(fluent, state));
+    }
+
+    let body = slim_scrollable(column(body_items).spacing(14).width(Length::Fill))
+        .height(Length::Fixed(400.0));
 
     let buttons = row![]
         .push(
@@ -144,4 +228,69 @@ pub fn view<'a>(
             .footer(buttons)
             .build(),
     )
+}
+
+fn advanced_field<'a>(
+    fluent: &'a Fluent,
+    label: Tr,
+    value: &'a str,
+    field: AddField,
+    secure: bool,
+) -> Element<'a, Message> {
+    let mut input = text_input("", value)
+        .on_input(move |s| Message::AddFieldChanged(field, s))
+        .width(Length::Fill)
+        .padding(8)
+        .size(13)
+        .style(theme::style::input::standard);
+    if secure {
+        input = input.secure(true);
+    }
+    row![
+        text(fluent.get(label))
+            .size(12)
+            .style(theme::style::text::secondary)
+            .width(Length::Fixed(140.0)),
+        input,
+    ]
+    .align_y(Alignment::Center)
+    .width(Length::Fill)
+    .into()
+}
+
+fn advanced_form<'a>(fluent: &'a Fluent, state: &'a AddDialogState) -> Element<'a, Message> {
+    column![
+        advanced_field(
+            fluent,
+            Tr::UserAgent,
+            &state.user_agent,
+            AddField::UserAgent,
+            false
+        ),
+        advanced_field(
+            fluent,
+            Tr::HttpAuthAccount,
+            &state.http_user,
+            AddField::HttpUser,
+            false
+        ),
+        advanced_field(
+            fluent,
+            Tr::HttpAuthPassword,
+            &state.http_passwd,
+            AddField::HttpPasswd,
+            true
+        ),
+        advanced_field(
+            fluent,
+            Tr::Referer,
+            &state.referer,
+            AddField::Referer,
+            false
+        ),
+        advanced_field(fluent, Tr::Cookie, &state.cookie, AddField::Cookie, false),
+    ]
+    .spacing(10)
+    .width(Length::Fill)
+    .into()
 }

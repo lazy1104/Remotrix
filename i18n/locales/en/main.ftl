@@ -21,6 +21,14 @@ or-torrent = Or choose a .torrent file
 browse = Browse
 save-to = Save to
 split-connections = Split / max connections
+rename-file = Rename
+rename-multi-url-hint = Only available for a single link
+advanced-options = Advanced options
+http-auth = HTTP Authentication
+http-auth-account = Account
+http-auth-password = Password
+referer = Referer
+cookie = Cookie
 cancel = Cancel
 download = Download
 settings-title = Settings
@@ -44,7 +52,7 @@ check-integrity = Check integrity
 file = File
 auto-file-renaming = Auto file renaming
 allow-overwrite = Allow overwrite
-speed-limits = Speed Limits (KB/s, 0 = unlimited)
+speed-limits = Speed Limits (0 = unlimited)
 download-limit = Global download limit
 upload-limit = Global upload limit
 per-task-download-limit = Per-task download limit

@@ -12,11 +12,11 @@ use iced::{Element, Length, Padding, Subscription, Task};
 
 use crate::config::{self, Settings};
 use crate::db::Db;
-use crate::engine::{EngineCmd, EngineEvent, EngineHandle, EventRx};
+use crate::engine::{EngineCmd, EngineEvent, EngineHandle, EventRx, TaskAdvancedOptions};
 use crate::i18n::{Fluent, Locale, Tr};
 use crate::message::{
-    CloseDialogChoice, ConfirmAction, Message, Page, PathPickerId, SettingKey, SettingsCategory,
-    SortField, SortOrder, TaskFilter, WindowCmd,
+    AddField, CloseDialogChoice, ConfirmAction, Message, Page, PathPickerId, SettingKey,
+    SettingsCategory, SortField, SortOrder, TaskFilter, WindowCmd,
 };
 use crate::task::{DownloadTask, TaskStatus};
 use crate::ui::add_dialog::AddDialogState;
@@ -292,14 +292,43 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 state.add_dialog.split = n.max(1);
             }
         }
+        Message::ToggleAdvanced(value) => {
+            state.add_dialog.advanced_open = value;
+        }
+        Message::AddFieldChanged(field, value) => {
+            let add = &mut state.add_dialog;
+            match field {
+                AddField::Out => add.out = value,
+                AddField::UserAgent => add.user_agent = value,
+                AddField::HttpUser => add.http_user = value,
+                AddField::HttpPasswd => add.http_passwd = value,
+                AddField::Referer => add.referer = value,
+                AddField::Cookie => add.cookie = value,
+            }
+        }
         Message::AddDownload => {
             if state.add_dialog.can_submit() {
                 let nav = state.settings.nav_to_tasks_after_add;
+
+                let advanced = TaskAdvancedOptions {
+                    out: if state.add_dialog.url_count() == 1 {
+                        state.add_dialog.out.clone()
+                    } else {
+                        String::new()
+                    },
+                    user_agent: state.add_dialog.user_agent.clone(),
+                    http_user: state.add_dialog.http_user.clone(),
+                    http_passwd: state.add_dialog.http_passwd.clone(),
+                    referer: state.add_dialog.referer.clone(),
+                    cookie: state.add_dialog.cookie.clone(),
+                };
 
                 let tpath_str = state.add_dialog.torrent_picker.value().to_string();
                 if !tpath_str.is_empty() {
                     let tpath = PathBuf::from(&tpath_str);
                     let save_dir = PathBuf::from(state.add_dialog.save_picker.value());
+                    let mut torrent_advanced = advanced.clone();
+                    torrent_advanced.out.clear();
                     state.pending_torrent_path = Some(tpath.clone());
                     if state
                         .handle
@@ -308,6 +337,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             path: tpath,
                             save_dir,
                             split: state.add_dialog.split,
+                            advanced: torrent_advanced,
                         })
                         .is_err()
                     {
@@ -338,6 +368,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             urls: urls.clone(),
                             save_dir,
                             split: state.add_dialog.split,
+                            advanced,
                         })
                         .is_err()
                     {
