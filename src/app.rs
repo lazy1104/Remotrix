@@ -382,6 +382,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 AddField::HttpPasswd => add.http_passwd = value,
                 AddField::Referer => add.referer = value,
                 AddField::Cookie => add.cookie = value,
+                AddField::ProxyServer => add.proxy_server = value,
+                AddField::ProxyUsername => add.proxy_username = value,
+                AddField::ProxyPassword => add.proxy_password = value,
             }
         }
         Message::AddDownload => {
@@ -399,6 +402,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     http_passwd: state.add_dialog.http_passwd.clone(),
                     referer: state.add_dialog.referer.clone(),
                     cookie: state.add_dialog.cookie.clone(),
+                    proxy_server: state.add_dialog.proxy_server.clone(),
+                    proxy_username: state.add_dialog.proxy_username.clone(),
+                    proxy_password: state.add_dialog.proxy_password.clone(),
                 };
 
                 let tpath_str = state.add_dialog.torrent_picker.value().to_string();

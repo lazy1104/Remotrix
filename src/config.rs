@@ -119,22 +119,33 @@ impl Default for Aria2Options {
     }
 }
 
+pub fn all_proxy_url(server: &str, username: &str, password: &str) -> Option<String> {
+    if server.trim().is_empty() {
+        return None;
+    }
+    let server = server.trim();
+    let auth = if username.is_empty() {
+        String::new()
+    } else {
+        format!("{}:{}@", username, password)
+    };
+    if let Some((scheme, rest)) = server.split_once("://") {
+        Some(format!("{scheme}://{auth}{rest}"))
+    } else {
+        Some(format!("http://{auth}{server}"))
+    }
+}
+
 impl Aria2Options {
     pub fn all_proxy_value(&self) -> Option<String> {
-        if !self.proxy_enabled || self.proxy_server.trim().is_empty() {
+        if !self.proxy_enabled {
             return None;
         }
-        let server = self.proxy_server.trim();
-        let auth = if self.proxy_username.is_empty() {
-            String::new()
-        } else {
-            format!("{}:{}@", self.proxy_username, self.proxy_password)
-        };
-        if let Some((scheme, rest)) = server.split_once("://") {
-            Some(format!("{scheme}://{auth}{rest}"))
-        } else {
-            Some(format!("http://{auth}{server}"))
-        }
+        all_proxy_url(
+            &self.proxy_server,
+            &self.proxy_username,
+            &self.proxy_password,
+        )
     }
 }
 

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use iced::widget::{button, column, row, text, text_editor, text_input};
+use iced::widget::{button, column, row, rule, text, text_editor, text_input};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
@@ -26,6 +26,9 @@ pub struct AddDialogState {
     pub http_passwd: String,
     pub referer: String,
     pub cookie: String,
+    pub proxy_server: String,
+    pub proxy_username: String,
+    pub proxy_password: String,
 }
 
 impl AddDialogState {
@@ -43,6 +46,9 @@ impl AddDialogState {
             http_passwd: String::new(),
             referer: String::new(),
             cookie: String::new(),
+            proxy_server: String::new(),
+            proxy_username: String::new(),
+            proxy_password: String::new(),
         }
     }
 
@@ -59,6 +65,9 @@ impl AddDialogState {
         self.http_passwd.clear();
         self.referer.clear();
         self.cookie.clear();
+        self.proxy_server.clear();
+        self.proxy_username.clear();
+        self.proxy_password.clear();
     }
 
     pub fn close(&mut self) {
@@ -193,7 +202,7 @@ pub fn view<'a>(
     }
     body_items.push(advanced_checkbox.into());
     if state.advanced_open {
-        body_items.push(advanced_form(fluent, state));
+        body_items.push(advanced_form(fluent, theme, state));
     }
 
     let body = slim_scrollable(column(body_items).spacing(14).width(Length::Fill))
@@ -258,7 +267,11 @@ fn advanced_field<'a>(
     .into()
 }
 
-fn advanced_form<'a>(fluent: &'a Fluent, state: &'a AddDialogState) -> Element<'a, Message> {
+fn advanced_form<'a>(
+    fluent: &'a Fluent,
+    theme: &'a iced::Theme,
+    state: &'a AddDialogState,
+) -> Element<'a, Message> {
     column![
         advanced_field(
             fluent,
@@ -289,6 +302,31 @@ fn advanced_form<'a>(fluent: &'a Fluent, state: &'a AddDialogState) -> Element<'
             false
         ),
         advanced_field(fluent, Tr::Cookie, &state.cookie, AddField::Cookie, false),
+        rule::horizontal(1),
+        text(fluent.get(Tr::Proxy))
+            .size(16)
+            .color(theme::accent(theme)),
+        advanced_field(
+            fluent,
+            Tr::ProxyAddress,
+            &state.proxy_server,
+            AddField::ProxyServer,
+            false
+        ),
+        advanced_field(
+            fluent,
+            Tr::ProxyUsername,
+            &state.proxy_username,
+            AddField::ProxyUsername,
+            false
+        ),
+        advanced_field(
+            fluent,
+            Tr::ProxyPassword,
+            &state.proxy_password,
+            AddField::ProxyPassword,
+            true
+        ),
     ]
     .spacing(10)
     .width(Length::Fill)

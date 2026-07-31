@@ -19,6 +19,9 @@ pub struct TaskAdvancedOptions {
     pub http_passwd: String,
     pub referer: String,
     pub cookie: String,
+    pub proxy_server: String,
+    pub proxy_username: String,
+    pub proxy_password: String,
 }
 
 impl TaskAdvancedOptions {
@@ -29,6 +32,9 @@ impl TaskAdvancedOptions {
             && self.http_passwd.is_empty()
             && self.referer.is_empty()
             && self.cookie.is_empty()
+            && self.proxy_server.is_empty()
+            && self.proxy_username.is_empty()
+            && self.proxy_password.is_empty()
     }
 
     pub fn apply(&self, opts: &mut TaskOptions) {
@@ -47,6 +53,13 @@ impl TaskAdvancedOptions {
                 opts.extra_options
                     .insert(key.to_string(), serde_json::Value::String(value.clone()));
             }
+        }
+        if let Some(proxy) = crate::config::all_proxy_url(
+            &self.proxy_server,
+            &self.proxy_username,
+            &self.proxy_password,
+        ) {
+            opts.all_proxy = Some(proxy);
         }
     }
 }

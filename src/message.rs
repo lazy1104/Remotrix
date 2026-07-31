@@ -22,6 +22,9 @@ pub enum AddField {
     HttpPasswd,
     Referer,
     Cookie,
+    ProxyServer,
+    ProxyUsername,
+    ProxyPassword,
 }
 
 impl PathPickerId {
