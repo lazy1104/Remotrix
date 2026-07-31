@@ -31,7 +31,6 @@ referer = Referer
 cookie = Cookie
 cancel = Cancel
 download = Download
-settings-title = Settings
 general = General
 category-download = Download
 bittorrent = BitTorrent

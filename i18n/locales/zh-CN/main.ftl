@@ -31,7 +31,6 @@ referer = 来源页面
 cookie = Cookie
 cancel = 取消
 download = 下载
-settings-title = 设置
 general = 通用
 category-download = 下载
 bittorrent = BitTorrent

@@ -126,7 +126,7 @@ pub fn view<'a>(
 
     container(
         column![]
-            .push(text(fluent.get(Tr::SettingsTitle)).size(22))
+            .push(text(settings_title(fluent, category)).size(22))
             .push(iced::widget::Space::new().height(Length::Fixed(20.0)))
             .push(slim_scrollable(col).height(Length::Fill)),
     )
@@ -134,6 +134,18 @@ pub fn view<'a>(
     .height(Length::Fill)
     .padding([24, 28])
     .into()
+}
+
+fn settings_title(fluent: &Fluent, category: SettingsCategory) -> String {
+    let key = match category {
+        SettingsCategory::General => Tr::General,
+        SettingsCategory::Download => Tr::DownloadCategory,
+        SettingsCategory::BitTorrent => Tr::BitTorrent,
+        SettingsCategory::Ed2k => Tr::Ed2k,
+        SettingsCategory::Network => Tr::Network,
+        SettingsCategory::Advanced => Tr::Advanced,
+    };
+    fluent.get(key)
 }
 
 fn general_view<'a>(
