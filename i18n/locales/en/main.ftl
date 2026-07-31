@@ -71,7 +71,6 @@ enable-proxy = Enable proxy
 other-proxy-config = Other Proxy Config
 user-agent = User-Agent
 proxy = All proxy
-headers = Headers (one per line)
 connect-timeout = Connect timeout (seconds)
 auto-check-update = Auto-check for updates
 about = About

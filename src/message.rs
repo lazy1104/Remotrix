@@ -112,7 +112,6 @@ pub enum Message {
 
     UrlEditor(iced::widget::text_editor::Action),
     UaEditor(iced::widget::text_editor::Action),
-    HeadersEditor(iced::widget::text_editor::Action),
 
     RequestConfirm(ConfirmAction),
     ConfirmCancel,
@@ -221,7 +220,6 @@ pub enum SettingKey {
     MaxUploadLimit,
     LowestSpeedLimit,
     UserAgent,
-    Headers,
     AllProxy,
     MaxTries,
     RetryWait,

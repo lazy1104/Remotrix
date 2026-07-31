@@ -77,7 +77,6 @@ pub fn view<'a>(
     aria2_fetch_error: Option<&'a str>,
     update_pending: Option<&'a str>,
     ua_editor: &'a text_editor::Content,
-    headers_editor: &'a text_editor::Content,
     path_history: &'a HashMap<String, Vec<String>>,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
@@ -88,9 +87,7 @@ pub fn view<'a>(
         }
         SettingsCategory::BitTorrent => bittorrent_view(fluent, settings, accent),
         SettingsCategory::Ed2k => ed2k_view(fluent),
-        SettingsCategory::Network => {
-            network_view(fluent, settings, ua_editor, headers_editor, accent)
-        }
+        SettingsCategory::Network => network_view(fluent, settings, ua_editor, accent),
         SettingsCategory::Advanced => advanced_view(
             fluent,
             theme,
@@ -108,12 +105,15 @@ pub fn view<'a>(
         SettingsCategory::Download | SettingsCategory::BitTorrent | SettingsCategory::Network
     );
 
-    let mut col = column![].spacing(28).push(content);
+    let mut body = column![]
+        .push(text(settings_title(fluent, category)).size(22))
+        .push(iced::widget::Space::new().height(Length::Fixed(20.0)))
+        .push(slim_scrollable(content).height(Length::Fill));
 
     if needs_apply {
-        col = col.push(
+        // body = body.push(iced::widget::Space::new().height(Length::Fixed(16.0)));
+        body = body.push(
             row![]
-                .push(iced::widget::Space::new().width(Length::Fill))
                 .push(
                     button(text(fluent.get(Tr::Apply)).size(14))
                         .on_press(Message::ApplySettings)
@@ -124,16 +124,11 @@ pub fn view<'a>(
         );
     }
 
-    container(
-        column![]
-            .push(text(settings_title(fluent, category)).size(22))
-            .push(iced::widget::Space::new().height(Length::Fixed(20.0)))
-            .push(slim_scrollable(col).height(Length::Fill)),
-    )
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .padding([24, 28])
-    .into()
+    container(body)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .padding([24, 28])
+        .into()
 }
 
 fn settings_title(fluent: &Fluent, category: SettingsCategory) -> String {
@@ -283,10 +278,20 @@ fn download_view<'a>(
             1,
             SettingKey::MaxConnectionPerServer,
         ))
-        .push(labeled_text_input(
+        .push(setting_row(
             fluent.get(Tr::MinSplitSize),
-            &settings.aria2.min_split_size,
-            SettingKey::MinSplitSize,
+            row![]
+                .spacing(8)
+                .push(number_stepper(
+                    &settings.aria2.min_split_size_mb,
+                    1..=1024u64,
+                    1,
+                    move |v| Message::SettingChanged(SettingKey::MinSplitSize, v.to_string()),
+                    Length::Fixed(160.0),
+                ))
+                .push(text("M").size(13).style(theme::style::text::secondary))
+                .align_y(Alignment::Center)
+                .into(),
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::ResumeRetry, accent))
@@ -480,7 +485,6 @@ fn network_view<'a>(
     fluent: &'a Fluent,
     settings: &'a Settings,
     ua_editor: &'a text_editor::Content,
-    headers_editor: &'a text_editor::Content,
     accent: Color,
 ) -> Element<'a, Message> {
     column![]
@@ -504,13 +508,6 @@ fn network_view<'a>(
             fluent.get(Tr::UserAgent),
             ua_editor,
             Message::UaEditor,
-        ))
-        .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
-        .push(group_title(fluent, Tr::Headers, accent))
-        .push(labeled_editor(
-            fluent.get(Tr::Headers),
-            headers_editor,
-            Message::HeadersEditor,
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::ConnectTimeout, accent))

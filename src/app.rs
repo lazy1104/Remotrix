@@ -54,7 +54,6 @@ pub struct Remotrix {
     aria2_fetch_error: Option<String>,
     logo_handle: iced::widget::image::Handle,
     ua_editor: text_editor::Content,
-    headers_editor: text_editor::Content,
     torrent_files: HashMap<String, PathBuf>,
     pending_torrent_path: Option<PathBuf>,
     db: Option<Db>,
@@ -86,7 +85,6 @@ pub fn init() -> (Remotrix, Task<Message>) {
     let settings = config::load();
 
     let ua_editor = text_editor::Content::with_text(&settings.aria2.user_agent);
-    let headers_editor = text_editor::Content::with_text(&settings.aria2.headers.join("\n"));
 
     let window_w = settings.window_width;
     let window_h = settings.window_height;
@@ -145,7 +143,6 @@ pub fn init() -> (Remotrix, Task<Message>) {
         aria2_fetch_error: None,
         logo_handle,
         ua_editor,
-        headers_editor,
         torrent_files: HashMap::new(),
         pending_torrent_path: None,
         db,
@@ -215,8 +212,6 @@ fn revert_apply_settings(state: &mut Remotrix) {
         state.applied_settings.delete_torrent_after_complete;
     state.settings.aria2 = state.applied_settings.aria2.clone();
     state.ua_editor = text_editor::Content::with_text(&state.settings.aria2.user_agent);
-    state.headers_editor =
-        text_editor::Content::with_text(&state.settings.aria2.headers.join("\n"));
     state.settings_dirty = false;
 }
 
@@ -560,7 +555,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     }
                 }
                 SettingKey::MinSplitSize => {
-                    state.settings.aria2.min_split_size = value;
+                    if let Ok(n) = value.parse::<u64>() {
+                        state.settings.aria2.min_split_size_mb = n;
+                    }
                 }
                 SettingKey::AutoFileRenaming => {
                     state.settings.aria2.auto_file_renaming = value == "true";
@@ -585,13 +582,6 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 }
                 SettingKey::UserAgent => {
                     state.settings.aria2.user_agent = value;
-                }
-                SettingKey::Headers => {
-                    state.settings.aria2.headers = value
-                        .split(',')
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty())
-                        .collect();
                 }
                 SettingKey::AllProxy => {
                     state.settings.aria2.all_proxy = value;
@@ -1067,17 +1057,6 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.settings.aria2.user_agent = state.ua_editor.text();
             state.settings_dirty = true;
         }
-        Message::HeadersEditor(action) => {
-            state.headers_editor.perform(action);
-            state.settings.aria2.headers = state
-                .headers_editor
-                .text()
-                .lines()
-                .map(|l| l.trim().to_string())
-                .filter(|l| !l.is_empty())
-                .collect();
-            state.settings_dirty = true;
-        }
         Message::CheckAria2Update => {
             state.aria2_check_msg = None;
             if state
@@ -1346,7 +1325,6 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             state.aria2_fetch_error.as_deref(),
             state.update_pending.as_deref(),
             &state.ua_editor,
-            &state.headers_editor,
             &state.settings.path_history,
         ),
     };
@@ -1405,7 +1383,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         .padding(Padding {
             top: 0.0,
             right: 16.0,
-            bottom: 16.0,
+            bottom: 20.0,
             left: 0.0,
         });
     let base_layer: iced::Element<'_, Message> = stack![framed, hud_overlay]

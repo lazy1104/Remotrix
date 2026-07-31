@@ -71,7 +71,6 @@ enable-proxy = 启用代理
 other-proxy-config = 其他代理配置
 user-agent = User-Agent
 proxy = 代理服务器
-headers = 请求头（每行一个）
 connect-timeout = 连接超时（秒）
 auto-check-update = 自动检查更新
 about = 关于

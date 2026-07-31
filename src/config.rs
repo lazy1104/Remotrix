@@ -12,8 +12,8 @@ use crate::ui::theme::ThemeMode;
 pub struct Aria2Options {
     #[serde(default = "default_max_connection_per_server")]
     pub max_connection_per_server: u32,
-    #[serde(default = "default_min_split_size")]
-    pub min_split_size: String,
+    #[serde(default = "default_min_split_size_mb")]
+    pub min_split_size_mb: u64,
     #[serde(default = "default_true")]
     pub auto_file_renaming: bool,
     #[serde(default)]
@@ -28,10 +28,8 @@ pub struct Aria2Options {
     pub max_upload_limit_kb: u64,
     #[serde(default)]
     pub lowest_speed_limit_kb: u64,
-    #[serde(default)]
+    #[serde(default = "default_user_agent")]
     pub user_agent: String,
-    #[serde(default)]
-    pub headers: Vec<String>,
     #[serde(default)]
     pub all_proxy: String,
     #[serde(default = "default_max_tries")]
@@ -57,8 +55,11 @@ pub struct Aria2Options {
 fn default_max_connection_per_server() -> u32 {
     16
 }
-fn default_min_split_size() -> String {
-    "1M".to_string()
+fn default_min_split_size_mb() -> u64 {
+    1
+}
+fn default_user_agent() -> String {
+    format!("Remotrix/{}", env!("CARGO_PKG_VERSION"))
 }
 fn default_max_tries() -> u32 {
     5
@@ -89,7 +90,7 @@ impl Default for Aria2Options {
     fn default() -> Self {
         Self {
             max_connection_per_server: 16,
-            min_split_size: "1M".to_string(),
+            min_split_size_mb: 1,
             auto_file_renaming: true,
             allow_overwrite: false,
             r#continue: true,
@@ -97,8 +98,7 @@ impl Default for Aria2Options {
             max_download_limit_kb: 0,
             max_upload_limit_kb: 0,
             lowest_speed_limit_kb: 0,
-            user_agent: String::new(),
-            headers: Vec::new(),
+            user_agent: default_user_agent(),
             all_proxy: String::new(),
             max_tries: 5,
             retry_wait: 0,
@@ -124,7 +124,7 @@ impl Settings {
 
         extra.insert(
             "min-split-size".into(),
-            Value::String(self.aria2.min_split_size.clone()),
+            Value::String((self.aria2.min_split_size_mb * 1024 * 1024).to_string()),
         );
 
         extra.insert(
@@ -214,12 +214,6 @@ impl Settings {
             ),
         );
 
-        let header = if self.aria2.headers.is_empty() {
-            None
-        } else {
-            Some(self.aria2.headers.clone())
-        };
-
         TaskOptions {
             split: Some(self.split as i32),
             max_connection_per_server: Some(self.aria2.max_connection_per_server as i32),
@@ -228,7 +222,7 @@ impl Settings {
             check_integrity: Some(self.aria2.check_integrity),
             lowest_speed_limit: Some((self.aria2.lowest_speed_limit_kb * 1024).to_string()),
             max_download_limit: Some((self.aria2.max_download_limit_kb * 1024).to_string()),
-            header,
+            header: None,
             all_proxy: if self.aria2.proxy_enabled && !self.aria2.all_proxy.is_empty() {
                 Some(self.aria2.all_proxy.clone())
             } else {
