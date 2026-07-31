@@ -454,6 +454,7 @@ fn bittorrent_view<'a>(
             fluent.get(Tr::BtTracker),
             &settings.aria2.bt_tracker,
             SettingKey::BtTracker,
+            false,
         ))
         .push(labeled_number(
             fluent.get(Tr::SeedRatio),
@@ -492,19 +493,13 @@ fn network_view<'a>(
 ) -> Element<'a, Message> {
     column![]
         .spacing(4)
-        .push(group_title(fluent, Tr::EnableProxy, accent))
+        .push(group_title(fluent, Tr::Proxy, accent))
         .push(labeled_toggle(
             fluent.get(Tr::EnableProxy),
             settings.aria2.proxy_enabled,
             SettingKey::EnableProxy,
         ))
-        .push(iced::widget::Space::new().height(Length::Fixed(4.0)))
-        .push(group_title(fluent, Tr::OtherProxyConfig, accent))
-        .push(labeled_text_input(
-            fluent.get(Tr::Proxy),
-            &settings.aria2.all_proxy,
-            SettingKey::AllProxy,
-        ))
+        .push(proxy_fields(fluent, settings))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::UserAgent, accent))
         .push(labeled_editor(
@@ -522,6 +517,35 @@ fn network_view<'a>(
             SettingKey::ConnectTimeout,
         ))
         .into()
+}
+
+fn proxy_fields<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, Message> {
+    if settings.aria2.proxy_enabled {
+        column![
+            labeled_text_input(
+                fluent.get(Tr::ProxyAddress),
+                &settings.aria2.proxy_server,
+                SettingKey::ProxyServer,
+                false,
+            ),
+            labeled_text_input(
+                fluent.get(Tr::ProxyUsername),
+                &settings.aria2.proxy_username,
+                SettingKey::ProxyUsername,
+                false,
+            ),
+            labeled_text_input(
+                fluent.get(Tr::ProxyPassword),
+                &settings.aria2.proxy_password,
+                SettingKey::ProxyPassword,
+                true,
+            ),
+        ]
+        .spacing(4)
+        .into()
+    } else {
+        iced::widget::Space::new().height(Length::Fixed(0.0)).into()
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -716,17 +740,22 @@ fn labeled_toggle<'a>(label: String, value: bool, key: SettingKey) -> Element<'a
     )
 }
 
-fn labeled_text_input<'a>(label: String, value: &'a str, key: SettingKey) -> Element<'a, Message> {
-    setting_row(
-        label,
-        theme::input_layout(
-            text_input("", value)
-                .on_input(move |s| Message::SettingChanged(key, s))
-                .width(Length::Fill)
-                .style(theme::style::input::standard),
-        )
-        .into(),
-    )
+fn labeled_text_input<'a>(
+    label: String,
+    value: &'a str,
+    key: SettingKey,
+    secure: bool,
+) -> Element<'a, Message> {
+    let mut input = theme::input_layout(
+        text_input("", value)
+            .on_input(move |s| Message::SettingChanged(key, s))
+            .width(Length::Fill)
+            .style(theme::style::input::standard),
+    );
+    if secure {
+        input = input.secure(true);
+    }
+    setting_row(label, input.into())
 }
 
 fn labeled_editor<'a>(

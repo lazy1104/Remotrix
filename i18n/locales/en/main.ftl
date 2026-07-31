@@ -68,9 +68,11 @@ bt-tracker = BT tracker
 seed-ratio = Seed ratio
 seed-time = Seed time (minutes, 0 = seed ratio)
 enable-proxy = Enable proxy
-other-proxy-config = Other Proxy Config
 user-agent = User-Agent
-proxy = All proxy
+proxy = Proxy
+proxy-address = Address
+proxy-username = Username
+proxy-password = Password
 connect-timeout = Connect timeout (seconds)
 auto-check-update = Auto-check for updates
 about = About

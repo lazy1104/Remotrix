@@ -662,8 +662,14 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             SettingKey::UserAgent => {
                 state.settings.aria2.user_agent = value;
             }
-            SettingKey::AllProxy => {
-                state.settings.aria2.all_proxy = value;
+            SettingKey::ProxyServer => {
+                state.settings.aria2.proxy_server = value;
+            }
+            SettingKey::ProxyUsername => {
+                state.settings.aria2.proxy_username = value;
+            }
+            SettingKey::ProxyPassword => {
+                state.settings.aria2.proxy_password = value;
             }
             SettingKey::MaxTries => {
                 if let Ok(n) = value.parse::<u32>() {

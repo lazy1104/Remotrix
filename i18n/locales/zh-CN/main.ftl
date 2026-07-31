@@ -68,9 +68,11 @@ bt-tracker = BT 追踪器
 seed-ratio = 做种分享率
 seed-time = 做种时间（分钟，0=按分享率）
 enable-proxy = 启用代理
-other-proxy-config = 其他代理配置
 user-agent = User-Agent
-proxy = 代理服务器
+proxy = 代理
+proxy-address = 地址
+proxy-username = 账号
+proxy-password = 密码
 connect-timeout = 连接超时（秒）
 auto-check-update = 自动检查更新
 about = 关于

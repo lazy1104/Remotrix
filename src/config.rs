@@ -30,8 +30,12 @@ pub struct Aria2Options {
     pub lowest_speed_limit_kb: u64,
     #[serde(default = "default_user_agent")]
     pub user_agent: String,
+    #[serde(default, alias = "all_proxy")]
+    pub proxy_server: String,
     #[serde(default)]
-    pub all_proxy: String,
+    pub proxy_username: String,
+    #[serde(default)]
+    pub proxy_password: String,
     #[serde(default = "default_max_tries")]
     pub max_tries: u32,
     #[serde(default)]
@@ -99,7 +103,9 @@ impl Default for Aria2Options {
             max_upload_limit_kb: 0,
             lowest_speed_limit_kb: 0,
             user_agent: default_user_agent(),
-            all_proxy: String::new(),
+            proxy_server: String::new(),
+            proxy_username: String::new(),
+            proxy_password: String::new(),
             max_tries: 5,
             retry_wait: 0,
             connect_timeout: 60,
@@ -109,6 +115,25 @@ impl Default for Aria2Options {
             enable_dht: true,
             bt_require_crypto: false,
             proxy_enabled: false,
+        }
+    }
+}
+
+impl Aria2Options {
+    pub fn all_proxy_value(&self) -> Option<String> {
+        if !self.proxy_enabled || self.proxy_server.trim().is_empty() {
+            return None;
+        }
+        let server = self.proxy_server.trim();
+        let auth = if self.proxy_username.is_empty() {
+            String::new()
+        } else {
+            format!("{}:{}@", self.proxy_username, self.proxy_password)
+        };
+        if let Some((scheme, rest)) = server.split_once("://") {
+            Some(format!("{scheme}://{auth}{rest}"))
+        } else {
+            Some(format!("http://{auth}{server}"))
         }
     }
 }
@@ -223,11 +248,7 @@ impl Settings {
             lowest_speed_limit: Some((self.aria2.lowest_speed_limit_kb * 1024).to_string()),
             max_download_limit: Some((self.aria2.max_download_limit_kb * 1024).to_string()),
             header: None,
-            all_proxy: if self.aria2.proxy_enabled && !self.aria2.all_proxy.is_empty() {
-                Some(self.aria2.all_proxy.clone())
-            } else {
-                Some(String::new())
-            },
+            all_proxy: Some(self.aria2.all_proxy_value().unwrap_or_default()),
             max_tries: Some(self.aria2.max_tries as i32),
             timeout: Some(self.aria2.connect_timeout as i32),
             extra_options: extra,
