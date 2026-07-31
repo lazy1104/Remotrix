@@ -1396,72 +1396,69 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             bottom: 16.0,
             left: 0.0,
         });
-    let mut stacked: iced::Element<'_, Message> = stack![framed, hud_overlay]
+    let base_layer: iced::Element<'_, Message> = stack![framed, hud_overlay]
         .width(Length::Fill)
         .height(Length::Fill)
         .into();
 
-    if state.add_dialog.is_visible() {
-        stacked = stack![
-            stacked,
-            crate::ui::add_dialog::view(
-                &state.fluent,
-                t,
-                &state.add_dialog,
-                &state.settings.path_history,
-            ),
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into();
-    }
-    if state.about_dialog_visible {
-        stacked = stack![
-            stacked,
-            crate::ui::about_dialog::view(&state.fluent, t, state.aria2_version.as_deref()),
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into();
-    }
-    if state.show_close_dialog {
-        stacked = stack![stacked, crate::ui::close_dialog::view(&state.fluent, t),]
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into();
-    }
-    if state.details.is_visible() {
+    let add_layer: iced::Element<'_, Message> = if state.add_dialog.is_visible() {
+        crate::ui::add_dialog::view(
+            &state.fluent,
+            t,
+            &state.add_dialog,
+            &state.settings.path_history,
+        )
+    } else {
+        iced::widget::Space::new().into()
+    };
+
+    let about_layer: iced::Element<'_, Message> = if state.about_dialog_visible {
+        crate::ui::about_dialog::view(&state.fluent, t, state.aria2_version.as_deref())
+    } else {
+        iced::widget::Space::new().into()
+    };
+
+    let close_layer: iced::Element<'_, Message> = if state.show_close_dialog {
+        crate::ui::close_dialog::view(&state.fluent, t)
+    } else {
+        iced::widget::Space::new().into()
+    };
+
+    let details_layer: iced::Element<'_, Message> = if state.details.is_visible() {
         let task = state
             .details
             .gid
             .as_deref()
             .and_then(|g| state.tasks.get(g));
-        stacked = stack![
-            stacked,
-            crate::ui::details_dialog::view(&state.fluent, t, task, &state.details),
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into();
-    }
-    if let Some(ref action) = state.confirm {
-        stacked = stack![
-            stacked,
-            crate::ui::confirm_dialog::view(&state.fluent, t, action),
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into();
-    }
-    if !state.toasts.is_empty() {
-        stacked = stack![
-            stacked,
-            crate::ui::components::toast::view(t, &state.toasts),
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into();
-    }
+        crate::ui::details_dialog::view(&state.fluent, t, task, &state.details)
+    } else {
+        iced::widget::Space::new().into()
+    };
+
+    let confirm_layer: iced::Element<'_, Message> = if let Some(action) = &state.confirm {
+        crate::ui::confirm_dialog::view(&state.fluent, t, action)
+    } else {
+        iced::widget::Space::new().into()
+    };
+
+    let toast_layer: iced::Element<'_, Message> = if !state.toasts.is_empty() {
+        crate::ui::components::toast::view(t, &state.toasts)
+    } else {
+        iced::widget::Space::new().into()
+    };
+
+    let stacked: iced::Element<'_, Message> = stack![
+        base_layer,
+        add_layer,
+        about_layer,
+        close_layer,
+        details_layer,
+        confirm_layer,
+        toast_layer,
+    ]
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .into();
 
     container(stacked)
         .width(Length::Fill)
