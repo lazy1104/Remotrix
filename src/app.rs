@@ -1215,7 +1215,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
     } else {
         (0, 0)
     };
-    let hud_overlay = container(crate::ui::speed_hud::view(t, dl, up))
+    let hud_overlay = container(crate::ui::components::speed_hud::view(t, dl, up))
         .width(Length::Fill)
         .height(Length::Fill)
         .align_x(Horizontal::Right)

@@ -204,7 +204,7 @@ fn activity_tab<'a>(
         .size(12)
         .style(text_secondary_fn);
 
-        let piece_map_el = crate::ui::piece_map::view(
+        let piece_map_el = crate::ui::components::piece_map::view(
             details.bitfield.clone(),
             details.num_pieces,
             theme::success(theme),
