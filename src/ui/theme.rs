@@ -187,6 +187,18 @@ pub mod style {
         }
     }
 
+    pub fn toast(t: &iced::Theme) -> iced::widget::container::Style {
+        iced::widget::container::Style {
+            background: Some(t.extended_palette().background.base.color.into()),
+            border: iced::Border {
+                color: t.extended_palette().background.strong.color,
+                width: 1.0,
+                radius: super::RADIUS_BUTTON.into(),
+            },
+            ..Default::default()
+        }
+    }
+
     pub fn tooltip(t: &iced::Theme) -> iced::widget::container::Style {
         iced::widget::container::Style {
             background: Some(t.extended_palette().background.weak.color.into()),

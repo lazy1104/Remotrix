@@ -1,6 +1,6 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// 208e928ca1c4901556de0dcc4d39dbc1e6e29dce52452e7beedf510f59adbfe3
+// c8335e49999485aedd99d725e9e48b8f763a55c33aeffa02da360f1866b3b81e
 use iced::widget::{text, Text};
 use iced::Font;
 
@@ -12,6 +12,7 @@ pub const FONT: &[u8] = include_bytes!("../../fonts/lucide.ttf");
 pub const ALL_ICONS: &[(&str, &str)] = &[
     ("arrow_up", "\u{E45A}"),
     ("circle_check", "\u{E226}"),
+    ("circle_x", "\u{E084}"),
     ("connections", "\u{E37F}"),
     ("copy", "\u{E09E}"),
     ("details", "\u{E0CC}"),
@@ -36,6 +37,7 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("sort", "\u{E37D}"),
     ("square", "\u{E167}"),
     ("trash", "\u{E18E}"),
+    ("triangle_alert", "\u{E193}"),
     ("wrench", "\u{E1B1}"),
     ("x", "\u{E1B2}"),
 ];
@@ -46,6 +48,10 @@ pub fn arrow_up<'a>() -> Text<'a> {
 
 pub fn circle_check<'a>() -> Text<'a> {
     icon("\u{E226}")
+}
+
+pub fn circle_x<'a>() -> Text<'a> {
+    icon("\u{E084}")
 }
 
 pub fn connections<'a>() -> Text<'a> {
@@ -142,6 +148,10 @@ pub fn square<'a>() -> Text<'a> {
 
 pub fn trash<'a>() -> Text<'a> {
     icon("\u{E18E}")
+}
+
+pub fn triangle_alert<'a>() -> Text<'a> {
+    icon("\u{E193}")
 }
 
 pub fn wrench<'a>() -> Text<'a> {

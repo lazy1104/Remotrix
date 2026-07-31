@@ -4,6 +4,7 @@ use crate::engine::EngineEvent;
 use crate::i18n::Locale;
 use crate::task::TaskStatus;
 use crate::ui::components::path_picker::PathPickerEvent;
+use crate::ui::components::toast::Toast;
 use crate::ui::theme::ThemeMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,6 +106,8 @@ pub enum Message {
     ApplyAndLeaveSettings,
     DiscardAndLeaveSettings,
     SpeedUnitChanged(SettingKey, SpeedUnit),
+    ShowToast(Toast),
+    DismissToast(u64),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

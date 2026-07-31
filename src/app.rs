@@ -69,6 +69,8 @@ pub struct Remotrix {
     global_speed: Option<(u64, u64)>,
     paused_gids: HashSet<String>,
     active_count: usize,
+    toasts: Vec<crate::ui::components::toast::Toast>,
+    next_toast_id: u64,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
@@ -150,6 +152,8 @@ pub fn init() -> (Remotrix, Task<Message>) {
         global_speed: None,
         paused_gids: HashSet::new(),
         active_count,
+        toasts: Vec::new(),
+        next_toast_id: 0,
     };
 
     (state, Task::none())
@@ -1063,6 +1067,24 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 state.page = target;
             }
         }
+        Message::ShowToast(mut toast) => {
+            toast.id = state.next_toast_id;
+            state.next_toast_id += 1;
+            let id = toast.id;
+            let close_after = toast.close_after;
+            push_toast(state, toast);
+            if let Some(d) = close_after {
+                return Task::perform(
+                    async move {
+                        tokio::time::sleep(d).await;
+                    },
+                    move |_| Message::DismissToast(id),
+                );
+            }
+        }
+        Message::DismissToast(id) => {
+            state.toasts.retain(|t| t.id != id);
+        }
         Message::Noop => {}
     }
     Task::none()
@@ -1261,6 +1283,15 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         .height(Length::Fill)
         .into();
     }
+    if !state.toasts.is_empty() {
+        stacked = stack![
+            stacked,
+            crate::ui::components::toast::view(t, &state.toasts),
+        ]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into();
+    }
 
     container(stacked)
         .width(Length::Fill)
@@ -1376,6 +1407,25 @@ fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
             config::save(&state.settings);
         }
     }
+}
+
+fn push_toast(state: &mut Remotrix, toast: crate::ui::components::toast::Toast) {
+    const CAP: usize = 6;
+    let at_pos = state
+        .toasts
+        .iter()
+        .filter(|t| t.position == toast.position)
+        .count();
+    if at_pos >= CAP {
+        if let Some(idx) = state
+            .toasts
+            .iter()
+            .position(|t| t.position == toast.position)
+        {
+            state.toasts.remove(idx);
+        }
+    }
+    state.toasts.push(toast);
 }
 
 fn pick_path(id: PathPickerId) -> Task<Message> {
