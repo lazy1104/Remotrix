@@ -1,6 +1,6 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// c8335e49999485aedd99d725e9e48b8f763a55c33aeffa02da360f1866b3b81e
+// ca66c51108f6b78fd270aa31966099fcb4db9f0326a74fdb5d49f95c2a7c9305
 use iced::widget::{text, Text};
 use iced::Font;
 
@@ -11,6 +11,8 @@ pub const FONT: &[u8] = include_bytes!("../../fonts/lucide.ttf");
 #[allow(dead_code)]
 pub const ALL_ICONS: &[(&str, &str)] = &[
     ("arrow_up", "\u{E45A}"),
+    ("chevron_down", "\u{E06D}"),
+    ("chevron_right", "\u{E06F}"),
     ("circle_check", "\u{E226}"),
     ("circle_x", "\u{E084}"),
     ("connections", "\u{E37F}"),
@@ -19,6 +21,8 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("download", "\u{E0B2}"),
     ("download_arrow", "\u{E455}"),
     ("eraser", "\u{E28F}"),
+    ("file", "\u{E0C0}"),
+    ("folder", "\u{E0D7}"),
     ("folder_clock", "\u{E32F}"),
     ("folder_open", "\u{E247}"),
     ("globe", "\u{E0E8}"),
@@ -44,6 +48,14 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
 
 pub fn arrow_up<'a>() -> Text<'a> {
     icon("\u{E45A}")
+}
+
+pub fn chevron_down<'a>() -> Text<'a> {
+    icon("\u{E06D}")
+}
+
+pub fn chevron_right<'a>() -> Text<'a> {
+    icon("\u{E06F}")
 }
 
 pub fn circle_check<'a>() -> Text<'a> {
@@ -76,6 +88,14 @@ pub fn download_arrow<'a>() -> Text<'a> {
 
 pub fn eraser<'a>() -> Text<'a> {
     icon("\u{E28F}")
+}
+
+pub fn file<'a>() -> Text<'a> {
+    icon("\u{E0C0}")
+}
+
+pub fn folder<'a>() -> Text<'a> {
+    icon("\u{E0D7}")
 }
 
 pub fn folder_clock<'a>() -> Text<'a> {

@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use iced::widget::{button, column, container, progress_bar, row, text};
 use iced::{Alignment, Element, Length};
 
@@ -7,6 +9,7 @@ use crate::task::{
     completed_pieces, format_add_time, format_size, format_speed, DownloadTask, TaskDetails,
 };
 use crate::ui::components::dialog::overlay;
+use crate::ui::components::file_tree;
 use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::components::truncated_text::truncated_text;
 use crate::ui::dims::*;
@@ -19,6 +22,8 @@ pub struct DetailsDialogState {
     pub active_tab: DetailsTab,
     pub details: Option<TaskDetails>,
     pub loading: bool,
+    pub files_expanded: HashSet<String>,
+    pub files_tree: Vec<file_tree::FileTreeNode>,
 }
 
 impl DetailsDialogState {
@@ -29,6 +34,8 @@ impl DetailsDialogState {
             active_tab: DetailsTab::Summary,
             details: None,
             loading: false,
+            files_expanded: HashSet::new(),
+            files_tree: Vec::new(),
         }
     }
 
@@ -38,6 +45,7 @@ impl DetailsDialogState {
         self.active_tab = DetailsTab::Summary;
         self.details = None;
         self.loading = true;
+        self.files_expanded.clear();
     }
 
     pub fn close(&mut self) {
@@ -45,6 +53,8 @@ impl DetailsDialogState {
         self.gid = None;
         self.details = None;
         self.loading = false;
+        self.files_expanded.clear();
+        self.files_tree.clear();
     }
 
     pub fn is_visible(&self) -> bool {
@@ -339,62 +349,52 @@ fn files_tab<'a>(
     .size(FONT_SMALL)
     .style(text_secondary_fn);
 
+    let header = row![]
+        .push(
+            text(fluent.get(Tr::TorrentFiles))
+                .size(FONT_MEDIUM)
+                .style(text_secondary_fn),
+        )
+        .push(iced::widget::Space::new().width(Length::Fill))
+        .push(
+            button(text(fluent.get(Tr::SelectAll)).size(FONT_SMALL))
+                .on_press(Message::DetailsFilesSelectAll)
+                .padding(PADDING_XS)
+                .style(theme::style::button::text()),
+        )
+        .push(
+            button(text(fluent.get(Tr::SelectNone)).size(FONT_SMALL))
+                .on_press(Message::DetailsFilesSelectNone)
+                .padding(PADDING_XS)
+                .style(theme::style::button::text()),
+        )
+        .spacing(SPACE_SM)
+        .align_y(Alignment::Center)
+        .width(Length::Fill);
+
     let file_list: Element<'a, Message> = if let Some(ref details) = state.details {
-        let mut col = column![].spacing(SPACE_MD);
-        for file in &details.files {
-            let basename: String = std::path::Path::new(&file.path)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(&file.path)
-                .to_string();
-
-            let file_pct = if file.length == 0 {
-                0.0
-            } else {
-                (file.completed_length as f64 / file.length as f64 * 100.0).min(100.0) as f32
-            };
-            let file_bar = progress_bar(0.0..=100.0, file_pct)
-                .girth(Length::Fixed(6.0))
-                .style(theme::style::progress::task(
-                    if file.completed_length >= file.length {
-                        theme::success(theme)
-                    } else {
-                        bar_color
-                    },
-                ));
-
-            let file_row = column![]
-                .spacing(SPACE_XS)
-                .push(
-                    row![]
-                        .push(
-                            text('\u{E0B4}')
-                                .font(iced::Font::with_name("lucide"))
-                                .size(FONT_MEDIUM)
-                                .style(text_secondary_fn),
-                        )
-                        .push(text(basename.clone()).size(FONT_MEDIUM))
-                        .push(iced::widget::Space::new().width(Length::Fill))
-                        .push(
-                            text(format_size(file.length))
-                                .size(FONT_SMALL)
-                                .style(text_secondary_fn),
-                        )
-                        .spacing(SPACE_SM)
-                        .align_y(Alignment::Center),
-                )
-                .push(file_bar)
-                .push(
-                    text(format!("{:.1}%", file_pct))
-                        .size(FONT_TINY)
-                        .style(text_secondary_fn),
-                )
-                .width(Length::Fill);
-            col = col.push(file_row);
-        }
-        slim_scrollable(column![].push(col).spacing(SPACE_MD))
-            .height(Length::Fill)
-            .into()
+        let files_map: HashMap<u64, (bool, u64, u64)> = details
+            .files
+            .iter()
+            .map(|f| (f.index, (f.selected, f.completed_length, f.length)))
+            .collect();
+        let is_selected = |i: u64| files_map.get(&i).map(|(s, _, _)| *s).unwrap_or(false);
+        let progress = |i: u64| files_map.get(&i).map(|(_, c, l)| (*c, *l));
+        let enabled = !matches!(
+            task.status,
+            crate::task::TaskStatus::Completed | crate::task::TaskStatus::Removed
+        );
+        container(file_tree::view(
+            &state.files_tree,
+            &state.files_expanded,
+            &is_selected,
+            Some(&progress),
+            enabled,
+            &details_tree_toggle,
+            &details_tree_expand,
+        ))
+        .width(Length::Fill)
+        .into()
     } else {
         container(
             text(fluent.get(Tr::Loading))
@@ -409,10 +409,19 @@ fn files_tab<'a>(
     column![]
         .push(overall_bar)
         .push(overall_info)
+        .push(header)
         .push(iced::widget::rule::horizontal(1))
-        .push(file_list)
+        .push(slim_scrollable(file_list).height(Length::Fill))
         .spacing(SPACE_LG)
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
+}
+
+fn details_tree_toggle(path: String) -> Message {
+    Message::DetailsTreeToggle(path)
+}
+
+fn details_tree_expand(path: String) -> Message {
+    Message::DetailsTreeExpand(path)
 }

@@ -1,18 +1,29 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use iced::widget::{button, column, row, rule, text, text_editor, text_input};
+use iced::widget::{button, column, container, row, rule, text, text_editor, text_input};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{AddField, AddTab, Message, PathPickerId};
+use crate::task::format_size;
 use crate::ui::components::dialog::{overlay, Dialog};
+use crate::ui::components::file_tree::{self, FileTreeNode};
 use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::path_picker::PathPicker;
 use crate::ui::components::slim_scrollable::slim_scrollable;
-use crate::ui::components::torrent_upload::TorrentUpload;
+use crate::ui::components::torrent_upload::{TorrentUpload, TorrentUploadEvent};
 use crate::ui::dims::*;
+use crate::ui::icon;
 use crate::ui::theme;
+
+#[derive(Debug, Clone)]
+pub struct TorrentFileEntry {
+    pub index: u64,
+    pub path: String,
+    pub length: u64,
+    pub selected: bool,
+}
 
 #[derive(Debug, Clone)]
 pub struct AddDialogState {
@@ -22,6 +33,10 @@ pub struct AddDialogState {
     pub save_picker: PathPicker,
     pub split: u16,
     pub torrent_upload: TorrentUpload,
+    pub torrent_files: Vec<TorrentFileEntry>,
+    pub torrent_tree: Vec<FileTreeNode>,
+    pub torrent_expanded: std::collections::HashSet<String>,
+    pub torrent_parse_failed: bool,
     pub out: String,
     pub advanced_open: bool,
     pub user_agent: String,
@@ -43,6 +58,10 @@ impl AddDialogState {
             save_picker: PathPicker::folder(default_dir.to_string_lossy(), true),
             split: 16,
             torrent_upload: TorrentUpload::new(),
+            torrent_files: Vec::new(),
+            torrent_tree: Vec::new(),
+            torrent_expanded: std::collections::HashSet::new(),
+            torrent_parse_failed: false,
             out: String::new(),
             advanced_open: false,
             user_agent: String::new(),
@@ -63,6 +82,10 @@ impl AddDialogState {
         self.save_picker.set_value(default_dir.to_string_lossy());
         self.split = default_split;
         self.torrent_upload.clear();
+        self.torrent_files.clear();
+        self.torrent_tree.clear();
+        self.torrent_expanded.clear();
+        self.torrent_parse_failed = false;
         self.out.clear();
         self.advanced_open = false;
         self.user_agent.clear();
@@ -94,7 +117,7 @@ impl AddDialogState {
         match payload {
             crate::clipboard_watch::ClipboardPayload::Urls(urls) => self.set_urls(urls),
             crate::clipboard_watch::ClipboardPayload::Torrent(path) => {
-                self.torrent_upload.set_path(path.to_string_lossy());
+                self.set_torrent_path(path.to_string_lossy().to_string());
                 self.active_tab = AddTab::Torrent;
             }
         }
@@ -108,8 +131,121 @@ impl AddDialogState {
         let save_dir_ok = !self.save_picker.value().is_empty();
         match self.active_tab {
             AddTab::Url => !self.url_editor.text().trim().is_empty() && save_dir_ok,
-            AddTab::Torrent => !self.torrent_upload.is_empty() && save_dir_ok,
+            AddTab::Torrent => {
+                !self.torrent_upload.is_empty()
+                    && save_dir_ok
+                    && (self.torrent_files.is_empty()
+                        || self.torrent_files.iter().any(|f| f.selected))
+            }
         }
+    }
+
+    pub fn load_torrent_files(&mut self) {
+        let path = self.torrent_upload.path().to_string();
+        if path.is_empty() {
+            self.torrent_files.clear();
+            self.torrent_tree.clear();
+            self.torrent_expanded.clear();
+            self.torrent_parse_failed = false;
+            return;
+        }
+        let bytes = std::fs::read(&path).ok();
+        let meta = bytes.and_then(|b| crate::torrent_meta::parse_torrent(&b));
+        match meta {
+            Some(meta) => {
+                self.torrent_files = meta
+                    .files
+                    .iter()
+                    .map(|f| TorrentFileEntry {
+                        index: f.index,
+                        path: f.path.clone(),
+                        length: f.length,
+                        selected: true,
+                    })
+                    .collect();
+                let tuples: Vec<(u64, String, u64)> = meta
+                    .files
+                    .iter()
+                    .map(|f| (f.index, f.path.clone(), f.length))
+                    .collect();
+                self.torrent_tree = file_tree::build_tree(&tuples);
+                self.torrent_expanded.clear();
+                file_tree::collect_dir_paths(&self.torrent_tree, &mut self.torrent_expanded);
+                self.torrent_parse_failed = false;
+            }
+            None => {
+                self.torrent_files.clear();
+                self.torrent_tree.clear();
+                self.torrent_expanded.clear();
+                self.torrent_parse_failed = true;
+            }
+        }
+    }
+
+    pub fn set_torrent_path(&mut self, path: String) {
+        self.torrent_upload.set_path(path);
+        self.load_torrent_files();
+    }
+
+    pub fn handle_torrent_event(
+        &mut self,
+        event: TorrentUploadEvent,
+    ) -> Option<crate::ui::components::torrent_upload::TorrentUploadAction> {
+        let action = self.torrent_upload.update(event);
+        if event == TorrentUploadEvent::Clear {
+            self.torrent_files.clear();
+            self.torrent_tree.clear();
+            self.torrent_expanded.clear();
+            self.torrent_parse_failed = false;
+        }
+        action
+    }
+
+    pub fn toggle_torrent_node(&mut self, path: &str) {
+        let Some(node) = file_tree::find_node(&self.torrent_tree, path) else {
+            return;
+        };
+        let indices = file_tree::descendant_indices(node);
+        let mut pairs: Vec<(u64, bool)> = self
+            .torrent_files
+            .iter()
+            .map(|f| (f.index, f.selected))
+            .collect();
+        file_tree::flip_with_guard(&mut pairs, &indices);
+        for (idx, selected) in pairs {
+            if let Some(entry) = self.torrent_files.iter_mut().find(|f| f.index == idx) {
+                entry.selected = selected;
+            }
+        }
+    }
+
+    pub fn toggle_torrent_expand(&mut self, path: &str) {
+        let path = path.to_string();
+        if !self.torrent_expanded.remove(&path) {
+            self.torrent_expanded.insert(path);
+        }
+    }
+
+    pub fn set_all_torrent_files(&mut self, selected: bool) {
+        for entry in &mut self.torrent_files {
+            entry.selected = selected;
+        }
+    }
+
+    pub fn selected_file_indices(&self) -> Vec<u64> {
+        self.torrent_files
+            .iter()
+            .filter(|f| f.selected)
+            .map(|f| f.index)
+            .collect()
+    }
+
+    pub fn selected_total(&self) -> u64 {
+        self.torrent_files
+            .iter()
+            .filter(|f| f.selected)
+            .map(|f| f.length)
+            .sum()
     }
 
     pub fn url_count(&self) -> usize {
@@ -231,6 +367,86 @@ pub fn view<'a>(
                     .torrent_upload
                     .view(fluent, theme, Message::TorrentUpload),
             );
+            if state.torrent_parse_failed {
+                body_items.push(
+                    row![
+                        icon::triangle_alert()
+                            .size(FONT_MEDIUM)
+                            .color(theme::warning(theme)),
+                        text(fluent.get(Tr::TorrentParseFailed))
+                            .size(FONT_SMALL)
+                            .style(theme::style::text::secondary),
+                    ]
+                    .spacing(SPACE_SM)
+                    .align_y(Alignment::Center)
+                    .width(Length::Fill)
+                    .into(),
+                );
+            } else if !state.torrent_files.is_empty() {
+                let total_count = state.torrent_files.len();
+                let selected_count = state.torrent_files.iter().filter(|f| f.selected).count();
+                let total_size: u64 = state.torrent_files.iter().map(|f| f.length).sum();
+                let sel_map: HashMap<u64, bool> = state
+                    .torrent_files
+                    .iter()
+                    .map(|f| (f.index, f.selected))
+                    .collect();
+                let is_selected = |i: u64| sel_map.get(&i).copied().unwrap_or(false);
+                let tree_el = container(file_tree::view(
+                    &state.torrent_tree,
+                    &state.torrent_expanded,
+                    &is_selected,
+                    None::<&fn(u64) -> Option<(u64, u64)>>,
+                    true,
+                    &torrent_tree_toggle,
+                    &torrent_tree_expand,
+                ))
+                .width(Length::Fill);
+
+                let header = row![
+                    text(format!(
+                        "{} ({})",
+                        fluent.get(Tr::TorrentFiles),
+                        total_count
+                    ))
+                    .size(FONT_MEDIUM),
+                    iced::widget::Space::new().width(Length::Fill),
+                    text(format_size(total_size))
+                        .size(FONT_SMALL)
+                        .style(theme::style::text::secondary),
+                    button(text(fluent.get(Tr::SelectAll)).size(FONT_SMALL))
+                        .on_press(Message::TorrentFilesSelectAll)
+                        .padding(PADDING_XS)
+                        .style(theme::style::button::text()),
+                    button(text(fluent.get(Tr::SelectNone)).size(FONT_SMALL))
+                        .on_press(Message::TorrentFilesSelectNone)
+                        .padding(PADDING_XS)
+                        .style(theme::style::button::text()),
+                ]
+                .spacing(SPACE_SM)
+                .align_y(Alignment::Center)
+                .width(Length::Fill);
+
+                let selected_line = text(format!(
+                    "{} / {} · {}",
+                    selected_count,
+                    total_count,
+                    format_size(state.selected_total())
+                ))
+                .size(FONT_SMALL)
+                .style(theme::style::text::secondary);
+
+                body_items.push(
+                    column![
+                        header,
+                        slim_scrollable(tree_el).height(Length::Fixed(200.0))
+                    ]
+                    .spacing(SPACE_MD)
+                    .width(Length::Fill)
+                    .into(),
+                );
+                body_items.push(selected_line.into());
+            }
         }
     }
     body_items.push(save_row.into());
@@ -373,4 +589,12 @@ fn advanced_form<'a>(
     .spacing(SPACE_XL)
     .width(Length::Fill)
     .into()
+}
+
+fn torrent_tree_toggle(path: String) -> Message {
+    Message::TorrentTreeToggle(path)
+}
+
+fn torrent_tree_expand(path: String) -> Message {
+    Message::TorrentTreeExpand(path)
 }

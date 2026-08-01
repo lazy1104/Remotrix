@@ -22,6 +22,7 @@ use crate::message::{
 use crate::task::{DownloadTask, TaskStatus};
 use crate::ui::add_dialog::AddDialogState;
 use crate::ui::category_bar::Counts;
+use crate::ui::components::file_tree::FileTreeNode;
 use crate::ui::components::path_picker::PathPickerAction;
 use crate::ui::components::toast::{Toast, ToastKind, ToastPosition};
 use crate::ui::components::torrent_upload::{self, TorrentUploadAction};
@@ -372,10 +373,22 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.add_dialog.active_tab = tab;
         }
         Message::TorrentUpload(event) => {
-            if let Some(TorrentUploadAction::Browse) = state.add_dialog.torrent_upload.update(event)
+            if let Some(TorrentUploadAction::Browse) = state.add_dialog.handle_torrent_event(event)
             {
                 return pick_path(PathPickerId::Torrent);
             }
+        }
+        Message::TorrentTreeExpand(path) => {
+            state.add_dialog.toggle_torrent_expand(&path);
+        }
+        Message::TorrentTreeToggle(path) => {
+            state.add_dialog.toggle_torrent_node(&path);
+        }
+        Message::TorrentFilesSelectAll => {
+            state.add_dialog.set_all_torrent_files(true);
+        }
+        Message::TorrentFilesSelectNone => {
+            state.add_dialog.set_all_torrent_files(false);
         }
         Message::FileHovered(_) => {
             if state.add_dialog.is_visible() && state.add_dialog.active_tab == AddTab::Torrent {
@@ -393,8 +406,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 if torrent_upload::is_valid_torrent_file(&path) {
                     state
                         .add_dialog
-                        .torrent_upload
-                        .set_path(path.to_string_lossy());
+                        .set_torrent_path(path.to_string_lossy().to_string());
                     state.add_dialog.active_tab = AddTab::Torrent;
                 } else {
                     let (_, task) = spawn_toast(
@@ -485,6 +497,13 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     let save_dir = PathBuf::from(state.add_dialog.save_picker.value());
                     let mut torrent_advanced = advanced.clone();
                     torrent_advanced.out.clear();
+                    let total_files = state.add_dialog.torrent_files.len();
+                    let selected = state.add_dialog.selected_file_indices();
+                    let select_files = if total_files == 0 || selected.len() == total_files {
+                        None
+                    } else {
+                        Some(selected)
+                    };
                     if state
                         .handle
                         .cmd_tx
@@ -493,6 +512,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             save_dir,
                             split: state.add_dialog.split,
                             advanced: torrent_advanced,
+                            select_files,
                         })
                         .is_err()
                     {
@@ -1155,8 +1175,20 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             EngineEvent::TaskDetails { gid, details } => {
                 tracing::debug!(?gid, "task details received");
                 if state.details.gid.as_deref() == Some(&gid) {
+                    let first_load = state.details.loading;
                     state.details.details = Some(details);
                     state.details.loading = false;
+                    let save_dir = state.tasks.get(&gid).map(|t| t.save_dir.clone());
+                    let tree =
+                        details_files_tree(state.details.details.as_ref(), save_dir.as_deref());
+                    state.details.files_tree = tree;
+                    if first_load || state.details.files_tree.is_empty() {
+                        state.details.files_expanded.clear();
+                        crate::ui::components::file_tree::collect_dir_paths(
+                            &state.details.files_tree,
+                            &mut state.details.files_expanded,
+                        );
+                    }
                 }
             }
             EngineEvent::TaskDetailsFailed { gid } => {
@@ -1164,6 +1196,17 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 if state.details.gid.as_deref() == Some(&gid) {
                     state.details.loading = false;
                 }
+            }
+            EngineEvent::SelectFilesFailed { gid } => {
+                tracing::warn!(?gid, "change file selection failed");
+                let (_, task) = spawn_toast(
+                    state,
+                    ToastKind::Warning,
+                    state.fluent.get(crate::i18n::Tr::SelectFilesFailed),
+                    Some(Duration::from_secs(4)),
+                    false,
+                );
+                return task;
             }
             EngineEvent::Aria2Version { version } => {
                 tracing::info!(?version, "aria2 version received");
@@ -1480,6 +1523,87 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         }
         Message::SelectDetailsTab(tab) => {
             state.details.active_tab = tab;
+        }
+        Message::DetailsTreeExpand(path) => {
+            if state.details.files_expanded.contains(&path) {
+                state.details.files_expanded.remove(&path);
+            } else {
+                state.details.files_expanded.insert(path);
+            }
+        }
+        Message::DetailsTreeToggle(path) => {
+            let Some(details) = state.details.details.clone() else {
+                return Task::none();
+            };
+            let Some(gid) = state.details.gid.clone() else {
+                return Task::none();
+            };
+            let save_dir = state.tasks.get(&gid).map(|t| t.save_dir.clone());
+            let tree = details_files_tree(Some(&details), save_dir.as_deref());
+            let Some(node) = crate::ui::components::file_tree::find_node(&tree, &path) else {
+                return Task::none();
+            };
+            let indices = crate::ui::components::file_tree::descendant_indices(node);
+            let mut pairs: Vec<(u64, bool)> = details
+                .files
+                .iter()
+                .map(|f| (f.index, f.selected))
+                .collect();
+            crate::ui::components::file_tree::flip_with_guard(&mut pairs, &indices);
+            if let Some(ref mut details) = state.details.details {
+                for (idx, selected) in pairs {
+                    if let Some(file) = details.files.iter_mut().find(|f| f.index == idx) {
+                        file.selected = selected;
+                    }
+                }
+            }
+            let selected = selected_details_indices(state);
+            if !selected.is_empty() {
+                let _ = state.handle.cmd_tx.send(EngineCmd::SelectFiles {
+                    gid: gid.clone(),
+                    files: selected,
+                });
+                let _ = state.handle.cmd_tx.send(EngineCmd::FetchTaskDetails(gid));
+            }
+        }
+        Message::DetailsFilesSelectAll => {
+            if let Some(ref mut details) = state.details.details {
+                for file in &mut details.files {
+                    file.selected = true;
+                }
+            }
+            let gid = state.details.gid.clone();
+            let selected = selected_details_indices(state);
+            if let Some(gid) = gid {
+                if !selected.is_empty() {
+                    let _ = state.handle.cmd_tx.send(EngineCmd::SelectFiles {
+                        gid: gid.clone(),
+                        files: selected,
+                    });
+                    let _ = state.handle.cmd_tx.send(EngineCmd::FetchTaskDetails(gid));
+                }
+            }
+        }
+        Message::DetailsFilesSelectNone => {
+            if let Some(ref mut details) = state.details.details {
+                for file in &mut details.files {
+                    file.selected = false;
+                }
+                if let Some(first) = details.files.iter_mut().min_by_key(|f| f.index) {
+                    first.selected = true;
+                }
+            }
+            let gid = state.details.gid.clone();
+            let selected = selected_details_indices(state);
+            if let Some(gid) = gid {
+                if !selected.is_empty() {
+                    let _ = state.handle.cmd_tx.send(EngineCmd::SelectFiles {
+                        gid: gid.clone(),
+                        files: selected,
+                    });
+                    let _ = state.handle.cmd_tx.send(EngineCmd::FetchTaskDetails(gid));
+                }
+            }
         }
         Message::OpenTaskFolder(gid) => {
             let dir = state
@@ -1971,8 +2095,7 @@ fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
             if torrent_upload::is_valid_torrent_file(&p) {
                 state
                     .add_dialog
-                    .torrent_upload
-                    .set_path(p.to_string_lossy());
+                    .set_torrent_path(p.to_string_lossy().to_string());
                 config::save(&state.settings);
             } else {
                 let mut toast =
@@ -2001,6 +2124,50 @@ fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
             state.settings_ui.ed2k_node_list_picker.close_history();
         }
     }
+}
+
+fn details_files_tree(
+    details: Option<&crate::task::TaskDetails>,
+    save_dir: Option<&std::path::Path>,
+) -> Vec<FileTreeNode> {
+    let Some(details) = details else {
+        return Vec::new();
+    };
+    let tuples: Vec<(u64, String, u64)> = details
+        .files
+        .iter()
+        .map(|f| {
+            let rel = std::path::Path::new(&f.path)
+                .strip_prefix(save_dir.unwrap_or(std::path::Path::new("")))
+                .map(|p| p.to_string_lossy().into_owned())
+                .ok()
+                .filter(|p| !p.is_empty())
+                .unwrap_or_else(|| {
+                    std::path::Path::new(&f.path)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(&f.path)
+                        .to_string()
+                });
+            (f.index, rel, f.length)
+        })
+        .collect();
+    crate::ui::components::file_tree::build_tree(&tuples)
+}
+
+fn selected_details_indices(state: &Remotrix) -> Vec<u64> {
+    state
+        .details
+        .details
+        .as_ref()
+        .map(|d| {
+            d.files
+                .iter()
+                .filter(|f| f.selected)
+                .map(|f| f.index)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn push_toast(state: &mut Remotrix, toast: Toast) {

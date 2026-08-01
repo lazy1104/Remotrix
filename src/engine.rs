@@ -94,6 +94,7 @@ pub enum EngineCmd {
         save_dir: PathBuf,
         split: u16,
         advanced: TaskAdvancedOptions,
+        select_files: Option<Vec<u64>>,
     },
     FollowTorrent {
         gid: String,
@@ -102,6 +103,10 @@ pub enum EngineCmd {
         split: u16,
         advanced: TaskAdvancedOptions,
         delete_after: bool,
+    },
+    SelectFiles {
+        gid: String,
+        files: Vec<u64>,
     },
     FetchTaskDetails(String),
     ReaddTask {
@@ -147,6 +152,9 @@ pub enum EngineEvent {
         details: crate::task::TaskDetails,
     },
     TaskDetailsFailed {
+        gid: String,
+    },
+    SelectFilesFailed {
         gid: String,
     },
     EngineReady,
@@ -505,12 +513,26 @@ async fn delete_task_files(paths: &[String]) {
     }
 }
 
+fn select_file_csv(files: &[u64]) -> Option<String> {
+    if files.is_empty() {
+        return None;
+    }
+    Some(
+        files
+            .iter()
+            .map(u64::to_string)
+            .collect::<Vec<_>>()
+            .join(","),
+    )
+}
+
 async fn add_torrent_and_emit(
     client: &Client,
     path: &Path,
     save_dir: &Path,
     split: u16,
     advanced: &TaskAdvancedOptions,
+    select_files: Option<&[u64]>,
     event_tx: &EventTx,
 ) -> Result<String, String> {
     tracing::info!(?path, ?save_dir, split, "add torrent");
@@ -524,6 +546,11 @@ async fn add_torrent_and_emit(
         ..Default::default()
     };
     advanced.apply(&mut options);
+    if let Some(csv) = select_file_csv(select_files.unwrap_or(&[])) {
+        options
+            .extra_options
+            .insert("select-file".to_string(), serde_json::Value::String(csv));
+    }
     let gid = client
         .add_torrent(bytes, None, Some(options), None, None)
         .await
@@ -719,14 +746,22 @@ async fn handle_client_cmd(
             save_dir,
             split,
             advanced,
+            select_files,
         } => {
-            let gid =
-                match add_torrent_and_emit(client, &path, &save_dir, split, &advanced, event_tx)
-                    .await
-                {
-                    Ok(gid) => gid,
-                    Err(e) => return Err(e),
-                };
+            let gid = match add_torrent_and_emit(
+                client,
+                &path,
+                &save_dir,
+                split,
+                &advanced,
+                select_files.as_deref(),
+                event_tx,
+            )
+            .await
+            {
+                Ok(gid) => gid,
+                Err(e) => return Err(e),
+            };
             let _ = event_tx.send(EngineEvent::TorrentAdded { gid, path });
         }
         EngineCmd::FollowTorrent {
@@ -745,7 +780,9 @@ async fn handle_client_cmd(
                 delete_after,
                 "follow torrent"
             );
-            match add_torrent_and_emit(client, &path, &save_dir, split, &advanced, event_tx).await {
+            match add_torrent_and_emit(client, &path, &save_dir, split, &advanced, None, event_tx)
+                .await
+            {
                 Ok(new_gid) => {
                     tracing::info!(?gid, new_gid, "torrent follow created content task");
                     if delete_after {
@@ -835,6 +872,29 @@ async fn handle_client_cmd(
                 Err(e) => {
                     tracing::warn!(?gid, error = ?e, "re-add ghost task failed");
                     let _ = event_tx.send(EngineEvent::TaskDetailsFailed { gid });
+                }
+            }
+        }
+        EngineCmd::SelectFiles { gid, files } => {
+            let Some(csv) = select_file_csv(&files) else {
+                return Ok(());
+            };
+            tracing::info!(?gid, ?files, "change file selection");
+            let options = TaskOptions {
+                extra_options: {
+                    let mut map = serde_json::Map::new();
+                    map.insert("select-file".to_string(), serde_json::Value::String(csv));
+                    map
+                },
+                ..Default::default()
+            };
+            match client.change_option(&gid, options).await {
+                Ok(()) => {
+                    let _ = client.save_session().await;
+                }
+                Err(e) => {
+                    tracing::warn!(?gid, error = ?e, "changeOption select-file failed");
+                    let _ = event_tx.send(EngineEvent::SelectFilesFailed { gid });
                 }
             }
         }

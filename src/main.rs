@@ -9,6 +9,7 @@ mod engine;
 mod i18n;
 mod message;
 mod task;
+mod torrent_meta;
 mod ui;
 mod updater;
 
@@ -37,6 +38,7 @@ fn main() -> iced::Result {
             min_size: Some(iced::Size::new(800.0, 560.0)),
             ..Default::default()
         })
+        .antialiasing(true)
         .run()
 }
 
