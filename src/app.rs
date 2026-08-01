@@ -212,6 +212,14 @@ fn revert_apply_settings(state: &mut Remotrix) {
     state.settings.delete_torrent_after_complete =
         state.applied_settings.delete_torrent_after_complete;
     state.settings.aria2 = state.applied_settings.aria2.clone();
+    state
+        .settings_ui
+        .ed2k_server_list_picker
+        .set_value(state.settings.aria2.ed2k_server_list.clone());
+    state
+        .settings_ui
+        .ed2k_node_list_picker
+        .set_value(state.settings.aria2.ed2k_node_list.clone());
     state.ua_editor = text_editor::Content::with_text(&state.settings.aria2.user_agent);
 }
 
@@ -756,6 +764,24 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             SettingKey::DetectClipboardOnStart => {
                 state.settings.detect_clipboard_on_start = value == "true";
             }
+            SettingKey::Ed2kServer => {
+                state.settings.aria2.ed2k_server = value;
+            }
+            SettingKey::Ed2kListenPort => {
+                if let Ok(n) = value.parse::<u16>() {
+                    state.settings.aria2.ed2k_listen_port = n;
+                }
+            }
+            SettingKey::Ed2kUdpListenPort => {
+                if let Ok(n) = value.parse::<u16>() {
+                    state.settings.aria2.ed2k_udp_listen_port = n;
+                }
+            }
+            SettingKey::Ed2kUploadSlots => {
+                if let Ok(n) = value.parse::<u16>() {
+                    state.settings.aria2.ed2k_upload_slots = n.max(1);
+                }
+            }
         },
         Message::ApplySettings => {
             config::save(&state.settings);
@@ -768,6 +794,14 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 .is_err()
             {
                 tracing::warn!("ui: apply aria2 options cmd send failed");
+            }
+            if !state
+                .settings
+                .aria2
+                .ed2k_equal(&state.applied_settings.aria2)
+                && state.handle.cmd_tx.send(EngineCmd::RestartEngine).is_err()
+            {
+                tracing::warn!("ui: restart engine cmd send failed");
             }
             state.applied_settings = state.settings.clone();
         }
@@ -1438,6 +1472,13 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     .handle
                     .cmd_tx
                     .send(EngineCmd::ApplyAria2Options { options: opts });
+                if !state
+                    .settings
+                    .aria2
+                    .ed2k_equal(&state.applied_settings.aria2)
+                {
+                    let _ = state.handle.cmd_tx.send(EngineCmd::RestartEngine);
+                }
                 state.applied_settings = state.settings.clone();
                 state.page = target;
             }
@@ -1836,6 +1877,8 @@ fn picker_mut(
         PathPickerId::DownloadDir => &mut state.settings_ui.download_picker,
         PathPickerId::SaveDir => &mut state.add_dialog.save_picker,
         PathPickerId::Torrent => &mut state.add_dialog.torrent_picker,
+        PathPickerId::Ed2kServerList => &mut state.settings_ui.ed2k_server_list_picker,
+        PathPickerId::Ed2kNodeList => &mut state.settings_ui.ed2k_node_list_picker,
     }
 }
 
@@ -1864,6 +1907,22 @@ fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
                 .set_value(p.to_string_lossy());
             state.add_dialog.torrent_picker.close_history();
             config::save(&state.settings);
+        }
+        PathPickerId::Ed2kServerList => {
+            state.settings.aria2.ed2k_server_list = p.to_string_lossy().into_owned();
+            state
+                .settings_ui
+                .ed2k_server_list_picker
+                .set_value(p.to_string_lossy());
+            state.settings_ui.ed2k_server_list_picker.close_history();
+        }
+        PathPickerId::Ed2kNodeList => {
+            state.settings.aria2.ed2k_node_list = p.to_string_lossy().into_owned();
+            state
+                .settings_ui
+                .ed2k_node_list_picker
+                .set_value(p.to_string_lossy());
+            state.settings_ui.ed2k_node_list_picker.close_history();
         }
     }
 }
@@ -1921,28 +1980,36 @@ fn dismiss_toast(state: &mut Remotrix, id: u64) {
 }
 
 fn pick_path(id: PathPickerId) -> Task<Message> {
-    if id.is_folder() {
-        Task::perform(
-            async move {
-                rfd::AsyncFileDialog::new()
-                    .set_title("Select folder")
-                    .pick_folder()
-                    .await
-                    .map(|h| h.path().to_path_buf())
-            },
-            move |maybe| Message::PathPicked(id, maybe),
-        )
-    } else {
-        Task::perform(
-            async move {
-                rfd::AsyncFileDialog::new()
+    let task = async move {
+        let dialog = rfd::AsyncFileDialog::new();
+        let picked = match id {
+            PathPickerId::DownloadDir => dialog.set_title("Select folder").pick_folder().await,
+            PathPickerId::SaveDir => dialog.set_title("Select folder").pick_folder().await,
+            PathPickerId::Torrent => {
+                dialog
                     .set_title("Select torrent file")
                     .add_filter("Torrent", &["torrent"])
                     .pick_file()
                     .await
-                    .map(|h| h.path().to_path_buf())
-            },
-            move |maybe| Message::PathPicked(id, maybe),
-        )
-    }
+            }
+            PathPickerId::Ed2kServerList => {
+                dialog
+                    .set_title("Select server.met")
+                    .add_filter("ED2K server list", &["met"])
+                    .add_filter("All files", &["*"])
+                    .pick_file()
+                    .await
+            }
+            PathPickerId::Ed2kNodeList => {
+                dialog
+                    .set_title("Select nodes.dat")
+                    .add_filter("Kad nodes", &["dat"])
+                    .add_filter("All files", &["*"])
+                    .pick_file()
+                    .await
+            }
+        };
+        picked.map(|h| h.path().to_path_buf())
+    };
+    Task::perform(task, move |maybe| Message::PathPicked(id, maybe))
 }

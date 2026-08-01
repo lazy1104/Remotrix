@@ -37,6 +37,14 @@ bittorrent = BitTorrent
 ed2k = ED2K
 network = Network
 advanced = Advanced
+ed2k-settings = ED2K Settings
+ed2k-server = ED2K server (host:port,...)
+ed2k-server-list = server.met file
+ed2k-node-list = nodes.dat file
+ed2k-listen-port = TCP listen port (0 = automatic)
+ed2k-udp-listen-port = UDP listen port (0 = automatic)
+ed2k-upload-slots = Upload slots
+ed2k-restart-hint = ED2K settings take effect after the engine restarts
 download-folder = Download folder
 connection-segment = Connection & Segment
 max-concurrent = Max concurrent downloads
@@ -121,7 +129,6 @@ check-update = Check for Updates
 engine-data-dir = Engine data directory
 engine-session-file = Session file
 engine-log-file = Log directory
-coming-soon = Coming soon
 select-placeholder = Select...
 up-to-date = Already up to date
 updated-to = Updated to

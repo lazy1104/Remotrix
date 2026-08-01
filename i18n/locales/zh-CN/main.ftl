@@ -37,6 +37,14 @@ bittorrent = BitTorrent
 ed2k = ED2K
 network = 网络
 advanced = 高级
+ed2k-settings = ED2K 设置
+ed2k-server = ED2K 服务器（host:port,...）
+ed2k-server-list = server.met 文件
+ed2k-node-list = nodes.dat 文件
+ed2k-listen-port = TCP 监听端口（0=自动）
+ed2k-udp-listen-port = UDP 监听端口（0=自动）
+ed2k-upload-slots = 上传槽位
+ed2k-restart-hint = ED2K 设置在引擎重启后生效
 download-folder = 下载目录
 connection-segment = 连接与分段
 max-concurrent = 最大并发数
@@ -121,7 +129,6 @@ check-update = 检查更新
 engine-data-dir = 引擎数据目录
 engine-session-file = 会话文件
 engine-log-file = 日志目录
-coming-soon = 即将推出
 select-placeholder = 请选择...
 up-to-date = 已是最新版本
 updated-to = 已更新到

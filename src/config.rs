@@ -54,6 +54,18 @@ pub struct Aria2Options {
     pub bt_require_crypto: bool,
     #[serde(default)]
     pub proxy_enabled: bool,
+    #[serde(default)]
+    pub ed2k_server: String,
+    #[serde(default)]
+    pub ed2k_server_list: String,
+    #[serde(default)]
+    pub ed2k_node_list: String,
+    #[serde(default = "default_ed2k_listen_port")]
+    pub ed2k_listen_port: u16,
+    #[serde(default = "default_ed2k_udp_listen_port")]
+    pub ed2k_udp_listen_port: u16,
+    #[serde(default = "default_ed2k_upload_slots")]
+    pub ed2k_upload_slots: u16,
 }
 
 fn default_max_connection_per_server() -> u32 {
@@ -76,6 +88,15 @@ fn default_seed_ratio() -> f64 {
 }
 fn default_true() -> bool {
     true
+}
+fn default_ed2k_listen_port() -> u16 {
+    4662
+}
+fn default_ed2k_udp_listen_port() -> u16 {
+    4672
+}
+fn default_ed2k_upload_slots() -> u16 {
+    3
 }
 fn default_light_theme() -> String {
     "silkcircuit-dawn".into()
@@ -115,6 +136,12 @@ impl Default for Aria2Options {
             enable_dht: true,
             bt_require_crypto: false,
             proxy_enabled: false,
+            ed2k_server: String::new(),
+            ed2k_server_list: String::new(),
+            ed2k_node_list: String::new(),
+            ed2k_listen_port: default_ed2k_listen_port(),
+            ed2k_udp_listen_port: default_ed2k_udp_listen_port(),
+            ed2k_upload_slots: default_ed2k_upload_slots(),
         }
     }
 }
@@ -146,6 +173,38 @@ impl Aria2Options {
             &self.proxy_username,
             &self.proxy_password,
         )
+    }
+
+    pub fn ed2k_startup_args(&self) -> Vec<String> {
+        let mut args = Vec::new();
+        if !self.ed2k_server.trim().is_empty() {
+            args.push("--ed2k-server".into());
+            args.push(self.ed2k_server.trim().to_string());
+        }
+        if !self.ed2k_server_list.trim().is_empty() {
+            args.push("--ed2k-server-list".into());
+            args.push(self.ed2k_server_list.trim().to_string());
+        }
+        if !self.ed2k_node_list.trim().is_empty() {
+            args.push("--ed2k-node-list".into());
+            args.push(self.ed2k_node_list.trim().to_string());
+        }
+        args.push("--ed2k-listen-port".into());
+        args.push(self.ed2k_listen_port.to_string());
+        args.push("--ed2k-udp-listen-port".into());
+        args.push(self.ed2k_udp_listen_port.to_string());
+        args.push("--ed2k-upload-slots".into());
+        args.push(self.ed2k_upload_slots.to_string());
+        args
+    }
+
+    pub fn ed2k_equal(&self, other: &Aria2Options) -> bool {
+        self.ed2k_server.trim() == other.ed2k_server.trim()
+            && self.ed2k_server_list.trim() == other.ed2k_server_list.trim()
+            && self.ed2k_node_list.trim() == other.ed2k_node_list.trim()
+            && self.ed2k_listen_port == other.ed2k_listen_port
+            && self.ed2k_udp_listen_port == other.ed2k_udp_listen_port
+            && self.ed2k_upload_slots == other.ed2k_upload_slots
     }
 }
 

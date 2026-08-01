@@ -18,6 +18,8 @@ use crate::ui::theme;
 #[derive(Debug, Clone)]
 pub struct SettingsUiState {
     pub download_picker: PathPicker,
+    pub ed2k_server_list_picker: PathPicker,
+    pub ed2k_node_list_picker: PathPicker,
     pub speed_units: HashMap<SettingKey, SpeedUnit>,
 }
 
@@ -38,6 +40,8 @@ impl SettingsUiState {
                 settings.download_dir.to_string_lossy().into_owned(),
                 true,
             ),
+            ed2k_server_list_picker: PathPicker::file(settings.aria2.ed2k_server_list.clone()),
+            ed2k_node_list_picker: PathPicker::file(settings.aria2.ed2k_node_list.clone()),
             speed_units,
         }
     }
@@ -88,7 +92,7 @@ pub fn view<'a>(
             download_view(fluent, theme, settings, settings_ui, path_history)
         }
         SettingsCategory::BitTorrent => bittorrent_view(fluent, settings, accent),
-        SettingsCategory::Ed2k => ed2k_view(fluent),
+        SettingsCategory::Ed2k => ed2k_view(fluent, theme, settings, settings_ui),
         SettingsCategory::Network => network_view(fluent, settings, ua_editor, accent),
         SettingsCategory::Advanced => advanced_view(
             fluent,
@@ -480,16 +484,86 @@ fn bittorrent_view<'a>(
         .into()
 }
 
-fn ed2k_view<'a>(fluent: &'a Fluent) -> Element<'a, Message> {
-    container(
-        text(fluent.get(Tr::ComingSoon))
-            .size(16)
-            .style(theme::style::text::secondary),
-    )
-    .center_x(Length::Fill)
-    .center_y(Length::Fill)
-    .height(Length::Fixed(200.0))
-    .into()
+fn ed2k_view<'a>(
+    fluent: &'a Fluent,
+    theme: &'a iced::Theme,
+    settings: &'a Settings,
+    settings_ui: &'a SettingsUiState,
+) -> Element<'a, Message> {
+    let accent = theme::accent(theme);
+    column![]
+        .spacing(4)
+        .push(group_title(fluent, Tr::Ed2kSettings, accent))
+        .push(labeled_text_input(
+            fluent.get(Tr::Ed2kServer),
+            &settings.aria2.ed2k_server,
+            SettingKey::Ed2kServer,
+            false,
+        ))
+        .push(
+            row![]
+                .push(
+                    text(fluent.get(Tr::Ed2kServerList))
+                        .size(13)
+                        .width(Length::Fixed(200.0)),
+                )
+                .push(
+                    settings_ui
+                        .ed2k_server_list_picker
+                        .view(fluent, theme, &[], |e| {
+                            Message::PathPicker(PathPickerId::Ed2kServerList, e)
+                        }),
+                )
+                .height(Length::Fixed(36.0))
+                .align_y(Alignment::Center),
+        )
+        .push(
+            row![]
+                .push(
+                    text(fluent.get(Tr::Ed2kNodeList))
+                        .size(13)
+                        .width(Length::Fixed(200.0)),
+                )
+                .push(
+                    settings_ui
+                        .ed2k_node_list_picker
+                        .view(fluent, theme, &[], |e| {
+                            Message::PathPicker(PathPickerId::Ed2kNodeList, e)
+                        }),
+                )
+                .height(Length::Fixed(36.0))
+                .align_y(Alignment::Center),
+        )
+        .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
+        .push(group_title(fluent, Tr::Network, accent))
+        .push(labeled_number(
+            fluent.get(Tr::Ed2kListenPort),
+            &settings.aria2.ed2k_listen_port,
+            0..=65535u16,
+            1,
+            SettingKey::Ed2kListenPort,
+        ))
+        .push(labeled_number(
+            fluent.get(Tr::Ed2kUdpListenPort),
+            &settings.aria2.ed2k_udp_listen_port,
+            0..=65535u16,
+            1,
+            SettingKey::Ed2kUdpListenPort,
+        ))
+        .push(labeled_number(
+            fluent.get(Tr::Ed2kUploadSlots),
+            &settings.aria2.ed2k_upload_slots,
+            1..=u16::MAX,
+            1,
+            SettingKey::Ed2kUploadSlots,
+        ))
+        .push(iced::widget::Space::new().height(Length::Fixed(8.0)))
+        .push(
+            text(fluent.get(Tr::Ed2kRestartHint))
+                .size(12)
+                .style(theme::style::text::secondary),
+        )
+        .into()
 }
 
 fn network_view<'a>(

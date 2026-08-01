@@ -13,6 +13,8 @@ pub enum PathPickerId {
     DownloadDir,
     SaveDir,
     Torrent,
+    Ed2kServerList,
+    Ed2kNodeList,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -34,11 +36,9 @@ impl PathPickerId {
             Self::DownloadDir => "download_dir",
             Self::SaveDir => "save_dir",
             Self::Torrent => "torrent",
+            Self::Ed2kServerList => "ed2k_server_list",
+            Self::Ed2kNodeList => "ed2k_node_list",
         }
-    }
-
-    pub fn is_folder(self) -> bool {
-        !matches!(self, Self::Torrent)
     }
 }
 
@@ -245,6 +245,10 @@ pub enum SettingKey {
     NavToTasksAfterAdd,
     DeleteTorrentAfterComplete,
     DetectClipboardOnStart,
+    Ed2kServer,
+    Ed2kListenPort,
+    Ed2kUdpListenPort,
+    Ed2kUploadSlots,
 }
 
 impl TaskStatus {

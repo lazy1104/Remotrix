@@ -258,6 +258,10 @@ impl Sidecar {
         #[cfg(unix)]
         cmd.arg("--stop-with-process")
             .arg(std::process::id().to_string());
+        let settings = crate::config::load();
+        for arg in settings.aria2.ed2k_startup_args() {
+            cmd.arg(arg);
+        }
         let mut child = cmd
             .arg("--enable-rpc")
             .arg("--rpc-listen-all=false")
