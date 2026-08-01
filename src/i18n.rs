@@ -235,6 +235,20 @@ pub enum Tr {
     Discard,
     Copy,
     DownloadHistory,
+    BtEnableLpd,
+    EnablePeerExchange,
+    FileAllocation,
+    FileAllocationNone,
+    FileAllocationPrealloc,
+    FileAllocationFalloc,
+    DiskCache,
+    Performance,
+    BtTrackerPlaceholder,
+    Ed2kServerPlaceholder,
+    ProxyAddressPlaceholder,
+    ProxyUsernamePlaceholder,
+    ProxyPasswordPlaceholder,
+    UserAgentPlaceholder,
 }
 
 impl Tr {
@@ -418,6 +432,20 @@ impl Tr {
             Tr::Discard => "discard",
             Tr::Copy => "copy",
             Tr::DownloadHistory => "download-history",
+            Tr::BtEnableLpd => "bt-enable-lpd",
+            Tr::EnablePeerExchange => "enable-peer-exchange",
+            Tr::FileAllocation => "file-allocation",
+            Tr::FileAllocationNone => "file-allocation-none",
+            Tr::FileAllocationPrealloc => "file-allocation-prealloc",
+            Tr::FileAllocationFalloc => "file-allocation-falloc",
+            Tr::DiskCache => "disk-cache",
+            Tr::Performance => "performance",
+            Tr::BtTrackerPlaceholder => "bt-tracker-placeholder",
+            Tr::Ed2kServerPlaceholder => "ed2k-server-placeholder",
+            Tr::ProxyAddressPlaceholder => "proxy-address-placeholder",
+            Tr::ProxyUsernamePlaceholder => "proxy-username-placeholder",
+            Tr::ProxyPasswordPlaceholder => "proxy-password-placeholder",
+            Tr::UserAgentPlaceholder => "user-agent-placeholder",
         }
     }
 }

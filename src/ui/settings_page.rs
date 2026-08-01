@@ -461,12 +461,26 @@ fn bittorrent_view<'a>(
             settings.aria2.enable_dht,
             SettingKey::EnableDht,
         ))
-        .push(labeled_text_input(
-            fluent.get(Tr::BtTracker),
-            &settings.aria2.bt_tracker,
-            SettingKey::BtTracker,
-            false,
+        .push(labeled_toggle(
+            fluent.get(Tr::BtEnableLpd),
+            settings.aria2.bt_enable_lpd,
+            SettingKey::BtEnableLpd,
         ))
+        .push(labeled_toggle(
+            fluent.get(Tr::EnablePeerExchange),
+            settings.aria2.enable_peer_exchange,
+            SettingKey::EnablePeerExchange,
+        ))
+        .push({
+            let placeholder = fluent.get(Tr::BtTrackerPlaceholder);
+            labeled_text_input(
+                fluent.get(Tr::BtTracker),
+                &settings.aria2.bt_tracker,
+                SettingKey::BtTracker,
+                false,
+                &placeholder,
+            )
+        })
         .push(labeled_number(
             fluent.get(Tr::SeedRatio),
             &settings.aria2.seed_ratio,
@@ -494,12 +508,16 @@ fn ed2k_view<'a>(
     column![]
         .spacing(4)
         .push(group_title(fluent, Tr::Ed2kSettings, accent))
-        .push(labeled_text_input(
-            fluent.get(Tr::Ed2kServer),
-            &settings.aria2.ed2k_server,
-            SettingKey::Ed2kServer,
-            false,
-        ))
+        .push({
+            let placeholder = fluent.get(Tr::Ed2kServerPlaceholder);
+            labeled_text_input(
+                fluent.get(Tr::Ed2kServer),
+                &settings.aria2.ed2k_server,
+                SettingKey::Ed2kServer,
+                false,
+                &placeholder,
+            )
+        })
         .push(
             row![]
                 .push(
@@ -583,11 +601,15 @@ fn network_view<'a>(
         .push(proxy_fields(fluent, settings))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::UserAgent, accent))
-        .push(labeled_editor(
-            fluent.get(Tr::UserAgent),
-            ua_editor,
-            Message::UaEditor,
-        ))
+        .push({
+            let placeholder = fluent.get(Tr::UserAgentPlaceholder);
+            labeled_editor(
+                fluent.get(Tr::UserAgent),
+                ua_editor,
+                Message::UaEditor,
+                placeholder,
+            )
+        })
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::ConnectTimeout, accent))
         .push(labeled_number(
@@ -602,24 +624,30 @@ fn network_view<'a>(
 
 fn proxy_fields<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, Message> {
     if settings.aria2.proxy_enabled {
+        let address = fluent.get(Tr::ProxyAddressPlaceholder);
+        let username = fluent.get(Tr::ProxyUsernamePlaceholder);
+        let password = fluent.get(Tr::ProxyPasswordPlaceholder);
         column![
             labeled_text_input(
                 fluent.get(Tr::ProxyAddress),
                 &settings.aria2.proxy_server,
                 SettingKey::ProxyServer,
                 false,
+                &address,
             ),
             labeled_text_input(
                 fluent.get(Tr::ProxyUsername),
                 &settings.aria2.proxy_username,
                 SettingKey::ProxyUsername,
                 false,
+                &username,
             ),
             labeled_text_input(
                 fluent.get(Tr::ProxyPassword),
                 &settings.aria2.proxy_password,
                 SettingKey::ProxyPassword,
                 true,
+                &password,
             ),
         ]
         .spacing(4)
@@ -766,6 +794,40 @@ fn advanced_view<'a>(
     column![]
         .spacing(12)
         .push(update_toggle)
+        .push(group_title(fluent, Tr::Performance, accent))
+        .push({
+            let fa_none = fluent.get(Tr::FileAllocationNone);
+            let fa_prealloc = fluent.get(Tr::FileAllocationPrealloc);
+            let fa_falloc = fluent.get(Tr::FileAllocationFalloc);
+            let opts = vec![
+                Labeled {
+                    value: "none".to_string(),
+                    label: fa_none,
+                },
+                Labeled {
+                    value: "prealloc".to_string(),
+                    label: fa_prealloc,
+                },
+                Labeled {
+                    value: "falloc".to_string(),
+                    label: fa_falloc,
+                },
+            ];
+            labeled_pick(
+                fluent,
+                fluent.get(Tr::FileAllocation),
+                opts,
+                Some(settings.aria2.file_allocation.clone()),
+                |opt| Message::SettingChanged(SettingKey::FileAllocation, opt.value),
+            )
+        })
+        .push(labeled_number(
+            fluent.get(Tr::DiskCache),
+            &settings.aria2.disk_cache_mb,
+            0..=u64::MAX,
+            1,
+            SettingKey::DiskCache,
+        ))
         .push(group_title(fluent, Tr::Engine, accent))
         .push(engine_col)
         .into()
@@ -826,9 +888,10 @@ fn labeled_text_input<'a>(
     value: &'a str,
     key: SettingKey,
     secure: bool,
+    placeholder: &str,
 ) -> Element<'a, Message> {
     let mut input = theme::input_layout(
-        text_input("", value)
+        text_input(placeholder, value)
             .on_input(move |s| Message::SettingChanged(key, s))
             .width(Length::Fill)
             .style(theme::style::input::standard),
@@ -843,11 +906,13 @@ fn labeled_editor<'a>(
     label: String,
     content: &'a text_editor::Content,
     on_edit: fn(text_editor::Action) -> Message,
+    placeholder: String,
 ) -> Element<'a, Message> {
     row![]
         .push(text(label).size(13).width(Length::Fixed(200.0)))
         .push(theme::editor_layout(
             text_editor(content)
+                .placeholder(placeholder)
                 .on_action(on_edit)
                 .height(Length::Fixed(80.0))
                 .style(theme::style::text_editor::standard),

@@ -752,6 +752,20 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             SettingKey::BtRequireCrypto => {
                 state.settings.aria2.bt_require_crypto = value == "true";
             }
+            SettingKey::BtEnableLpd => {
+                state.settings.aria2.bt_enable_lpd = value == "true";
+            }
+            SettingKey::EnablePeerExchange => {
+                state.settings.aria2.enable_peer_exchange = value == "true";
+            }
+            SettingKey::FileAllocation => {
+                state.settings.aria2.file_allocation = value;
+            }
+            SettingKey::DiskCache => {
+                if let Ok(n) = value.parse::<u64>() {
+                    state.settings.aria2.disk_cache_mb = n;
+                }
+            }
             SettingKey::EnableProxy => {
                 state.settings.aria2.proxy_enabled = value == "true";
             }

@@ -52,6 +52,14 @@ pub struct Aria2Options {
     pub enable_dht: bool,
     #[serde(default)]
     pub bt_require_crypto: bool,
+    #[serde(default = "default_true")]
+    pub bt_enable_lpd: bool,
+    #[serde(default = "default_true")]
+    pub enable_peer_exchange: bool,
+    #[serde(default = "default_file_allocation")]
+    pub file_allocation: String,
+    #[serde(default = "default_disk_cache_mb")]
+    pub disk_cache_mb: u64,
     #[serde(default)]
     pub proxy_enabled: bool,
     #[serde(default)]
@@ -88,6 +96,12 @@ fn default_seed_ratio() -> f64 {
 }
 fn default_true() -> bool {
     true
+}
+fn default_file_allocation() -> String {
+    "prealloc".into()
+}
+fn default_disk_cache_mb() -> u64 {
+    16
 }
 fn default_ed2k_listen_port() -> u16 {
     4662
@@ -135,6 +149,10 @@ impl Default for Aria2Options {
             seed_time: 0,
             enable_dht: true,
             bt_require_crypto: false,
+            bt_enable_lpd: true,
+            enable_peer_exchange: true,
+            file_allocation: default_file_allocation(),
+            disk_cache_mb: default_disk_cache_mb(),
             proxy_enabled: false,
             ed2k_server: String::new(),
             ed2k_server_list: String::new(),
@@ -307,6 +325,40 @@ impl Settings {
                 }
                 .into(),
             ),
+        );
+
+        extra.insert(
+            "bt-enable-lpd".into(),
+            Value::String(
+                if self.aria2.bt_enable_lpd {
+                    "true"
+                } else {
+                    "false"
+                }
+                .into(),
+            ),
+        );
+
+        extra.insert(
+            "enable-peer-exchange".into(),
+            Value::String(
+                if self.aria2.enable_peer_exchange {
+                    "true"
+                } else {
+                    "false"
+                }
+                .into(),
+            ),
+        );
+
+        extra.insert(
+            "file-allocation".into(),
+            Value::String(self.aria2.file_allocation.clone()),
+        );
+
+        extra.insert(
+            "disk-cache".into(),
+            Value::String(format!("{}M", self.aria2.disk_cache_mb)),
         );
 
         TaskOptions {
