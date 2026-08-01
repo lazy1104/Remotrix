@@ -291,6 +291,10 @@ pub struct Settings {
     pub nav_to_tasks_after_add: bool,
     #[serde(default)]
     pub delete_torrent_after_complete: bool,
+    #[serde(default = "default_true")]
+    pub detect_clipboard_on_start: bool,
+    #[serde(default)]
+    pub last_clipboard_hash: String,
     #[serde(default = "default_window_width")]
     pub window_width: f32,
     #[serde(default = "default_window_height")]
@@ -342,6 +346,8 @@ impl Default for Settings {
             aria2: Aria2Options::default(),
             nav_to_tasks_after_add: true,
             delete_torrent_after_complete: false,
+            detect_clipboard_on_start: true,
+            last_clipboard_hash: String::new(),
             window_width: default_window_width(),
             window_height: default_window_height(),
             window_maximized: false,
@@ -424,7 +430,10 @@ pub fn save(settings: &Settings) {
         return;
     };
     if let Ok(json) = serde_json::to_string_pretty(settings) {
-        let _ = std::fs::write(&path, json);
+        let tmp = path.with_extension("json.tmp");
+        if std::fs::write(&tmp, &json).is_ok() {
+            let _ = std::fs::rename(&tmp, &path);
+        }
     }
 }
 

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -84,6 +85,7 @@ pub enum EngineCmd {
         delete_files: bool,
     },
     Snapshot,
+    PurgeResults(Vec<String>),
     ApplyAria2Options {
         options: TaskOptions,
     },
@@ -117,6 +119,7 @@ pub enum EngineEvent {
     },
     Progress {
         gid: String,
+        name: String,
         downloaded: u64,
         total: u64,
         speed: u64,
@@ -368,6 +371,7 @@ fn name_from_status(s: &aria2_ws::response::Status) -> String {
 async fn emit_progress(event_tx: &EventTx, s: &aria2_ws::response::Status) {
     let _ = event_tx.send(EngineEvent::Progress {
         gid: s.gid.clone(),
+        name: name_from_status(s),
         downloaded: s.completed_length,
         total: s.total_length,
         speed: s.download_speed,
@@ -589,6 +593,12 @@ async fn handle_client_cmd(
             tracing::debug!("snapshot");
             for s in fetch_all_tasks(client).await {
                 emit_progress(event_tx, &s).await;
+            }
+        }
+        EngineCmd::PurgeResults(gids) => {
+            tracing::info!(count = gids.len(), "purge download results");
+            for gid in gids {
+                let _ = client.remove_download_result(&gid).await;
             }
         }
         EngineCmd::AddTorrent {
@@ -877,25 +887,54 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
     let poll_event_tx = event_tx.clone();
     handles.push(tokio::spawn(async move {
         let mut ticker = interval(Duration::from_millis(1000));
+        let mut slow = interval(Duration::from_secs(10));
+        let mut stopped_seen: HashSet<String> = HashSet::new();
         loop {
-            ticker.tick().await;
-            let active = match poll_client.tell_active().await {
-                Ok(list) => list,
-                Err(e) => {
-                    tracing::debug!("tell_active: {e}");
-                    continue;
+            tokio::select! {
+                _ = ticker.tick() => {
+                    let active = match poll_client.tell_active().await {
+                        Ok(list) => list,
+                        Err(e) => {
+                            tracing::debug!("tell_active: {e}");
+                            continue;
+                        }
+                    };
+                    for s in &active {
+                        stopped_seen.remove(&s.gid);
+                        emit_progress(&poll_event_tx, s).await;
+                    }
+                    if let Ok(stat) = poll_client.get_global_stat().await {
+                        let _ = poll_event_tx.send(EngineEvent::GlobalSpeed {
+                            download: stat.download_speed,
+                            upload: stat.upload_speed,
+                        });
+                    } else {
+                        tracing::debug!("get_global_stat failed");
+                    }
                 }
-            };
-            for s in &active {
-                emit_progress(&poll_event_tx, s).await;
-            }
-            if let Ok(stat) = poll_client.get_global_stat().await {
-                let _ = poll_event_tx.send(EngineEvent::GlobalSpeed {
-                    download: stat.download_speed,
-                    upload: stat.upload_speed,
-                });
-            } else {
-                tracing::debug!("get_global_stat failed");
+                _ = slow.tick() => {
+                    let mut all = Vec::new();
+                    if let Ok(list) = poll_client.tell_waiting(0, 200).await {
+                        all.extend(list);
+                    }
+                    if let Ok(list) = poll_client.tell_stopped(0, 200).await {
+                        all.extend(list);
+                    }
+                    for s in &all {
+                        let terminal = matches!(
+                            s.status,
+                            Aria2TaskStatus::Complete | Aria2TaskStatus::Error | Aria2TaskStatus::Removed
+                        );
+                        if terminal {
+                            if stopped_seen.insert(s.gid.clone()) {
+                                emit_progress(&poll_event_tx, s).await;
+                            }
+                        } else {
+                            stopped_seen.remove(&s.gid);
+                            emit_progress(&poll_event_tx, s).await;
+                        }
+                    }
+                }
             }
         }
     }));

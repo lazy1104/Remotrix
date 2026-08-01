@@ -74,6 +74,27 @@ impl AddDialogState {
         self.visible = false;
     }
 
+    pub fn set_urls(&mut self, urls: Vec<String>) {
+        self.url_editor = text_editor::Content::with_text(&urls.join("\n"));
+    }
+
+    pub fn open_with(
+        &mut self,
+        default_dir: PathBuf,
+        default_split: u16,
+        payload: crate::clipboard_watch::ClipboardPayload,
+    ) {
+        self.save_picker.close_history();
+        self.torrent_picker.close_history();
+        self.open(default_dir, default_split);
+        match payload {
+            crate::clipboard_watch::ClipboardPayload::Urls(urls) => self.set_urls(urls),
+            crate::clipboard_watch::ClipboardPayload::Torrent(path) => {
+                self.torrent_picker.set_value(path.to_string_lossy());
+            }
+        }
+    }
+
     pub fn is_visible(&self) -> bool {
         self.visible
     }

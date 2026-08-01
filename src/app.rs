@@ -9,6 +9,7 @@ use iced::futures::SinkExt;
 use iced::widget::{column, container, row, stack, text_editor};
 use iced::window::Id;
 use iced::{Element, Length, Padding, Subscription, Task};
+use sha2::{Digest, Sha256};
 
 use crate::config::{self, Settings};
 use crate::db::Db;
@@ -304,6 +305,13 @@ fn finalize_close(state: &mut Remotrix) -> Task<Message> {
     }
 }
 
+fn read_clipboard(state: &Remotrix) -> Task<Message> {
+    if !state.settings.detect_clipboard_on_start {
+        return Task::none();
+    }
+    iced::clipboard::read().map(Message::ClipboardRead)
+}
+
 pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
     match message {
         Message::NavigatePage(page) => {
@@ -564,6 +572,15 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             if let Some(ref db) = state.db {
                 db.clear_completed(&completed);
             }
+            if !completed.is_empty()
+                && state
+                    .handle
+                    .cmd_tx
+                    .send(EngineCmd::PurgeResults(completed.clone()))
+                    .is_err()
+            {
+                tracing::warn!("ui: purge results cmd send failed");
+            }
             for gid in &completed {
                 state.dirty.remove(gid);
             }
@@ -720,6 +737,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             SettingKey::DeleteTorrentAfterComplete => {
                 state.settings.delete_torrent_after_complete = value == "true";
             }
+            SettingKey::DetectClipboardOnStart => {
+                state.settings.detect_clipboard_on_start = value == "true";
+            }
         },
         Message::ApplySettings => {
             config::save(&state.settings);
@@ -833,7 +853,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     .unwrap_or_default()
                     .as_secs() as i64;
                 if let Some(existing) = state.tasks.get_mut(&gid) {
-                    let _ = existing;
+                    existing.name = name;
+                    existing.url = url;
+                    existing.save_dir = PathBuf::from(dir);
                     state.dirty.insert(gid.clone());
                 } else {
                     let task = DownloadTask {
@@ -866,6 +888,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             EngineEvent::Progress {
                 gid,
+                name,
                 downloaded,
                 total,
                 speed,
@@ -882,8 +905,41 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         let _ = std::fs::remove_file(&path);
                     }
                 }
+                if !state.tasks.contains_key(&gid)
+                    && !matches!(status.as_str(), "complete" | "error" | "removed")
+                {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs() as i64;
+                    let task_status = TaskStatus::from_engine(&status);
+                    if task_status == TaskStatus::Active {
+                        state.active_count += 1;
+                    }
+                    state.tasks.insert(
+                        gid.clone(),
+                        DownloadTask {
+                            gid: gid.clone(),
+                            name: String::new(),
+                            url: String::new(),
+                            save_dir: PathBuf::new(),
+                            downloaded: 0,
+                            total: 0,
+                            speed: 0,
+                            upload_speed: 0,
+                            status: task_status,
+                            connections: 0,
+                            added_at: now,
+                        },
+                    );
+                    state.task_order.insert(0, gid.clone());
+                    if let Some(ref db) = state.db {
+                        db.upsert_meta(&gid, &name, "", "", &status, now);
+                    }
+                }
                 if let Some(t) = state.tasks.get_mut(&gid) {
                     let was_active = t.status == TaskStatus::Active;
+                    t.name = name;
                     if total == 0 && t.total > 0 {
                         t.status = TaskStatus::from_engine(&status);
                         t.speed = speed;
@@ -1042,7 +1098,55 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::WindowOpened(id) => {
             if state.window_id.is_none() {
                 state.window_id = Some(id);
+                return read_clipboard(state);
             }
+            return Task::none();
+        }
+        Message::WindowFocused(id) => {
+            if state.window_id.is_none() || state.window_id == Some(id) {
+                return read_clipboard(state);
+            }
+            return Task::none();
+        }
+        Message::ClipboardRead(content) => {
+            let Some(text) = content else {
+                return Task::none();
+            };
+            let trimmed = text.trim().to_string();
+            let hash = hex::encode(Sha256::digest(trimmed.as_bytes()));
+            return Task::perform(
+                async move {
+                    let payload = crate::clipboard_watch::parse_clipboard(&trimmed);
+                    (payload, hash)
+                },
+                |(payload, hash)| Message::ClipboardParsed(payload, hash),
+            );
+        }
+        Message::ClipboardParsed(payload, hash) => {
+            let Some(payload) = payload else {
+                return Task::none();
+            };
+            if state.add_dialog.is_visible() {
+                return Task::none();
+            }
+            if hash == state.settings.last_clipboard_hash {
+                return Task::none();
+            }
+            state.settings.last_clipboard_hash = hash;
+            config::save(&state.settings);
+            state.add_dialog.open_with(
+                state.settings.download_dir.clone(),
+                state.settings.split,
+                payload,
+            );
+            let (_, task) = spawn_toast(
+                state,
+                ToastKind::Normal,
+                state.fluent.get(Tr::ClipboardDetected),
+                Some(Duration::from_secs(3)),
+                false,
+            );
+            return task;
         }
         Message::DragWindow => {
             if let Some(id) = state.window_id {
@@ -1593,6 +1697,12 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
 
     let open = iced::window::open_events().map(Message::WindowOpened);
     let close = iced::window::close_requests().map(|_id| Message::CloseRequested);
+    let focus = iced::event::listen_with(|event, _status, window| match event {
+        iced::event::Event::Window(iced::window::Event::Focused) => {
+            Some(Message::WindowFocused(window))
+        }
+        _ => None,
+    });
 
     let flush = iced::time::every(Duration::from_millis(1000)).map(|_| Message::FlushDirty);
 
@@ -1618,6 +1728,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         engine,
         open,
         close,
+        focus,
         flush,
         resizes,
         persist_periodic,

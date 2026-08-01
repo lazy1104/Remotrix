@@ -2,6 +2,7 @@
 
 mod app;
 mod aria2_fetcher;
+mod clipboard_watch;
 mod config;
 mod db;
 mod engine;

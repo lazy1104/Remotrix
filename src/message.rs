@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use crate::clipboard_watch::ClipboardPayload;
 use crate::engine::EngineEvent;
 use crate::i18n::Locale;
 use crate::task::TaskStatus;
@@ -86,6 +87,9 @@ pub enum Message {
     Engine(EngineEvent),
 
     WindowOpened(iced::window::Id),
+    WindowFocused(iced::window::Id),
+    ClipboardRead(Option<String>),
+    ClipboardParsed(Option<ClipboardPayload>, String),
     DragWindow,
     ResizeWindow(iced::window::Direction),
     WindowAction(WindowCmd),
@@ -240,6 +244,7 @@ pub enum SettingKey {
     EnableProxy,
     NavToTasksAfterAdd,
     DeleteTorrentAfterComplete,
+    DetectClipboardOnStart,
 }
 
 impl TaskStatus {

@@ -224,6 +224,13 @@ fn general_view<'a>(
             Some(settings.locale),
             |opt| Message::LocaleChanged(opt.value),
         ))
+        .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
+        .push(group_title(fluent, Tr::Clipboard, accent))
+        .push(labeled_toggle(
+            fluent.get(Tr::DetectClipboardOnStart),
+            settings.detect_clipboard_on_start,
+            SettingKey::DetectClipboardOnStart,
+        ))
         .into()
 }
 
