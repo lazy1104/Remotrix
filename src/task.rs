@@ -13,6 +13,7 @@ pub struct DownloadTask {
     pub status: TaskStatus,
     pub connections: u64,
     pub added_at: i64,
+    pub info_hash: Option<String>,
 }
 
 impl DownloadTask {

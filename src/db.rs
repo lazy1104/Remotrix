@@ -49,6 +49,19 @@ impl Db {
             )
             .map_err(|e| format!("add column: {e}"))?;
         }
+        let has_info_hash: bool = conn
+            .prepare("PRAGMA table_info(tasks)")
+            .map_err(|e| format!("pragma: {e}"))?
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+            })
+            .map_err(|e| format!("query map: {e}"))?
+            .filter_map(|r| r.ok())
+            .any(|(c, t)| c == "info_hash" && t.to_lowercase().contains("text"));
+        if !has_info_hash {
+            conn.execute_batch("ALTER TABLE tasks ADD COLUMN info_hash TEXT NOT NULL DEFAULT '';")
+                .map_err(|e| format!("add column: {e}"))?;
+        }
         Ok(Db {
             conn: std::sync::Mutex::new(conn),
         })
@@ -57,11 +70,14 @@ impl Db {
     pub fn load_all(&self) -> Vec<DownloadTask> {
         let conn = self.conn.lock().expect("db lock");
         let mut stmt = match conn.prepare(
-            "SELECT gid, name, url, dir, downloaded, total, speed, upload_speed, connections, status, added_at
+            "SELECT gid, name, url, dir, downloaded, total, speed, upload_speed, connections, status, added_at, info_hash
              FROM tasks ORDER BY added_at DESC",
         ) {
             Ok(s) => s,
-            Err(_) => return Vec::new(),
+            Err(e) => {
+                tracing::error!("load_all: prepare failed: {e}");
+                return Vec::new();
+            }
         };
         let rows = match stmt.query_map([], |row| {
             let status_str: String = row.get(9)?;
@@ -74,6 +90,7 @@ impl Db {
                 "removed" => TaskStatus::Removed,
                 _ => TaskStatus::Waiting,
             };
+            let info_hash: String = row.get(11)?;
             Ok(DownloadTask {
                 gid: row.get(0)?,
                 name: row.get(1)?,
@@ -86,14 +103,30 @@ impl Db {
                 connections: row.get(8)?,
                 status,
                 added_at: row.get(10)?,
+                info_hash: if info_hash.is_empty() {
+                    None
+                } else {
+                    Some(info_hash)
+                },
             })
         }) {
             Ok(r) => r,
-            Err(_) => return Vec::new(),
+            Err(e) => {
+                tracing::error!("load_all: query failed: {e}");
+                return Vec::new();
+            }
         };
-        rows.filter_map(|r| r.ok()).collect()
+        rows.filter_map(|r| match r {
+            Ok(t) => Some(t),
+            Err(e) => {
+                tracing::error!("load_all: row decode failed: {e}");
+                None
+            }
+        })
+        .collect()
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn upsert_meta(
         &self,
         gid: &str,
@@ -102,14 +135,15 @@ impl Db {
         dir: &str,
         status: &str,
         added_at: i64,
+        info_hash: &str,
     ) {
         let conn = self.conn.lock().expect("db lock");
         let _ = conn.execute(
-            "INSERT INTO tasks (gid, name, url, dir, downloaded, total, speed, connections, status, added_at)
-             VALUES (?1, ?2, ?3, ?4, 0, 0, 0, 0, ?5, ?6)
+            "INSERT INTO tasks (gid, name, url, dir, downloaded, total, speed, connections, status, added_at, info_hash)
+             VALUES (?1, ?2, ?3, ?4, 0, 0, 0, 0, ?5, ?6, ?7)
              ON CONFLICT(gid) DO UPDATE SET
-                name=excluded.name, url=excluded.url, dir=excluded.dir, status=excluded.status",
-            rusqlite::params![gid, name, url, dir, status, added_at],
+                name=excluded.name, url=excluded.url, dir=excluded.dir, status=excluded.status, info_hash=excluded.info_hash",
+            rusqlite::params![gid, name, url, dir, status, added_at, info_hash],
         );
     }
 

@@ -56,7 +56,7 @@ pub struct Remotrix {
     logo_handle: iced::widget::image::Handle,
     ua_editor: text_editor::Content,
     torrent_files: HashMap<String, PathBuf>,
-    pending_torrent_path: Option<PathBuf>,
+    torrent_followed: HashSet<String>,
     db: Option<Db>,
     dirty: HashSet<String>,
     details: DetailsDialogState,
@@ -145,7 +145,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         logo_handle,
         ua_editor,
         torrent_files: HashMap::new(),
-        pending_torrent_path: None,
+        torrent_followed: HashSet::new(),
         db,
         dirty: HashSet::new(),
         details: DetailsDialogState::new(),
@@ -223,6 +223,23 @@ fn clear_all_local(state: &mut Remotrix) {
     state.paused_gids.clear();
     if let Some(ref db) = state.db {
         db.delete_all();
+    }
+}
+
+fn remove_task_local(state: &mut Remotrix, gid: &str) {
+    if let Some(t) = state.tasks.get(gid) {
+        if t.status == TaskStatus::Active {
+            state.active_count = state.active_count.saturating_sub(1);
+        }
+    }
+    let _ = state.torrent_files.remove(gid);
+    state.torrent_followed.remove(gid);
+    state.paused_gids.remove(gid);
+    state.tasks.remove(gid);
+    state.task_order.retain(|g| g != gid);
+    state.dirty.remove(gid);
+    if let Some(ref db) = state.db {
+        db.delete(gid);
     }
 }
 
@@ -421,7 +438,6 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     let save_dir = PathBuf::from(state.add_dialog.save_picker.value());
                     let mut torrent_advanced = advanced.clone();
                     torrent_advanced.out.clear();
-                    state.pending_torrent_path = Some(tpath.clone());
                     if state
                         .handle
                         .cmd_tx
@@ -796,22 +812,54 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     return Task::none();
                 }
                 state.sync_done = true;
+                for (gid, t) in state.tasks.iter() {
+                    if t.status == TaskStatus::Completed
+                        && !t.url.is_empty()
+                        && crate::engine::is_torrent_url(&t.url)
+                    {
+                        state.torrent_followed.insert(gid.clone());
+                    }
+                }
+                let purge: Vec<String> = state
+                    .tasks
+                    .iter()
+                    .filter(|(gid, t)| {
+                        !state.synced_gids.contains(*gid)
+                            && matches!(
+                                t.status,
+                                TaskStatus::Waiting | TaskStatus::Active | TaskStatus::Paused
+                            )
+                            && t.url.is_empty()
+                            && t.info_hash.is_none()
+                    })
+                    .map(|(gid, _)| gid.clone())
+                    .collect();
+                for gid in &purge {
+                    remove_task_local(state, gid);
+                    tracing::info!(?gid, "ui: purged non-terminal ghost task");
+                }
                 let split = state.settings.split;
                 let ghost: Vec<(String, String, PathBuf, bool)> = state
                     .tasks
                     .iter()
                     .filter(|(gid, t)| {
                         !state.synced_gids.contains(*gid)
-                            && !t.url.is_empty()
+                            && (!t.url.is_empty() || t.info_hash.is_some())
                             && matches!(
                                 t.status,
                                 TaskStatus::Waiting | TaskStatus::Active | TaskStatus::Paused
                             )
                     })
                     .map(|(gid, t)| {
+                        let url = if !t.url.is_empty() {
+                            t.url.clone()
+                        } else {
+                            let hash = t.info_hash.clone().unwrap_or_default();
+                            format!("magnet:?xt=urn:btih:{hash}")
+                        };
                         (
                             gid.clone(),
-                            t.url.clone(),
+                            url,
                             t.save_dir.clone(),
                             t.status == TaskStatus::Paused,
                         )
@@ -842,12 +890,10 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 name,
                 url,
                 dir,
+                info_hash,
             } => {
                 tracing::info!(?gid, ?name, "ui: task added");
                 state.synced_gids.insert(gid.clone());
-                if let Some(tpath) = state.pending_torrent_path.take() {
-                    state.torrent_files.insert(gid.clone(), tpath);
-                }
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -856,6 +902,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     existing.name = name;
                     existing.url = url;
                     existing.save_dir = PathBuf::from(dir);
+                    if info_hash.is_some() {
+                        existing.info_hash = info_hash;
+                    }
                     state.dirty.insert(gid.clone());
                 } else {
                     let task = DownloadTask {
@@ -870,6 +919,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         status: TaskStatus::Waiting,
                         connections: 0,
                         added_at: now,
+                        info_hash,
                     };
                     state.tasks.insert(gid.clone(), task);
                     state.task_order.insert(0, gid.clone());
@@ -881,10 +931,14 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             &state.tasks[&gid].save_dir.to_string_lossy(),
                             "waiting",
                             now,
+                            &state.tasks[&gid].info_hash.clone().unwrap_or_default(),
                         );
                     }
                 }
                 state.dirty.insert(gid);
+            }
+            EngineEvent::TorrentAdded { gid, path } => {
+                state.torrent_files.insert(gid, path);
             }
             EngineEvent::Progress {
                 gid,
@@ -895,6 +949,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 upload_speed,
                 status,
                 connections,
+                info_hash,
             } => {
                 state.synced_gids.insert(gid.clone());
                 if status == "complete"
@@ -930,16 +985,28 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             status: task_status,
                             connections: 0,
                             added_at: now,
+                            info_hash: info_hash.clone(),
                         },
                     );
                     state.task_order.insert(0, gid.clone());
                     if let Some(ref db) = state.db {
-                        db.upsert_meta(&gid, &name, "", "", &status, now);
+                        db.upsert_meta(
+                            &gid,
+                            &name,
+                            "",
+                            "",
+                            &status,
+                            now,
+                            info_hash.as_deref().unwrap_or_default(),
+                        );
                     }
                 }
                 if let Some(t) = state.tasks.get_mut(&gid) {
                     let was_active = t.status == TaskStatus::Active;
                     t.name = name;
+                    if info_hash.is_some() {
+                        t.info_hash = info_hash;
+                    }
                     if total == 0 && t.total > 0 {
                         t.status = TaskStatus::from_engine(&status);
                         t.speed = speed;
@@ -967,23 +1034,36 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             state.active_count = state.active_count.saturating_sub(1);
                         }
                     }
-                    state.dirty.insert(gid);
+                    state.dirty.insert(gid.clone());
+                }
+                if status == "complete" && state.sync_done {
+                    if let Some(t) = state.tasks.get(&gid) {
+                        if !t.url.is_empty() && crate::engine::is_torrent_url(&t.url) {
+                            if state.torrent_followed.insert(gid.clone()) {
+                                let path = t.save_dir.join(&t.name);
+                                let save_dir = t.save_dir.clone();
+                                let _ = state.handle.cmd_tx.send(EngineCmd::FollowTorrent {
+                                    gid: gid.clone(),
+                                    path,
+                                    save_dir,
+                                    split: state.settings.split,
+                                    advanced: TaskAdvancedOptions::default(),
+                                    delete_after: state.settings.delete_torrent_after_complete,
+                                });
+                                tracing::info!(
+                                    ?gid,
+                                    "ui: auto-adding downloaded torrent as new task"
+                                );
+                            } else {
+                                state.torrent_followed.remove(&gid);
+                            }
+                        }
+                    }
                 }
             }
             EngineEvent::Removed(gid) => {
                 tracing::info!(?gid, "ui: task removed");
-                if let Some(t) = state.tasks.get(&gid) {
-                    if t.status == TaskStatus::Active {
-                        state.active_count = state.active_count.saturating_sub(1);
-                    }
-                }
-                state.paused_gids.remove(&gid);
-                state.tasks.remove(&gid);
-                state.task_order.retain(|g| g != &gid);
-                state.dirty.remove(&gid);
-                if let Some(ref db) = state.db {
-                    db.delete(&gid);
-                }
+                remove_task_local(state, &gid);
             }
             EngineEvent::TaskDetails { gid, details } => {
                 tracing::debug!(?gid, "task details received");
@@ -1330,13 +1410,18 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
         }
         Message::CopyTaskLink(gid) => {
-            let url = state
-                .tasks
-                .get(&gid)
-                .map(|t| t.url.clone())
-                .unwrap_or_default();
-            if !url.is_empty() {
-                return iced::clipboard::write::<Message>(url);
+            let Some(t) = state.tasks.get(&gid) else {
+                return Task::none();
+            };
+            if !t.url.is_empty() {
+                return iced::clipboard::write::<Message>(t.url.clone());
+            }
+            if let Some(hash) = t.info_hash.as_deref() {
+                if !hash.is_empty() {
+                    return iced::clipboard::write::<Message>(format!(
+                        "magnet:?xt=urn:btih:{hash}"
+                    ));
+                }
             }
         }
         Message::RequestConfirm(action) => {

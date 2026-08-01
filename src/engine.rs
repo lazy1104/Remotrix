@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -95,6 +95,14 @@ pub enum EngineCmd {
         split: u16,
         advanced: TaskAdvancedOptions,
     },
+    FollowTorrent {
+        gid: String,
+        path: PathBuf,
+        save_dir: PathBuf,
+        split: u16,
+        advanced: TaskAdvancedOptions,
+        delete_after: bool,
+    },
     FetchTaskDetails(String),
     ReaddTask {
         gid: String,
@@ -116,6 +124,7 @@ pub enum EngineEvent {
         name: String,
         url: String,
         dir: String,
+        info_hash: Option<String>,
     },
     Progress {
         gid: String,
@@ -126,6 +135,11 @@ pub enum EngineEvent {
         upload_speed: u64,
         status: String,
         connections: u64,
+        info_hash: Option<String>,
+    },
+    TorrentAdded {
+        gid: String,
+        path: PathBuf,
     },
     Removed(String),
     TaskDetails {
@@ -332,6 +346,12 @@ fn basename(uri: &str) -> Option<String> {
     }
 }
 
+pub(crate) fn is_torrent_url(url: &str) -> bool {
+    basename(url)
+        .map(|n| n.to_lowercase().ends_with(".torrent"))
+        .unwrap_or(false)
+}
+
 fn collect_file_paths(s: &aria2_ws::response::Status) -> Vec<String> {
     let mut paths = Vec::new();
     for f in &s.files {
@@ -368,6 +388,22 @@ fn name_from_status(s: &aria2_ws::response::Status) -> String {
     s.gid.clone()
 }
 
+async fn emit_added(event_tx: &EventTx, s: &aria2_ws::response::Status) {
+    let url = s
+        .files
+        .first()
+        .and_then(|f| f.uris.first())
+        .map(|u| u.uri.clone())
+        .unwrap_or_default();
+    let _ = event_tx.send(EngineEvent::Added {
+        gid: s.gid.clone(),
+        name: name_from_status(s),
+        url,
+        dir: s.dir.clone(),
+        info_hash: s.info_hash.clone(),
+    });
+}
+
 async fn emit_progress(event_tx: &EventTx, s: &aria2_ws::response::Status) {
     let _ = event_tx.send(EngineEvent::Progress {
         gid: s.gid.clone(),
@@ -378,21 +414,40 @@ async fn emit_progress(event_tx: &EventTx, s: &aria2_ws::response::Status) {
         upload_speed: s.upload_speed,
         status: status_to_string(&s.status).to_string(),
         connections: s.connections,
+        info_hash: s.info_hash.clone(),
     });
 }
 
 async fn fetch_all_tasks(client: &Client) -> Vec<aria2_ws::response::Status> {
-    let mut all = Vec::new();
-    if let Ok(list) = client.tell_active().await {
-        all.extend(list);
+    match fetch_all_tasks_strict(client).await {
+        Ok((all, _)) => all,
+        Err(e) => {
+            tracing::warn!("fetch_all_tasks failed: {e}");
+            Vec::new()
+        }
     }
-    if let Ok(list) = client.tell_waiting(-1, 1000).await {
-        all.extend(list);
-    }
-    if let Ok(list) = client.tell_stopped(-1, 1000).await {
-        all.extend(list);
-    }
-    all
+}
+
+async fn fetch_all_tasks_strict(
+    client: &Client,
+) -> Result<(Vec<aria2_ws::response::Status>, bool), String> {
+    let active = client
+        .tell_active()
+        .await
+        .map_err(|e| format!("tell_active: {e}"))?;
+    let waiting = client
+        .tell_waiting(-1, 1000)
+        .await
+        .map_err(|e| format!("tell_waiting: {e}"))?;
+    let stopped = client
+        .tell_stopped(-1, 1000)
+        .await
+        .map_err(|e| format!("tell_stopped: {e}"))?;
+    let truncated = waiting.len() >= 1000 || stopped.len() >= 1000;
+    let mut all = active;
+    all.extend(waiting);
+    all.extend(stopped);
+    Ok((all, truncated))
 }
 
 fn url_host(uri: &str) -> Option<String> {
@@ -402,30 +457,28 @@ fn url_host(uri: &str) -> Option<String> {
         .map(|h| h.to_ascii_lowercase())
 }
 
-async fn sync_existing_tasks(client: &Client, event_tx: &EventTx) {
-    let all = fetch_all_tasks(client).await;
+async fn sync_existing_tasks(client: &Client, event_tx: &EventTx) -> bool {
+    let (all, truncated) = match fetch_all_tasks_strict(client).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("startup sync failed, skipping reconciliation: {e}");
+            return false;
+        }
+    };
     for s in &all {
-        let name = name_from_status(s);
-        let url = s
-            .files
-            .first()
-            .and_then(|f| f.uris.first())
-            .map(|u| u.uri.clone())
-            .unwrap_or_default();
-        let dir = s.dir.clone();
-        let _ = event_tx.send(EngineEvent::Added {
-            gid: s.gid.clone(),
-            name,
-            url,
-            dir,
-        });
+        emit_added(event_tx, s).await;
         emit_progress(event_tx, s).await;
+    }
+    if truncated {
+        tracing::warn!("startup sync hit result cap, skipping reconciliation");
+        return false;
     }
     if all.is_empty() {
         tracing::info!("no existing tasks found during sync");
     } else {
         tracing::info!("synced {} existing tasks", all.len());
     }
+    true
 }
 
 async fn remove_task_from_aria2(client: &Client, gid: &str) {
@@ -446,6 +499,54 @@ async fn delete_task_files(paths: &[String]) {
         }
         let _ = tokio::fs::remove_file(std::path::Path::new(&format!("{p}.aria2"))).await;
     }
+}
+
+async fn add_torrent_and_emit(
+    client: &Client,
+    path: &Path,
+    save_dir: &Path,
+    split: u16,
+    advanced: &TaskAdvancedOptions,
+    event_tx: &EventTx,
+) -> Result<String, String> {
+    tracing::info!(?path, ?save_dir, split, "add torrent");
+    let bytes = tokio::fs::read(path)
+        .await
+        .map_err(|e| format!("read torrent: {e}"))?;
+    let mut options = TaskOptions {
+        dir: Some(save_dir.to_string_lossy().to_string()),
+        split: Some(split as i32),
+        max_connection_per_server: Some((split as i32).max(1)),
+        ..Default::default()
+    };
+    advanced.apply(&mut options);
+    let gid = client
+        .add_torrent(bytes, None, Some(options), None, None)
+        .await
+        .map_err(|e| format!("add_torrent: {e}"))?;
+    match client.tell_status(&gid).await {
+        Ok(status) => {
+            emit_added(event_tx, &status).await;
+            emit_progress(event_tx, &status).await;
+        }
+        Err(e) => {
+            tracing::warn!(?gid, error = ?e, "tell_status after add_torrent failed");
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(&gid)
+                .to_string();
+            let dir = save_dir.to_string_lossy().to_string();
+            let _ = event_tx.send(EngineEvent::Added {
+                gid: gid.clone(),
+                name,
+                url: String::new(),
+                dir,
+                info_hash: None,
+            });
+        }
+    }
+    Ok(gid)
 }
 
 async fn handle_client_cmd(
@@ -474,8 +575,15 @@ async fn handle_client_cmd(
             let dir = save_dir.to_string_lossy().to_string();
             let mut added = 0;
             for url in urls {
+                let mut opts = options.clone();
+                if is_torrent_url(&url) {
+                    opts.extra_options.insert(
+                        "follow-torrent".to_string(),
+                        serde_json::Value::String("false".into()),
+                    );
+                }
                 match client
-                    .add_uri(vec![url.clone()], Some(options.clone()), None, None)
+                    .add_uri(vec![url.clone()], Some(opts), None, None)
                     .await
                 {
                     Ok(gid) => {
@@ -485,6 +593,7 @@ async fn handle_client_cmd(
                             name,
                             url,
                             dir: dir.clone(),
+                            info_hash: None,
                         });
                         added += 1;
                     }
@@ -607,33 +716,45 @@ async fn handle_client_cmd(
             split,
             advanced,
         } => {
-            tracing::info!(?path, ?save_dir, split, "add torrent");
-            let bytes = tokio::fs::read(&path)
-                .await
-                .map_err(|e| format!("read torrent: {e}"))?;
-            let mut options = TaskOptions {
-                dir: Some(save_dir.to_string_lossy().to_string()),
-                split: Some(split as i32),
-                max_connection_per_server: Some((split as i32).max(1)),
-                ..Default::default()
-            };
-            advanced.apply(&mut options);
-            let gid = client
-                .add_torrent(bytes, None, Some(options), None, None)
-                .await
-                .map_err(|e| format!("add_torrent: {e}"))?;
-            let name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(&gid)
-                .to_string();
-            let dir = save_dir.to_string_lossy().to_string();
-            let _ = event_tx.send(EngineEvent::Added {
-                gid,
-                name,
-                url: String::new(),
-                dir,
-            });
+            let gid =
+                match add_torrent_and_emit(client, &path, &save_dir, split, &advanced, event_tx)
+                    .await
+                {
+                    Ok(gid) => gid,
+                    Err(e) => return Err(e),
+                };
+            let _ = event_tx.send(EngineEvent::TorrentAdded { gid, path });
+        }
+        EngineCmd::FollowTorrent {
+            gid,
+            path,
+            save_dir,
+            split,
+            advanced,
+            delete_after,
+        } => {
+            tracing::info!(
+                ?gid,
+                ?path,
+                ?save_dir,
+                split,
+                delete_after,
+                "follow torrent"
+            );
+            match add_torrent_and_emit(client, &path, &save_dir, split, &advanced, event_tx).await {
+                Ok(new_gid) => {
+                    tracing::info!(?gid, new_gid, "torrent follow created content task");
+                    if delete_after {
+                        let _ = tokio::fs::remove_file(&path).await;
+                        remove_task_from_aria2(client, &gid).await;
+                        let _ = client.save_session().await;
+                        let _ = event_tx.send(EngineEvent::Removed(gid));
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(?gid, error = ?e, "follow torrent failed, keeping source task");
+                }
+            }
         }
         EngineCmd::FetchTaskDetails(gid) => {
             tracing::debug!(?gid, "fetch task details");
@@ -701,6 +822,7 @@ async fn handle_client_cmd(
                         name,
                         url,
                         dir,
+                        info_hash: None,
                     });
                     if let Ok(status) = client.tell_status(&gid).await {
                         emit_progress(event_tx, &status).await;
@@ -714,13 +836,22 @@ async fn handle_client_cmd(
         }
         EngineCmd::ApplyAria2Options { options } => {
             tracing::info!("apply aria2 options");
-            if let Err(e) = client.change_global_option(options.clone()).await {
-                tracing::warn!("change_global_option: {e}");
+            if let Err(e) = apply_global_options(client, options).await {
+                tracing::warn!("apply_global_options: {e}");
             }
         }
         _ => {}
     }
     Ok(())
+}
+
+async fn apply_global_options(client: &Client, options: TaskOptions) -> Result<(), String> {
+    let params = serde_json::to_value(options).map_err(|e| format!("serialize options: {e}"))?;
+    client
+        .call_and_wait::<String>("changeGlobalOption", vec![params])
+        .await
+        .map(|_| ())
+        .map_err(|e| format!("change_global_option: {e}"))
 }
 
 fn installed_version() -> String {
@@ -838,14 +969,15 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
     let sync_client = sidecar.client.clone();
     let sync_event_tx = event_tx.clone();
     tokio::spawn(async move {
-        sync_existing_tasks(&sync_client, &sync_event_tx).await;
-        let _ = sync_event_tx.send(EngineEvent::SyncComplete);
+        if sync_existing_tasks(&sync_client, &sync_event_tx).await {
+            let _ = sync_event_tx.send(EngineEvent::SyncComplete);
+        }
     });
 
     let boot_client = sidecar.client.clone();
     tokio::spawn(async move {
         let opts = crate::config::load().to_aria2_task_options();
-        if let Err(e) = boot_client.change_global_option(opts).await {
+        if let Err(e) = apply_global_options(&boot_client, opts).await {
             tracing::warn!("boot apply global options: {e}");
         }
     });
@@ -889,6 +1021,9 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
         let mut ticker = interval(Duration::from_millis(1000));
         let mut slow = interval(Duration::from_secs(10));
         let mut stopped_seen: HashSet<String> = HashSet::new();
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut terminal: HashSet<String> = HashSet::new();
+        let mut orphan_grace: HashMap<String, u32> = HashMap::new();
         loop {
             tokio::select! {
                 _ = ticker.tick() => {
@@ -913,27 +1048,71 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
                     }
                 }
                 _ = slow.tick() => {
-                    let mut all = Vec::new();
-                    if let Ok(list) = poll_client.tell_waiting(0, 200).await {
-                        all.extend(list);
-                    }
-                    if let Ok(list) = poll_client.tell_stopped(0, 200).await {
-                        all.extend(list);
-                    }
+                    let (active_res, waiting_res, stopped_res) = tokio::join!(
+                        poll_client.tell_active(),
+                        poll_client.tell_waiting(-1, 1000),
+                        poll_client.tell_stopped(-1, 1000),
+                    );
+                    let (active, waiting, stopped) = match (active_res, waiting_res, stopped_res) {
+                        (Ok(a), Ok(w), Ok(s)) => (a, w, s),
+                        _ => {
+                            tracing::debug!("slow scan skipped (rpc failure)");
+                            continue;
+                        }
+                    };
+                    let mut all = active;
+                    all.extend(waiting);
+                    all.extend(stopped);
+                    let mut current: HashSet<&str> = HashSet::with_capacity(all.len());
                     for s in &all {
-                        let terminal = matches!(
+                        current.insert(s.gid.as_str());
+                        if seen.insert(s.gid.clone()) {
+                            emit_added(&poll_event_tx, s).await;
+                        }
+                        let is_terminal = matches!(
                             s.status,
-                            Aria2TaskStatus::Complete | Aria2TaskStatus::Error | Aria2TaskStatus::Removed
+                            Aria2TaskStatus::Complete
+                                | Aria2TaskStatus::Error
+                                | Aria2TaskStatus::Removed
                         );
-                        if terminal {
+                        if is_terminal {
+                            terminal.insert(s.gid.clone());
                             if stopped_seen.insert(s.gid.clone()) {
                                 emit_progress(&poll_event_tx, s).await;
                             }
                         } else {
                             stopped_seen.remove(&s.gid);
-                            emit_progress(&poll_event_tx, s).await;
+                            if s.status != Aria2TaskStatus::Active {
+                                emit_progress(&poll_event_tx, s).await;
+                            }
                         }
                     }
+                    for g in &seen {
+                        if current.contains(g.as_str()) {
+                            orphan_grace.remove(g.as_str());
+                        }
+                    }
+                    let orphans: Vec<String> = seen
+                        .iter()
+                        .filter(|g| !current.contains(g.as_str()) && !terminal.contains(*g))
+                        .cloned()
+                        .collect();
+                    for gid in orphans {
+                        let count = orphan_grace.entry(gid.clone()).or_insert(0);
+                        *count += 1;
+                        if *count < 2 {
+                            continue;
+                        }
+                        tracing::info!(?gid, "orphan task detected, removing");
+                        let _ = poll_event_tx.send(EngineEvent::Removed(gid.clone()));
+                        orphan_grace.remove(&gid);
+                        seen.remove(&gid);
+                        terminal.remove(&gid);
+                        stopped_seen.remove(&gid);
+                    }
+                    seen.retain(|g| current.contains(g.as_str()) || orphan_grace.contains_key(g));
+                    terminal.retain(|g| current.contains(g.as_str()));
+                    stopped_seen.retain(|g| current.contains(g.as_str()));
                 }
             }
         }

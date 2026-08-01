@@ -265,7 +265,7 @@ fn task_card<'a>(
             .into()
     };
 
-    let copy_link_btn: Element<'a, Message> = if !t.url.is_empty() {
+    let copy_link_btn: Element<'a, Message> = if !t.url.is_empty() || t.info_hash.is_some() {
         let glyph = icon::copy().size(15).color(text_secondary);
         tip::standard(
             button(glyph)
