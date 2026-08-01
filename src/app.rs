@@ -1621,17 +1621,22 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
     } else {
         (0, 0)
     };
-    let hud_overlay = container(crate::ui::components::speed_hud::view(t, dl, up))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_x(Horizontal::Right)
-        .align_y(Vertical::Bottom)
-        .padding(Padding {
-            top: 0.0,
-            right: 16.0,
-            bottom: 20.0,
-            left: 0.0,
-        });
+    let hud_overlay = container(crate::ui::components::speed_hud::view(
+        t,
+        state.active_count > 0,
+        dl,
+        up,
+    ))
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .align_x(Horizontal::Right)
+    .align_y(Vertical::Bottom)
+    .padding(Padding {
+        top: 0.0,
+        right: 16.0,
+        bottom: 20.0,
+        left: 0.0,
+    });
     let base_layer: iced::Element<'_, Message> = stack![framed, hud_overlay]
         .width(Length::Fill)
         .height(Length::Fill)
