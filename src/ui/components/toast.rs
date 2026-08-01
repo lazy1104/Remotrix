@@ -2,9 +2,10 @@ use std::time::Duration;
 
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{button, column, container, mouse_area, row, stack, text};
-use iced::{Element, Length, Padding};
+use iced::{Element, Length};
 
 use crate::message::Message;
+use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
@@ -107,7 +108,7 @@ pub fn view<'a>(theme: &'a iced::Theme, toasts: &'a [Toast]) -> Element<'a, Mess
             continue;
         }
         let (h, v) = pos.alignment();
-        let mut column_ = column![].spacing(8);
+        let mut column_ = column![].spacing(SPACE_LG);
         for t in pos_toasts {
             column_ = column_.push(card(theme, t));
         }
@@ -134,20 +135,20 @@ fn card<'a>(theme: &'a iced::Theme, toast: &'a Toast) -> Element<'a, Message> {
         ToastKind::Error => icon::circle_x(),
         ToastKind::Success => icon::circle_check(),
     }
-    .size(16)
+    .size(FONT_TITLE)
     .color(kind_color(theme, toast.kind));
 
     let icon_col = container(icon).align_y(Vertical::Center);
-    let message_col = text(&toast.message).size(13).width(Length::Fill);
+    let message_col = text(&toast.message).size(FONT_MEDIUM).width(Length::Fill);
 
     let mut content = row![icon_col, message_col]
-        .spacing(8)
+        .spacing(SPACE_LG)
         .align_y(Vertical::Center);
 
     if toast.show_close {
-        let close_btn = button(icon::x().size(14).line_height(1.0))
+        let close_btn = button(icon::x().size(FONT_BODY).line_height(1.0))
             .on_press(Message::DismissToast(toast.id))
-            .padding(2)
+            .padding(PADDING_XS)
             .style(theme::style::button::text());
         content = content.push(close_btn);
     }
@@ -155,12 +156,7 @@ fn card<'a>(theme: &'a iced::Theme, toast: &'a Toast) -> Element<'a, Message> {
     mouse_area(
         container(content)
             .width(Length::Fixed(CARD_WIDTH))
-            .padding(Padding {
-                top: 10.0,
-                right: 12.0,
-                bottom: 10.0,
-                left: 12.0,
-            })
+            .padding(PADDING_TOAST)
             .style(theme::style::toast),
     )
     .on_enter(Message::ToastHovered(toast.id))

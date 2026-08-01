@@ -10,6 +10,7 @@ use super::drop_down;
 use super::tooltip;
 use super::CONTROL_HEIGHT;
 use crate::i18n::{Fluent, Tr};
+use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
@@ -151,7 +152,7 @@ impl PathPicker {
     {
         let text_secondary = theme::text_secondary(theme);
         let mut row = row![]
-            .spacing(0)
+            .spacing(SPACE_NONE)
             .align_y(Alignment::Center)
             .height(Length::Fill);
 
@@ -165,7 +166,7 @@ impl PathPicker {
 
         let copy_btn: Element<'a, M> = {
             let mut btn = button(Self::icon_content(
-                icon::copy().size(15).color(text_secondary),
+                icon::copy().size(FONT_ICON).color(text_secondary),
             ))
             .style(theme::style::button::grouped_icon(false))
             .height(Length::Fill);
@@ -185,7 +186,7 @@ impl PathPicker {
 
             let browse_btn: Element<'a, M> = tooltip::standard(
                 button(Self::icon_content(
-                    icon::folder_open().size(15).color(text_secondary),
+                    icon::folder_open().size(FONT_ICON).color(text_secondary),
                 ))
                 .on_press(map(PathPickerEvent::Browse))
                 .style(theme::style::button::grouped_icon(false))
@@ -199,7 +200,7 @@ impl PathPicker {
                 row = row.push(Self::separator());
                 let history_btn: Element<'a, M> = {
                     let btn = button(Self::icon_content(
-                        icon::folder_clock().size(15).color(text_secondary),
+                        icon::folder_clock().size(FONT_ICON).color(text_secondary),
                     ))
                     .style(theme::style::button::grouped_icon(true))
                     .height(Length::Fill);
@@ -221,7 +222,7 @@ impl PathPicker {
         let group = container(row)
             .width(Length::Fill)
             .height(Length::Fixed(CONTROL_HEIGHT))
-            .padding(1.0)
+            .padding(PADDING_GROUPED)
             .style(theme::style::grouped_frame_state(
                 self.focused,
                 self.hovered,
@@ -232,23 +233,24 @@ impl PathPicker {
                 let overlay_items: Vec<Element<'a, M>> = history
                     .iter()
                     .map(|p| {
-                        button(text(p.as_str()).size(12))
+                        button(text(p.as_str()).size(FONT_SMALL))
                             .on_press(map(PathPickerEvent::SelectHistory(PathBuf::from(
                                 p.clone(),
                             ))))
                             .width(Length::Fill)
-                            .padding([6, 8])
+                            .padding(PADDING_BUTTON_XS)
                             .style(theme::style::button::picker_item())
                             .into()
                     })
                     .collect();
 
                 let overlay = container(
-                    scrollable(column(overlay_items).spacing(2).width(Length::Fill)).direction(
-                        scrollable::Direction::Vertical(scrollable::Scrollbar::hidden()),
-                    ),
+                    scrollable(column(overlay_items).spacing(SPACE_XS).width(Length::Fill))
+                        .direction(scrollable::Direction::Vertical(
+                            scrollable::Scrollbar::hidden(),
+                        )),
                 )
-                .padding(6)
+                .padding(PADDING_DROPDOWN)
                 .style(theme::style::card);
 
                 drop_down::DropDown::new(group, overlay, self.history_open)

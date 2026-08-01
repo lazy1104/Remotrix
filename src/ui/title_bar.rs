@@ -2,6 +2,7 @@ use iced::widget::{button, container, mouse_area, row, text};
 use iced::{Alignment, Element, Length};
 
 use crate::message::{Message, WindowCmd};
+use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::icons::{CATEGORY_W, SIDEBAR_W};
 use crate::ui::theme;
@@ -11,7 +12,7 @@ pub const BAR_HEIGHT: f32 = 38.0;
 pub fn view<'a>(_theme: &iced::Theme, maximized: bool) -> Element<'a, Message> {
     let left_seg = container(
         mouse_area(
-            container(text("").size(1))
+            container(text("").size(FONT_HIDDEN))
                 .width(Length::Fill)
                 .height(Length::Fill),
         )
@@ -23,7 +24,7 @@ pub fn view<'a>(_theme: &iced::Theme, maximized: bool) -> Element<'a, Message> {
 
     let mid_seg = container(
         mouse_area(
-            container(text("").size(1))
+            container(text("").size(FONT_HIDDEN))
                 .width(Length::Fill)
                 .height(Length::Fill),
         )
@@ -34,14 +35,14 @@ pub fn view<'a>(_theme: &iced::Theme, maximized: bool) -> Element<'a, Message> {
     .style(theme::style::category_background);
 
     let min_btn = button(
-        container(icon::minus().size(15).line_height(1.0))
+        container(icon::minus().size(FONT_ICON).line_height(1.0))
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .width(Length::Fill)
             .height(Length::Fill),
     )
     .on_press(Message::WindowAction(WindowCmd::Minimize))
-    .padding(0)
+    .padding(PADDING_NONE)
     .width(Length::Fixed(46.0))
     .height(Length::Fill)
     .style(theme::style::button::window_control(false));
@@ -52,27 +53,27 @@ pub fn view<'a>(_theme: &iced::Theme, maximized: bool) -> Element<'a, Message> {
         icon::square()
     };
     let max_btn = button(
-        container(max_icon.size(15).line_height(1.0))
+        container(max_icon.size(FONT_ICON).line_height(1.0))
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .width(Length::Fill)
             .height(Length::Fill),
     )
     .on_press(Message::WindowAction(WindowCmd::ToggleMaximize))
-    .padding(0)
+    .padding(PADDING_NONE)
     .width(Length::Fixed(46.0))
     .height(Length::Fill)
     .style(theme::style::button::window_control(false));
 
     let close_btn = button(
-        container(icon::x().size(15).line_height(1.0))
+        container(icon::x().size(FONT_ICON).line_height(1.0))
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .width(Length::Fill)
             .height(Length::Fill),
     )
     .on_press(Message::CloseRequested)
-    .padding(0)
+    .padding(PADDING_NONE)
     .width(Length::Fixed(46.0))
     .height(Length::Fill)
     .style(theme::style::button::window_control(true));
@@ -82,7 +83,7 @@ pub fn view<'a>(_theme: &iced::Theme, maximized: bool) -> Element<'a, Message> {
             .push(
                 container(
                     mouse_area(
-                        container(text("").size(1))
+                        container(text("").size(FONT_HIDDEN))
                             .width(Length::Fill)
                             .height(Length::Fill),
                     )

@@ -2,6 +2,7 @@ use iced::widget::{column, container, mouse_area, row, text};
 use iced::{mouse, Element, Length};
 
 use crate::message::Message;
+use crate::ui::dims::*;
 
 pub const BORDER: f32 = 6.0;
 
@@ -11,10 +12,14 @@ fn strip(
     width: Length,
     height: Length,
 ) -> Element<'static, Message> {
-    mouse_area(container(text("").size(1)).width(width).height(height))
-        .on_press(Message::ResizeWindow(direction))
-        .interaction(interaction)
-        .into()
+    mouse_area(
+        container(text("").size(FONT_HIDDEN))
+            .width(width)
+            .height(height),
+    )
+    .on_press(Message::ResizeWindow(direction))
+    .interaction(interaction)
+    .into()
 }
 
 pub fn view<'a>() -> Element<'a, Message> {
@@ -48,7 +53,7 @@ pub fn view<'a>() -> Element<'a, Message> {
             Length::Fixed(BORDER),
             Length::Fill,
         ),
-        container(text("").size(1))
+        container(text("").size(FONT_HIDDEN))
             .width(Length::Fill)
             .height(Length::Fill),
         strip(

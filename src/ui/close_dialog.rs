@@ -4,46 +4,47 @@ use iced::{Alignment, Element};
 use crate::i18n::{Fluent, Tr};
 use crate::message::{CloseDialogChoice, Message};
 use crate::ui::components::dialog::{overlay, Dialog};
+use crate::ui::dims::*;
 use crate::ui::theme;
 
 pub fn view<'a>(fluent: &'a Fluent, _theme: &iced::Theme) -> Element<'a, Message> {
     let body = text(fluent.get(Tr::ConfirmCloseBody))
-        .size(13)
+        .size(FONT_MEDIUM)
         .style(theme::style::text::secondary);
 
     let coming_soon = text(fluent.get(Tr::TrayComingSoon))
-        .size(11)
+        .size(FONT_TINY)
         .style(theme::style::text::secondary);
 
-    let close_btn = button(text(fluent.get(Tr::CloseAction)).size(14))
+    let close_btn = button(text(fluent.get(Tr::CloseAction)).size(FONT_BODY))
         .on_press(Message::CloseDialog(CloseDialogChoice::Close))
-        .padding([10, 22])
+        .padding(PADDING_BUTTON_LG)
         .style(theme::style::button::danger());
 
-    let cancel_btn = button(text(fluent.get(Tr::Cancel)).size(14))
+    let cancel_btn = button(text(fluent.get(Tr::Cancel)).size(FONT_BODY))
         .on_press(Message::CloseDialog(CloseDialogChoice::Cancel))
-        .padding([10, 22])
+        .padding(PADDING_BUTTON_LG)
         .style(theme::style::button::secondary());
 
     let tray_btn = button(
         column![]
             .push(
                 text(fluent.get(Tr::TrayAction))
-                    .size(14)
+                    .size(FONT_BODY)
                     .style(theme::style::text::secondary),
             )
             .push(coming_soon)
-            .spacing(2)
+            .spacing(SPACE_XS)
             .align_x(Alignment::Center),
     )
-    .padding([8, 22])
+    .padding(PADDING_TRAY)
     .style(theme::style::button::text());
 
     let buttons = row![]
         .push(cancel_btn)
         .push(tray_btn)
         .push(close_btn)
-        .spacing(10)
+        .spacing(SPACE_XL)
         .align_y(Alignment::Center);
 
     overlay(

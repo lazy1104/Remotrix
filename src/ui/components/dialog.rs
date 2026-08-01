@@ -1,6 +1,7 @@
 use iced::widget::{button, column, container, row, text, Space};
 use iced::{Alignment, Element, Length};
 
+use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
@@ -86,7 +87,7 @@ impl<'a, Message: Clone + 'a> Dialog<'a, Message> {
 
         container(inner)
             .width(Length::Fixed(self.width))
-            .padding(28)
+            .padding(PADDING_DIALOG)
             .style(theme::style::card)
             .into()
     }
@@ -100,13 +101,13 @@ impl<'a, Message: Clone + 'a> Dialog<'a, Message> {
 
         let mut bar = row![].align_y(Alignment::Center);
         if let Some(title) = title {
-            bar = bar.push(text(title).size(20));
+            bar = bar.push(text(title).size(FONT_DIALOG_TITLE));
         }
         if let Some(close) = close {
             bar = bar.push(Space::new().width(Length::Fill)).push(
-                button(icon::x().size(18).line_height(1.0))
+                button(icon::x().size(FONT_HERO).line_height(1.0))
                     .on_press(close)
-                    .padding(6)
+                    .padding(PADDING_DROPDOWN)
                     .style(theme::style::button::sidebar_icon(false)),
             );
         }

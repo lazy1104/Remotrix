@@ -6,11 +6,10 @@ use iced::advanced::renderer;
 use iced::advanced::widget::{self, tree, Operation, Tree, Widget};
 use iced::advanced::{Clipboard, Shell};
 use iced::widget::{button, container, row, text_input, Space};
-use iced::{
-    Alignment, Background, Color, Element, Event, Length, Padding, Point, Rectangle, Size, Vector,
-};
+use iced::{Alignment, Background, Color, Element, Event, Length, Point, Rectangle, Size, Vector};
 
 use super::CONTROL_HEIGHT;
+use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
@@ -159,13 +158,13 @@ where
     }
 
     let mut r = row![]
-        .spacing(0)
+        .spacing(SPACE_NONE)
         .align_y(Alignment::Center)
         .height(Length::Fill)
         .push(input)
         .push(separator());
 
-    let minus_btn = button(icon_content::<Message>(icon::minus().size(15)))
+    let minus_btn = button(icon_content::<Message>(icon::minus().size(FONT_ICON)))
         .style(theme::style::button::grouped_icon(false))
         .height(Length::Fill);
     if !read_only {
@@ -182,7 +181,7 @@ where
 
     r = r.push(separator());
 
-    let plus_btn = button(icon_content::<Message>(icon::plus().size(15)))
+    let plus_btn = button(icon_content::<Message>(icon::plus().size(FONT_ICON)))
         .style(theme::style::button::grouped_icon(true))
         .height(Length::Fill);
     if !read_only {
@@ -342,10 +341,13 @@ where
         let content = self.child.as_widget_mut().layout(
             &mut tree.children[0],
             renderer,
-            &limits.shrink(Padding::new(1.0)),
+            &limits.shrink(iced::Padding::new(PADDING_GROUPED)),
         );
         let size = limits.resolve(self.width, Length::Fixed(CONTROL_HEIGHT), content.size());
-        layout::Node::with_children(size, vec![content.move_to(Point::new(1.0, 1.0))])
+        layout::Node::with_children(
+            size,
+            vec![content.move_to(Point::new(PADDING_GROUPED, PADDING_GROUPED))],
+        )
     }
 
     fn draw(

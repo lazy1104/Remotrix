@@ -13,6 +13,7 @@ use iced::Color;
 use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::path_picker::{PathPicker, PathPickerEvent};
 use crate::ui::components::slim_scrollable::slim_scrollable;
+use crate::ui::dims::*;
 use crate::ui::theme;
 
 #[derive(Debug, Clone)]
@@ -107,26 +108,26 @@ pub fn view<'a>(
     };
 
     let mut body = column![]
-        .push(text(settings_title(fluent, category)).size(22))
+        .push(text(settings_title(fluent, category)).size(FONT_PAGE_TITLE))
         .push(iced::widget::Space::new().height(Length::Fixed(20.0)))
         .push(slim_scrollable(content).height(Length::Fill));
 
-    let mut actions = row![].spacing(12).width(Length::Fill);
+    let mut actions = row![].spacing(SPACE_2XL).width(Length::Fill);
     actions = actions.push(
-        button(text(fluent.get(Tr::Apply)).size(14))
+        button(text(fluent.get(Tr::Apply)).size(FONT_BODY))
             .on_press_maybe(if dirty {
                 Some(Message::ApplySettings)
             } else {
                 None
             })
-            .padding([10, 24])
+            .padding(PADDING_BUTTON_XL)
             .style(theme::style::button::primary()),
     );
     if dirty {
         actions = actions.push(
-            button(text(fluent.get(Tr::Reset)).size(14))
+            button(text(fluent.get(Tr::Reset)).size(FONT_BODY))
                 .on_press(Message::ResetSettings)
-                .padding([10, 24])
+                .padding(PADDING_BUTTON_XL)
                 .style(theme::style::button::secondary()),
         );
     }
@@ -135,7 +136,7 @@ pub fn view<'a>(
     container(body)
         .width(Length::Fill)
         .height(Length::Fill)
-        .padding([24, 28])
+        .padding(PADDING_PAGE)
         .into()
 }
 
@@ -187,7 +188,7 @@ fn general_view<'a>(
     ];
 
     column![]
-        .spacing(4)
+        .spacing(SPACE_SM)
         .push(group_title(fluent, Tr::Appearance, accent))
         .push(labeled_pick(
             fluent,
@@ -251,13 +252,13 @@ fn download_view<'a>(
         .map(|v| v.as_slice())
         .unwrap_or(&[]);
     column![]
-        .spacing(4)
+        .spacing(SPACE_SM)
         .push(group_title(fluent, Tr::DownloadFolder, accent))
         .push(
             row![]
                 .push(
                     text(fluent.get(Tr::DownloadFolder))
-                        .size(13)
+                        .size(FONT_MEDIUM)
                         .width(Length::Fixed(200.0)),
                 )
                 .push(
@@ -296,7 +297,7 @@ fn download_view<'a>(
         .push(setting_row(
             fluent.get(Tr::MinSplitSize),
             row![]
-                .spacing(8)
+                .spacing(SPACE_LG)
                 .push(number_stepper(
                     &settings.aria2.min_split_size_mb,
                     1..=1024u64,
@@ -449,7 +450,7 @@ fn bittorrent_view<'a>(
     accent: Color,
 ) -> Element<'a, Message> {
     column![]
-        .spacing(4)
+        .spacing(SPACE_SM)
         .push(group_title(fluent, Tr::BtSettings, accent))
         .push(labeled_toggle(
             fluent.get(Tr::BtRequireCrypto),
@@ -506,7 +507,7 @@ fn ed2k_view<'a>(
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
     column![]
-        .spacing(4)
+        .spacing(SPACE_SM)
         .push(group_title(fluent, Tr::Ed2kSettings, accent))
         .push({
             let placeholder = fluent.get(Tr::Ed2kServerPlaceholder);
@@ -522,7 +523,7 @@ fn ed2k_view<'a>(
             row![]
                 .push(
                     text(fluent.get(Tr::Ed2kServerList))
-                        .size(13)
+                        .size(FONT_MEDIUM)
                         .width(Length::Fixed(200.0)),
                 )
                 .push(
@@ -539,7 +540,7 @@ fn ed2k_view<'a>(
             row![]
                 .push(
                     text(fluent.get(Tr::Ed2kNodeList))
-                        .size(13)
+                        .size(FONT_MEDIUM)
                         .width(Length::Fixed(200.0)),
                 )
                 .push(
@@ -578,7 +579,7 @@ fn ed2k_view<'a>(
         .push(iced::widget::Space::new().height(Length::Fixed(8.0)))
         .push(
             text(fluent.get(Tr::Ed2kRestartHint))
-                .size(12)
+                .size(FONT_SMALL)
                 .style(theme::style::text::secondary),
         )
         .into()
@@ -591,7 +592,7 @@ fn network_view<'a>(
     accent: Color,
 ) -> Element<'a, Message> {
     column![]
-        .spacing(4)
+        .spacing(SPACE_SM)
         .push(group_title(fluent, Tr::Proxy, accent))
         .push(labeled_toggle(
             fluent.get(Tr::EnableProxy),
@@ -650,7 +651,7 @@ fn proxy_fields<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, M
                 &password,
             ),
         ]
-        .spacing(4)
+        .spacing(SPACE_SM)
         .into()
     } else {
         iced::widget::Space::new().height(Length::Fixed(0.0)).into()
@@ -690,12 +691,12 @@ fn advanced_view<'a>(
         row![]
             .push(
                 text(fluent.get(Tr::Aria2Version))
-                    .size(13)
+                    .size(FONT_MEDIUM)
                     .width(Length::Fixed(200.0)),
             )
             .push(
                 text(version_text)
-                    .size(13)
+                    .size(FONT_MEDIUM)
                     .style(theme::style::text::secondary),
             )
             .height(Length::Fixed(36.0))
@@ -740,20 +741,25 @@ fn advanced_view<'a>(
         } else {
             text_secondary
         };
-        engine_rows.push(text(message).size(12).color(status_color).into());
+        engine_rows.push(text(message).size(FONT_SMALL).color(status_color).into());
     }
 
     if let Some(err) = aria2_fetch_error {
-        engine_rows.push(text(err).size(12).color(theme::danger(theme)).into());
+        engine_rows.push(
+            text(err)
+                .size(FONT_SMALL)
+                .color(theme::danger(theme))
+                .into(),
+        );
     }
 
-    let mut btn_row = row![].spacing(12);
+    let mut btn_row = row![].spacing(SPACE_2XL);
 
     if let Some(pending) = update_pending {
         btn_row = btn_row.push(
-            button(text(fluent.get(Tr::RestartToUpdate)).size(12))
+            button(text(fluent.get(Tr::RestartToUpdate)).size(FONT_SMALL))
                 .on_press(Message::RestartEngine)
-                .padding([6, 12])
+                .padding(PADDING_BUTTON_SM)
                 .style(theme::style::button::primary()),
         );
         btn_row = btn_row.push(
@@ -761,38 +767,42 @@ fn advanced_view<'a>(
                 "v{pending} - {}",
                 fluent.get(Tr::PendingUpdateHint)
             ))
-            .size(12)
+            .size(FONT_SMALL)
             .style(theme::style::text::secondary),
         );
     } else if aria2_fetch_error.is_some() {
         btn_row = btn_row.push(
-            button(text(fluent.get(Tr::Retry)).size(12))
+            button(text(fluent.get(Tr::Retry)).size(FONT_SMALL))
                 .on_press(Message::RetryAria2Fetch)
-                .padding([6, 12])
+                .padding(PADDING_BUTTON_SM)
                 .style(theme::style::button::secondary()),
         );
     } else {
         btn_row = btn_row.push(
-            button(text(fluent.get(Tr::CheckUpdate)).size(12))
+            button(text(fluent.get(Tr::CheckUpdate)).size(FONT_SMALL))
                 .on_press(Message::CheckAria2Update)
-                .padding([6, 12])
+                .padding(PADDING_BUTTON_SM)
                 .style(theme::style::button::secondary()),
         );
     }
 
     if let Some(msg) = aria2_check_msg {
-        btn_row = btn_row.push(text(msg).size(12).style(theme::style::text::secondary));
+        btn_row = btn_row.push(
+            text(msg)
+                .size(FONT_SMALL)
+                .style(theme::style::text::secondary),
+        );
     }
 
     engine_rows.push(btn_row.into());
 
-    let mut engine_col = column![].spacing(8);
+    let mut engine_col = column![].spacing(SPACE_LG);
     for elem in engine_rows {
         engine_col = engine_col.push(elem);
     }
 
     column![]
-        .spacing(12)
+        .spacing(SPACE_2XL)
         .push(update_toggle)
         .push(group_title(fluent, Tr::Performance, accent))
         .push({
@@ -835,7 +845,7 @@ fn advanced_view<'a>(
 
 fn setting_row<'a>(label: String, control: Element<'a, Message>) -> Element<'a, Message> {
     row![]
-        .push(text(label).size(13).width(Length::Fixed(200.0)))
+        .push(text(label).size(FONT_MEDIUM).width(Length::Fixed(200.0)))
         .push(control)
         .height(Length::Fixed(36.0))
         .align_y(Alignment::Center)
@@ -909,7 +919,7 @@ fn labeled_editor<'a>(
     placeholder: String,
 ) -> Element<'a, Message> {
     row![]
-        .push(text(label).size(13).width(Length::Fixed(200.0)))
+        .push(text(label).size(FONT_MEDIUM).width(Length::Fixed(200.0)))
         .push(theme::editor_layout(
             text_editor(content)
                 .placeholder(placeholder)
@@ -952,7 +962,7 @@ fn labeled_readonly<'a>(
 ) -> Element<'a, Message> {
     let picker = PathPicker::read_only(value.to_string());
     row![]
-        .push(text(label).size(13).width(Length::Fixed(200.0)))
+        .push(text(label).size(FONT_MEDIUM).width(Length::Fixed(200.0)))
         .push(picker.view(fluent, theme, &[], |e| match e {
             PathPickerEvent::Copy(s) => Message::CopyPath(s),
             _ => Message::Noop,
@@ -1014,7 +1024,7 @@ fn speed_labeled_input<'a>(
     setting_row(
         label,
         row![]
-            .spacing(8)
+            .spacing(SPACE_LG)
             .push(number_stepper(
                 display,
                 0..=u64::MAX,
@@ -1034,5 +1044,5 @@ fn speed_labeled_input<'a>(
 }
 
 fn group_title<'a>(fluent: &'a Fluent, key: Tr, accent: Color) -> Element<'a, Message> {
-    text(fluent.get(key)).size(16).color(accent).into()
+    text(fluent.get(key)).size(FONT_TITLE).color(accent).into()
 }

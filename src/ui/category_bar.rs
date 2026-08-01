@@ -3,6 +3,7 @@ use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, Page, SettingsCategory, TaskFilter};
+use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
@@ -25,7 +26,7 @@ pub fn view<'a>(
         Page::Settings => fluent.get(Tr::Preferences),
     };
 
-    let title = text(title_str).size(16).font(iced::Font {
+    let title = text(title_str).size(FONT_TITLE).font(iced::Font {
         weight: iced::font::Weight::Bold,
         ..Default::default()
     });
@@ -47,15 +48,15 @@ pub fn view<'a>(
                     };
                     let btn: iced::widget::Button<'_, Message> = button(
                         row![]
-                            .push(icon.size(15))
-                            .push(text(label_text).size(14))
+                            .push(icon.size(FONT_ICON))
+                            .push(text(label_text).size(FONT_BODY))
                             .push(iced::widget::Space::new().width(Length::Fill))
-                            .spacing(8)
+                            .spacing(SPACE_LG)
                             .align_y(Alignment::Center)
                             .width(Length::Fill),
                     )
                     .on_press(Message::SetTaskFilter(target))
-                    .padding([10, 14])
+                    .padding(PADDING_FILTER)
                     .width(Length::Fill)
                     .style(theme::style::button::text());
 
@@ -67,7 +68,7 @@ pub fn view<'a>(
                 };
 
             column![]
-                .spacing(6)
+                .spacing(SPACE_MD)
                 .push(make_filter(
                     fluent.get(Tr::All),
                     counts.all,
@@ -98,14 +99,14 @@ pub fn view<'a>(
                 };
                 let btn: iced::widget::Button<'_, Message> = button(
                     row![]
-                        .push(icon.size(15))
-                        .push(text(label).size(14))
-                        .spacing(8)
+                        .push(icon.size(FONT_ICON))
+                        .push(text(label).size(FONT_BODY))
+                        .spacing(SPACE_LG)
                         .width(Length::Fill)
                         .align_y(Alignment::Center),
                 )
                 .on_press(Message::SetSettingsCategory(target))
-                .padding([10, 14])
+                .padding(PADDING_FILTER)
                 .width(Length::Fill)
                 .style(theme::style::button::text());
 
@@ -117,7 +118,7 @@ pub fn view<'a>(
             };
 
             column![]
-                .spacing(6)
+                .spacing(SPACE_MD)
                 .push(make_cat(fluent.get(Tr::General), SettingsCategory::General))
                 .push(make_cat(
                     fluent.get(Tr::DownloadCategory),
@@ -139,14 +140,14 @@ pub fn view<'a>(
 
     container(
         column![]
-            .spacing(16)
+            .spacing(SPACE_4XL)
             .push(title)
             .push(items)
             .height(Length::Fill),
     )
     .width(Length::Fill)
     .height(Length::Fill)
-    .padding([20, 14])
+    .padding(PADDING_CATEGORY_BAR)
     .style(theme::style::category_background)
     .into()
 }

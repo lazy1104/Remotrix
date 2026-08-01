@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use iced::{Color, Theme};
 
+use crate::ui::dims;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum ThemeMode {
     Dark,
@@ -37,7 +39,6 @@ pub const RADIUS_PILL: f32 = 40.0;
 pub const RADIUS_PROGRESS: f32 = 4.0;
 pub const RADIUS_NAV: f32 = 20.0;
 
-pub const INPUT_SIZE: u32 = 13;
 pub const INPUT_PADDING: iced::Padding = iced::Padding::new(8.0);
 pub const INPUT_PADDING_GROUPED: iced::Padding = iced::Padding {
     top: 0.0,
@@ -49,13 +50,13 @@ pub const INPUT_PADDING_GROUPED: iced::Padding = iced::Padding {
 pub fn input_layout<'a, Message: Clone>(
     input: iced::widget::TextInput<'a, Message>,
 ) -> iced::widget::TextInput<'a, Message> {
-    input.padding(INPUT_PADDING).size(INPUT_SIZE)
+    input.padding(INPUT_PADDING).size(dims::FONT_MEDIUM)
 }
 
 pub fn grouped_input_layout<'a, Message: Clone>(
     input: iced::widget::TextInput<'a, Message>,
 ) -> iced::widget::TextInput<'a, Message> {
-    input.padding(INPUT_PADDING_GROUPED).size(INPUT_SIZE)
+    input.padding(INPUT_PADDING_GROUPED).size(dims::FONT_MEDIUM)
 }
 
 pub fn editor_layout<'a, H, Message>(
@@ -64,7 +65,7 @@ pub fn editor_layout<'a, H, Message>(
 where
     H: iced::advanced::text::Highlighter,
 {
-    editor.padding(INPUT_PADDING).size(INPUT_SIZE)
+    editor.padding(INPUT_PADDING).size(dims::FONT_MEDIUM)
 }
 
 pub fn build_iced(theme_id: &str) -> iced::Theme {

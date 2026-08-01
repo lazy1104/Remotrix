@@ -4,6 +4,7 @@ use iced::Element;
 use crate::i18n::{Fluent, Tr};
 use crate::message::Message;
 use crate::ui::components::dialog::{overlay, Dialog};
+use crate::ui::dims::*;
 use crate::ui::theme;
 
 pub fn view<'a>(
@@ -17,26 +18,26 @@ pub fn view<'a>(
     };
 
     let body = column![]
-        .spacing(16)
+        .spacing(SPACE_4XL)
         .push(
             text(format!("Remotrix {}", env!("CARGO_PKG_VERSION")))
-                .size(14)
+                .size(FONT_BODY)
                 .style(theme::style::text::secondary),
         )
         .push(
             text(engine_text)
-                .size(13)
+                .size(FONT_MEDIUM)
                 .style(theme::style::text::secondary),
         )
         .push(
             text("GUI: iced 0.14")
-                .size(13)
+                .size(FONT_MEDIUM)
                 .style(theme::style::text::secondary),
         );
 
-    let close_btn = button(text(fluent.get(Tr::CloseAbout)).size(14))
+    let close_btn = button(text(fluent.get(Tr::CloseAbout)).size(FONT_BODY))
         .on_press(Message::CloseAbout)
-        .padding([10, 22])
+        .padding(PADDING_BUTTON_LG)
         .style(theme::style::button::secondary());
 
     overlay(

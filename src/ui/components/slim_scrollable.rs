@@ -2,6 +2,7 @@ use iced::widget::container;
 use iced::widget::scrollable::{self, Scrollbar};
 use iced::{Element, Length};
 
+use crate::ui::dims::*;
 use crate::ui::theme;
 
 pub fn slim_scrollable<'a, Message: 'a>(
@@ -15,6 +16,6 @@ pub fn slim_scrollable<'a, Message: 'a>(
     .direction(scrollable::Direction::Vertical(
         Scrollbar::new().width(6.0).scroller_width(6.0),
     ))
-    .spacing(3)
+    .spacing(SPACE_SCROLL)
     .style(theme::style::scrollable::standard)
 }

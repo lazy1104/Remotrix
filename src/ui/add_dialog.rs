@@ -10,6 +10,7 @@ use crate::ui::components::dialog::{overlay, Dialog};
 use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::path_picker::PathPicker;
 use crate::ui::components::slim_scrollable::slim_scrollable;
+use crate::ui::dims::*;
 use crate::ui::theme;
 
 #[derive(Debug, Clone)]
@@ -129,15 +130,15 @@ pub fn view<'a>(
         .placeholder(placeholder)
         .on_action(Message::UrlEditor)
         .height(Length::Fixed(120.0))
-        .padding(10)
-        .size(14)
+        .padding(PADDING_EDITOR)
+        .size(FONT_BODY)
         .style(theme::style::text_editor::standard);
 
     let torrent_row = column![]
-        .spacing(4)
+        .spacing(SPACE_SM)
         .push(
             text(fluent.get(Tr::OrTorrent))
-                .size(12)
+                .size(FONT_SMALL)
                 .style(theme::style::text::secondary),
         )
         .push(state.torrent_picker.view(fluent, theme, &[], |e| {
@@ -149,10 +150,10 @@ pub fn view<'a>(
         .map(|v| v.as_slice())
         .unwrap_or(&[]);
     let save_row = column![]
-        .spacing(4)
+        .spacing(SPACE_SM)
         .push(
             text(fluent.get(Tr::SaveTo))
-                .size(12)
+                .size(FONT_SMALL)
                 .style(theme::style::text::secondary),
         )
         .push(state.save_picker.view(fluent, theme, hist_save, |e| {
@@ -162,7 +163,7 @@ pub fn view<'a>(
     let split_input = row![]
         .push(
             text(fluent.get(Tr::SplitConnections))
-                .size(12)
+                .size(FONT_SMALL)
                 .style(theme::style::text::secondary),
         )
         .push(iced::widget::Space::new().width(Length::Fill))
@@ -185,7 +186,7 @@ pub fn view<'a>(
     let rename_row = row![]
         .push(
             text(fluent.get(Tr::RenameFile))
-                .size(12)
+                .size(FONT_SMALL)
                 .style(theme::style::text::secondary)
                 .width(Length::Fixed(140.0)),
         )
@@ -196,10 +197,10 @@ pub fn view<'a>(
                 .push(input)
                 .push(
                     text(fluent.get(Tr::RenameMultiUrlHint))
-                        .size(11)
+                        .size(FONT_TINY)
                         .style(theme::style::text::secondary),
                 )
-                .spacing(6)
+                .spacing(SPACE_MD)
                 .align_y(Alignment::Center)
                 .width(Length::Fill)
         } else {
@@ -226,32 +227,32 @@ pub fn view<'a>(
         body_items.push(advanced_form(fluent, theme, state));
     }
 
-    let body = slim_scrollable(column(body_items).spacing(14).width(Length::Fill))
+    let body = slim_scrollable(column(body_items).spacing(SPACE_3XL).width(Length::Fill))
         .height(Length::Fixed(400.0));
 
     let buttons = row![]
         .push(
-            button(text(fluent.get(Tr::Cancel)).size(14))
+            button(text(fluent.get(Tr::Cancel)).size(FONT_BODY))
                 .on_press(Message::CancelAdd)
-                .padding([8, 18])
+                .padding(PADDING_BUTTON_MD)
                 .style(theme::style::button::secondary()),
         )
         .push({
-            let mut btn = button(text(fluent.get(Tr::Download)).size(14))
-                .padding([8, 18])
+            let mut btn = button(text(fluent.get(Tr::Download)).size(FONT_BODY))
+                .padding(PADDING_BUTTON_MD)
                 .style(theme::style::button::primary());
             if state.can_submit() {
                 btn = btn.on_press(Message::AddDownload);
             }
             btn
         })
-        .spacing(10)
+        .spacing(SPACE_XL)
         .align_y(Alignment::Center);
 
     overlay(
         Dialog::new()
             .width(520.0)
-            .spacing(14.0)
+            .spacing(SPACE_3XL)
             .title(fluent.get(Tr::NewDownload))
             .with_close(Message::CancelAdd)
             .body(body)
@@ -278,7 +279,7 @@ fn advanced_field<'a>(
     }
     row![
         text(fluent.get(label))
-            .size(12)
+            .size(FONT_SMALL)
             .style(theme::style::text::secondary)
             .width(Length::Fixed(140.0)),
         input,
@@ -325,7 +326,7 @@ fn advanced_form<'a>(
         advanced_field(fluent, Tr::Cookie, &state.cookie, AddField::Cookie, false),
         rule::horizontal(1),
         text(fluent.get(Tr::Proxy))
-            .size(16)
+            .size(FONT_TITLE)
             .color(theme::accent(theme)),
         advanced_field(
             fluent,
@@ -349,7 +350,7 @@ fn advanced_form<'a>(
             true
         ),
     ]
-    .spacing(10)
+    .spacing(SPACE_XL)
     .width(Length::Fill)
     .into()
 }

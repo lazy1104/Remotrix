@@ -1,5 +1,5 @@
 use iced::widget::{button, column, container, progress_bar, row, text};
-use iced::{Alignment, Element, Length, Padding};
+use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{DetailsTab, Message};
@@ -9,6 +9,7 @@ use crate::task::{
 use crate::ui::components::dialog::overlay;
 use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::components::truncated_text::truncated_text;
+use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
@@ -57,19 +58,19 @@ pub fn view<'a>(
     task: Option<&'a DownloadTask>,
     state: &'a DetailsDialogState,
 ) -> Element<'a, Message> {
-    let close_btn = button(icon::x().size(18).line_height(1.0))
+    let close_btn = button(icon::x().size(FONT_HERO).line_height(1.0))
         .on_press(Message::CloseTaskDetails)
-        .padding(6)
+        .padding(PADDING_DROPDOWN)
         .style(theme::style::button::sidebar_icon(false));
 
-    let title_text = text(fluent.get(Tr::Details)).size(16);
+    let title_text = text(fluent.get(Tr::Details)).size(FONT_TITLE);
 
     let header = row![]
         .push(title_text)
         .push(iced::widget::Space::new().width(Length::Fill))
         .push(close_btn)
         .align_y(Alignment::Center)
-        .padding(Padding::new(0.0).bottom(12.0));
+        .padding(PADDING_BOTTOM_HEADER);
 
     let tab_bar = {
         let tabs = [
@@ -77,12 +78,12 @@ pub fn view<'a>(
             (DetailsTab::Activity, Tr::TabActivity),
             (DetailsTab::Files, Tr::TabFiles),
         ];
-        let mut bar = row![].spacing(4);
+        let mut bar = row![].spacing(SPACE_SM);
         for (tab, tr) in tabs {
             let active = state.active_tab == tab;
-            let btn = button(text(fluent.get(tr)).size(13))
+            let btn = button(text(fluent.get(tr)).size(FONT_MEDIUM))
                 .on_press(Message::SelectDetailsTab(tab))
-                .padding([6, 14])
+                .padding(PADDING_TAB)
                 .style(theme::style::button::sidebar_icon(active));
             bar = bar.push(btn);
         }
@@ -92,16 +93,16 @@ pub fn view<'a>(
     let body: Element<'a, Message> = match task {
         None => container(
             column![]
-                .spacing(16)
+                .spacing(SPACE_4XL)
                 .push(
                     text(fluent.get(Tr::TaskGone))
-                        .size(14)
+                        .size(FONT_BODY)
                         .style(theme::style::text::secondary),
                 )
                 .push(
-                    button(text(fluent.get(Tr::CloseAbout)).size(13))
+                    button(text(fluent.get(Tr::CloseAbout)).size(FONT_MEDIUM))
                         .on_press(Message::CloseTaskDetails)
-                        .padding([6, 14])
+                        .padding(PADDING_TAB)
                         .style(theme::style::button::secondary()),
                 )
                 .align_x(Alignment::Center),
@@ -122,13 +123,13 @@ pub fn view<'a>(
             .push(tab_bar)
             .push(iced::widget::rule::horizontal(1))
             .push(body)
-            .spacing(8)
+            .spacing(SPACE_LG)
             .width(Length::Fill)
             .height(Length::Fill),
     )
     .width(Length::Fixed(640.0))
     .height(Length::Fixed(480.0))
-    .padding(20)
+    .padding(PADDING_DETAILS)
     .style(theme::style::card);
 
     overlay(panel)
@@ -138,17 +139,17 @@ fn key_value_row(key: String, value: String) -> Element<'static, Message> {
     row![]
         .push(
             text(key)
-                .size(13)
+                .size(FONT_MEDIUM)
                 .style(theme::style::text::secondary)
                 .width(Length::Fixed(140.0)),
         )
         .push(
             truncated_text(value)
-                .size(13)
+                .size(FONT_MEDIUM)
                 .max_lines(2)
                 .wrapping(text::Wrapping::Glyph),
         )
-        .spacing(8)
+        .spacing(SPACE_LG)
         .align_y(Alignment::Center)
         .width(Length::Fill)
         .into()
@@ -179,7 +180,7 @@ fn summary_tab<'a>(
         key_value_row(fluent.get(Tr::FieldTaskStatus), status_val),
         key_value_row(fluent.get(Tr::FieldAddedTime), time_val),
     ]
-    .spacing(6)
+    .spacing(SPACE_MD)
     .width(Length::Fill)
     .into()
 }
@@ -207,7 +208,7 @@ fn activity_tab<'a>(
             fluent.get(Tr::PieceSize),
             format_size(details.piece_length),
         ))
-        .size(12)
+        .size(FONT_SMALL)
         .style(text_secondary_fn);
 
         let piece_map_el = crate::ui::components::piece_map::view(
@@ -246,36 +247,44 @@ fn activity_tab<'a>(
         let conn_str = task.connections.to_string();
 
         (
-            column![piece_info, piece_map_el].spacing(4).into(),
+            column![piece_info, piece_map_el].spacing(SPACE_SM).into(),
             column![]
                 .push(bar)
-                .push(text(downloaded_text).size(12).style(text_secondary_fn))
-                .spacing(4)
+                .push(
+                    text(downloaded_text)
+                        .size(FONT_SMALL)
+                        .style(text_secondary_fn),
+                )
+                .spacing(SPACE_SM)
                 .into(),
             column![]
                 .push(
                     row![]
                         .push(
                             text(fluent.get(Tr::Speed))
-                                .size(12)
+                                .size(FONT_SMALL)
                                 .style(text_secondary_fn),
                         )
-                        .push(text(speed_str).size(12).color(theme::success(theme)))
-                        .spacing(4)
+                        .push(
+                            text(speed_str)
+                                .size(FONT_SMALL)
+                                .color(theme::success(theme)),
+                        )
+                        .spacing(SPACE_SM)
                         .align_y(Alignment::Center),
                 )
                 .push(
                     row![]
                         .push(
                             text(fluent.get(Tr::Connections))
-                                .size(12)
+                                .size(FONT_SMALL)
                                 .style(text_secondary_fn),
                         )
-                        .push(text(conn_str).size(12))
-                        .spacing(4)
+                        .push(text(conn_str).size(FONT_SMALL))
+                        .spacing(SPACE_SM)
                         .align_y(Alignment::Center),
                 )
-                .spacing(4)
+                .spacing(SPACE_SM)
                 .into(),
         )
     } else {
@@ -285,7 +294,7 @@ fn activity_tab<'a>(
             fluent.get(Tr::TaskGone)
         };
         let empty: Element<'a, Message> =
-            container(text(loading_text).size(14).style(text_secondary_fn))
+            container(text(loading_text).size(FONT_BODY).style(text_secondary_fn))
                 .center_x(Length::Fill)
                 .center_y(Length::Fill)
                 .into();
@@ -293,7 +302,7 @@ fn activity_tab<'a>(
     };
 
     column![piece_content, progress_section, info_section]
-        .spacing(12)
+        .spacing(SPACE_2XL)
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
@@ -327,11 +336,11 @@ fn files_tab<'a>(
         },
         pct,
     ))
-    .size(12)
+    .size(FONT_SMALL)
     .style(text_secondary_fn);
 
     let file_list: Element<'a, Message> = if let Some(ref details) = state.details {
-        let mut col = column![].spacing(6);
+        let mut col = column![].spacing(SPACE_MD);
         for file in &details.files {
             let basename: String = std::path::Path::new(&file.path)
                 .file_name()
@@ -355,41 +364,41 @@ fn files_tab<'a>(
                 ));
 
             let file_row = column![]
-                .spacing(2)
+                .spacing(SPACE_XS)
                 .push(
                     row![]
                         .push(
                             text('\u{E0B4}')
                                 .font(iced::Font::with_name("lucide"))
-                                .size(13)
+                                .size(FONT_MEDIUM)
                                 .style(text_secondary_fn),
                         )
-                        .push(text(basename.clone()).size(13))
+                        .push(text(basename.clone()).size(FONT_MEDIUM))
                         .push(iced::widget::Space::new().width(Length::Fill))
                         .push(
                             text(format_size(file.length))
-                                .size(12)
+                                .size(FONT_SMALL)
                                 .style(text_secondary_fn),
                         )
-                        .spacing(4)
+                        .spacing(SPACE_SM)
                         .align_y(Alignment::Center),
                 )
                 .push(file_bar)
                 .push(
                     text(format!("{:.1}%", file_pct))
-                        .size(11)
+                        .size(FONT_TINY)
                         .style(text_secondary_fn),
                 )
                 .width(Length::Fill);
             col = col.push(file_row);
         }
-        slim_scrollable(column![].push(col).spacing(6))
+        slim_scrollable(column![].push(col).spacing(SPACE_MD))
             .height(Length::Fill)
             .into()
     } else {
         container(
             text(fluent.get(Tr::Loading))
-                .size(14)
+                .size(FONT_BODY)
                 .style(text_secondary_fn),
         )
         .center_x(Length::Fill)
@@ -402,7 +411,7 @@ fn files_tab<'a>(
         .push(overall_info)
         .push(iced::widget::rule::horizontal(1))
         .push(file_list)
-        .spacing(8)
+        .spacing(SPACE_LG)
         .width(Length::Fill)
         .height(Length::Fill)
         .into()

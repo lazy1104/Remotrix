@@ -8,6 +8,7 @@ use crate::task::{format_duration, format_size, format_speed, DownloadTask, Task
 use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::components::tooltip as tip;
 use crate::ui::components::truncated_text::truncated_text;
+use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
@@ -24,7 +25,9 @@ pub fn view<'a>(
 
     let toolbar_btn =
         |codepoint: char, tip: String, msg: Message, active: bool| -> Element<'a, Message> {
-            let glyph = text(codepoint.to_string()).font(lucide_font).size(15);
+            let glyph = text(codepoint.to_string())
+                .font(lucide_font)
+                .size(FONT_ICON);
             let glyph = if active {
                 glyph.color(theme::accent(theme))
             } else {
@@ -32,7 +35,7 @@ pub fn view<'a>(
             };
             let btn = button(glyph)
                 .on_press(msg)
-                .padding([6_u16, 8])
+                .padding(PADDING_BUTTON_XS)
                 .style(theme::style::button::toolbar_icon(active));
             tip::standard(btn, text(tip), tooltip::Position::Bottom)
         };
@@ -40,7 +43,9 @@ pub fn view<'a>(
     let sort_active = sort_menu_open || sort_field != SortField::AddedTime;
 
     let sort_underlay = {
-        let glyph = text('\u{E37D}'.to_string()).font(lucide_font).size(15);
+        let glyph = text('\u{E37D}'.to_string())
+            .font(lucide_font)
+            .size(FONT_ICON);
         let glyph = if sort_active {
             glyph.color(theme::accent(theme))
         } else {
@@ -48,7 +53,7 @@ pub fn view<'a>(
         };
         button(glyph)
             .on_press(Message::ToggleSortMenu)
-            .padding([6_u16, 8])
+            .padding(PADDING_BUTTON_XS)
             .style(theme::style::button::toolbar_icon(sort_active))
     };
 
@@ -58,13 +63,13 @@ pub fn view<'a>(
         } else {
             Tr::SortAsc
         });
-        let asc_desc_btn = button(text(asc_desc_label).size(13))
+        let asc_desc_btn = button(text(asc_desc_label).size(FONT_MEDIUM))
             .on_press(Message::ToggleSortOrder)
             .width(Length::Fill)
-            .padding([6, 8])
+            .padding(PADDING_BUTTON_XS)
             .style(theme::style::button::text());
 
-        let mut col = column![asc_desc_btn].spacing(2).width(Length::Fill);
+        let mut col = column![asc_desc_btn].spacing(SPACE_XS).width(Length::Fill);
         col = col.push(iced::widget::rule::horizontal(1));
 
         let fields = [
@@ -77,15 +82,18 @@ pub fn view<'a>(
 
         for (field, tr) in fields {
             let selected = field == sort_field;
-            let btn = button(text(fluent.get(tr)).size(13))
+            let btn = button(text(fluent.get(tr)).size(FONT_MEDIUM))
                 .on_press(Message::SortSelected(field))
                 .width(Length::Fill)
-                .padding([6, 8])
+                .padding(PADDING_BUTTON_XS)
                 .style(theme::style::button::sidebar_icon(selected));
             col = col.push(btn);
         }
 
-        container(col).padding(6).style(theme::style::card).into()
+        container(col)
+            .padding(PADDING_DROPDOWN)
+            .style(theme::style::card)
+            .into()
     };
 
     let sort_dropdown = drop_down::DropDown::new(sort_underlay, sort_overlay, sort_menu_open)
@@ -93,10 +101,12 @@ pub fn view<'a>(
         .width(Length::Fixed(170.0));
 
     let new_btn: Element<'a, Message> = {
-        let glyph = text('\u{E13D}'.to_string()).font(lucide_font).size(15);
+        let glyph = text('\u{E13D}'.to_string())
+            .font(lucide_font)
+            .size(FONT_ICON);
         let btn = button(glyph)
             .on_press(Message::OpenAddDialog)
-            .padding([6_u16, 8])
+            .padding(PADDING_BUTTON_XS)
             .style(theme::style::button::toolbar_icon(true));
         tip::standard(
             btn,
@@ -114,12 +124,14 @@ pub fn view<'a>(
             .style(theme::style::input::standard),
     );
 
-    let mut search_group = row![search_input].spacing(4).align_y(Alignment::Center);
+    let mut search_group = row![search_input]
+        .spacing(SPACE_SM)
+        .align_y(Alignment::Center);
     if has_query {
         search_group = search_group.push(
-            button(icon::x().size(15))
+            button(icon::x().size(FONT_ICON))
                 .on_press(Message::SearchChanged(String::new()))
-                .padding([6_u16, 8])
+                .padding(PADDING_BUTTON_XS)
                 .style(theme::style::button::toolbar_icon(false)),
         );
     }
@@ -162,54 +174,54 @@ pub fn view<'a>(
                     false,
                 ))
                 .align_y(Alignment::Center)
-                .spacing(4),
+                .spacing(SPACE_SM),
         )
         .align_y(Alignment::Center)
-        .spacing(4)
+        .spacing(SPACE_SM)
         .width(Length::Fill)
-        .padding(iced::Padding::new(0.0).bottom(12.0));
+        .padding(PADDING_BOTTOM_TOOLBAR);
 
     if tasks.is_empty() {
-        let mut empty_col = column![].spacing(8).push(
+        let mut empty_col = column![].spacing(SPACE_LG).push(
             text(fluent.get(if has_query {
                 Tr::NoResults
             } else {
                 Tr::NoTasks
             }))
-            .size(18)
+            .size(FONT_HERO)
             .style(theme::style::text::secondary),
         );
         if !has_query {
             empty_col = empty_col.push(
                 text(fluent.get(Tr::NoTasksHint))
-                    .size(13)
+                    .size(FONT_MEDIUM)
                     .style(theme::style::text::secondary),
             );
         }
         let empty = container(empty_col)
             .center_x(Length::Fill)
             .width(Length::Fill)
-            .padding([80_u16, 0]);
+            .padding(PADDING_EMPTY_STATE);
 
         return container(column![].push(toolbar).push(empty))
             .width(Length::Fill)
             .height(Length::Fill)
-            .padding([24_u16, 28])
+            .padding(PADDING_PAGE)
             .into();
     }
 
-    let mut list = column![].spacing(10);
+    let mut list = column![].spacing(SPACE_XL);
 
     for t in tasks {
         list = list.push(task_card(fluent, theme, t));
     }
 
-    let body = slim_scrollable(column![].spacing(10).push(list)).height(Length::Fill);
+    let body = slim_scrollable(column![].spacing(SPACE_XL).push(list)).height(Length::Fill);
 
     container(column![].push(toolbar).push(body))
         .width(Length::Fill)
         .height(Length::Fill)
-        .padding([24_u16, 28])
+        .padding(PADDING_PAGE)
         .into()
 }
 
@@ -222,10 +234,10 @@ fn task_card<'a>(
     let pct = t.progress_pct();
     let name = tip::standard(
         truncated_text(t.name.clone())
-            .size(15)
+            .size(FONT_ICON)
             .max_lines(2)
             .wrapping(text::Wrapping::Glyph),
-        text(t.name.clone()).size(12),
+        text(t.name.clone()).size(FONT_SMALL),
         tooltip::Position::Bottom,
     );
 
@@ -234,10 +246,10 @@ fn task_card<'a>(
             let btn = match msg {
                 Some(m) => button(glyph)
                     .on_press(m)
-                    .padding(4)
+                    .padding(PADDING_ICON_BTN)
                     .style(theme::style::button::toolbar_icon(false)),
                 None => button(glyph)
-                    .padding(4)
+                    .padding(PADDING_ICON_BTN)
                     .style(theme::style::button::toolbar_icon(false)),
             };
             btn.into()
@@ -245,74 +257,74 @@ fn task_card<'a>(
 
     let pause_resume_btn = match t.status {
         TaskStatus::Active | TaskStatus::Waiting => toolbar_icon(
-            icon::pause().size(15).color(text_secondary),
+            icon::pause().size(FONT_ICON).color(text_secondary),
             Some(Message::PauseTask(t.gid.clone())),
         ),
         TaskStatus::Paused => toolbar_icon(
-            icon::play().size(15).color(text_secondary),
+            icon::play().size(FONT_ICON).color(text_secondary),
             Some(Message::ResumeTask(t.gid.clone())),
         ),
-        _ => toolbar_icon(icon::pause().size(15).color(text_secondary), None),
+        _ => toolbar_icon(icon::pause().size(FONT_ICON).color(text_secondary), None),
     };
 
     let show_in_folder_btn: Element<'a, Message> = if !t.save_dir.as_os_str().is_empty() {
-        let glyph = icon::folder_open().size(15).color(text_secondary);
+        let glyph = icon::folder_open().size(FONT_ICON).color(text_secondary);
         tip::standard(
             button(glyph)
                 .on_press(Message::OpenTaskFolder(t.gid.clone()))
-                .padding(4)
+                .padding(PADDING_ICON_BTN)
                 .style(theme::style::button::toolbar_icon(false)),
-            text(fluent.get(Tr::ShowInFolder)).size(12),
+            text(fluent.get(Tr::ShowInFolder)).size(FONT_SMALL),
             tooltip::Position::Bottom,
         )
     } else {
-        let glyph = icon::folder_open().size(15).color(text_secondary);
+        let glyph = icon::folder_open().size(FONT_ICON).color(text_secondary);
         button(glyph)
-            .padding(4)
+            .padding(PADDING_ICON_BTN)
             .style(theme::style::button::toolbar_icon(false))
             .into()
     };
 
     let copy_link_btn: Element<'a, Message> = if !t.url.is_empty() || t.info_hash.is_some() {
-        let glyph = icon::copy().size(15).color(text_secondary);
+        let glyph = icon::copy().size(FONT_ICON).color(text_secondary);
         tip::standard(
             button(glyph)
                 .on_press(Message::CopyTaskLink(t.gid.clone()))
-                .padding(4)
+                .padding(PADDING_ICON_BTN)
                 .style(theme::style::button::toolbar_icon(false)),
-            text(fluent.get(Tr::CopyLink)).size(12),
+            text(fluent.get(Tr::CopyLink)).size(FONT_SMALL),
             tooltip::Position::Bottom,
         )
     } else {
-        let glyph = icon::copy().size(15).color(text_secondary);
+        let glyph = icon::copy().size(FONT_ICON).color(text_secondary);
         button(glyph)
-            .padding(4)
+            .padding(PADDING_ICON_BTN)
             .style(theme::style::button::toolbar_icon(false))
             .into()
     };
 
     let details_btn: Element<'a, Message> = {
-        let glyph = icon::details().size(15).color(text_secondary);
+        let glyph = icon::details().size(FONT_ICON).color(text_secondary);
         tip::standard(
             button(glyph)
                 .on_press(Message::OpenTaskDetails(t.gid.clone()))
-                .padding(4)
+                .padding(PADDING_ICON_BTN)
                 .style(theme::style::button::toolbar_icon(false)),
-            text(fluent.get(Tr::Details)).size(12),
+            text(fluent.get(Tr::Details)).size(FONT_SMALL),
             tooltip::Position::Bottom,
         )
     };
 
     let delete_btn: Element<'a, Message> = {
-        let glyph = icon::trash().size(15).color(text_secondary);
+        let glyph = icon::trash().size(FONT_ICON).color(text_secondary);
         tip::standard(
             button(glyph)
                 .on_press(Message::RequestConfirm(ConfirmAction::DeleteTask(
                     t.gid.clone(),
                 )))
-                .padding(4)
+                .padding(PADDING_ICON_BTN)
                 .style(theme::style::button::toolbar_icon(false)),
-            text(fluent.get(Tr::Delete)).size(12),
+            text(fluent.get(Tr::Delete)).size(FONT_SMALL),
             tooltip::Position::Bottom,
         )
     };
@@ -324,10 +336,10 @@ fn task_card<'a>(
             .push(copy_link_btn)
             .push(details_btn)
             .push(delete_btn)
-            .spacing(2)
+            .spacing(SPACE_XS)
             .align_y(Alignment::Center),
     )
-    .padding([2, 6])
+    .padding(PADDING_TOOLBAR_CAPSULE)
     .style(theme::style::toolbar_capsule);
 
     let bar_color = match t.status {
@@ -364,30 +376,42 @@ fn task_card<'a>(
         "0".to_string()
     };
 
-    let sep = || text("  ·  ").size(12).style(theme::style::text::secondary);
+    let sep = || {
+        text("  ·  ")
+            .size(FONT_SMALL)
+            .style(theme::style::text::secondary)
+    };
 
     let row3 = row![]
         .push(
             text(downloaded_text)
-                .size(12)
+                .size(FONT_SMALL)
                 .style(theme::style::text::secondary),
         )
         .push(iced::widget::Space::new().width(Length::Fill))
-        .push(text(eta_text).size(12).style(theme::style::text::secondary))
+        .push(
+            text(eta_text)
+                .size(FONT_SMALL)
+                .style(theme::style::text::secondary),
+        )
         .push(sep())
-        .push(text(speed_text).size(12).color(theme::success(theme)))
+        .push(
+            text(speed_text)
+                .size(FONT_SMALL)
+                .color(theme::success(theme)),
+        )
         .push(sep())
-        .push(icon::connections().size(12).color(text_secondary))
-        .push(text(conn_text).size(12))
+        .push(icon::connections().size(FONT_SMALL).color(text_secondary))
+        .push(text(conn_text).size(FONT_SMALL))
         .align_y(Alignment::Center)
         .width(Length::Fill);
 
     let content = column![]
-        .spacing(8)
+        .spacing(SPACE_LG)
         .push(
             row![name, toolbar]
                 .align_y(iced::alignment::Vertical::Top)
-                .spacing(12),
+                .spacing(SPACE_2XL),
         )
         .push(bar)
         .push(row3)
@@ -395,7 +419,7 @@ fn task_card<'a>(
 
     container(content)
         .width(Length::Fill)
-        .padding(16)
+        .padding(PADDING_CARD)
         .style(theme::style::card)
         .into()
 }

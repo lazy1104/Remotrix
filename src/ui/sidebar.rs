@@ -4,6 +4,7 @@ use iced::{Alignment, Element, Length};
 use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, Page};
 use crate::ui::components::tooltip;
+use crate::ui::dims::*;
 use crate::ui::theme;
 
 pub fn view<'a>(
@@ -19,13 +20,13 @@ pub fn view<'a>(
     )
     .center_x(Length::Fill)
     .width(Length::Fill)
-    .padding([8, 0]);
+    .padding(PADDING_SIDEBAR_LOGO);
 
     let icon_btn =
         |codepoint: char, tip: String, msg: Message, active: bool| -> Element<'a, Message> {
             let glyph = text(codepoint.to_string())
                 .font(iced::Font::with_name("lucide"))
-                .size(20)
+                .size(FONT_DIALOG_TITLE)
                 .line_height(1.0);
             let btn_content = container(glyph)
                 .center_x(Length::Fill)
@@ -34,7 +35,7 @@ pub fn view<'a>(
                 .height(Length::Fill);
             let btn = button(btn_content)
                 .on_press(msg)
-                .padding(0)
+                .padding(PADDING_NONE)
                 .width(Length::Fixed(40.0))
                 .height(Length::Fixed(40.0))
                 .style(theme::style::button::sidebar_nav(active));
@@ -63,7 +64,7 @@ pub fn view<'a>(
     );
 
     let col = column![]
-        .spacing(4)
+        .spacing(SPACE_SM)
         .align_x(Alignment::Center)
         .push(logo)
         .push(iced::widget::Space::new().height(Length::Fixed(20.0)))
@@ -77,7 +78,7 @@ pub fn view<'a>(
     container(col)
         .width(Length::Fill)
         .height(Length::Fill)
-        .padding([12, 0])
+        .padding(PADDING_SIDEBAR)
         .style(theme::style::sidebar_background)
         .into()
 }
