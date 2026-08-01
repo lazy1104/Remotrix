@@ -8,6 +8,7 @@ use crate::task::{
 };
 use crate::ui::components::dialog::overlay;
 use crate::ui::components::slim_scrollable::slim_scrollable;
+use crate::ui::components::truncated_text::truncated_text;
 use crate::ui::icon;
 use crate::ui::theme;
 
@@ -141,7 +142,12 @@ fn key_value_row(key: String, value: String) -> Element<'static, Message> {
                 .style(theme::style::text::secondary)
                 .width(Length::Fixed(140.0)),
         )
-        .push(text(value).size(13))
+        .push(
+            truncated_text(value)
+                .size(13)
+                .max_lines(2)
+                .wrapping(text::Wrapping::Glyph),
+        )
         .spacing(8)
         .align_y(Alignment::Center)
         .width(Length::Fill)
@@ -231,7 +237,7 @@ fn activity_tab<'a>(
             }
         );
 
-        let speed_str = if task.speed > 0 {
+        let speed_str = if task.is_download_active() || task.speed > 0 {
             format_speed(task.speed)
         } else {
             "—".to_string()

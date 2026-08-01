@@ -205,7 +205,7 @@ pub mod style {
         }
     }
 
-    pub fn speed_hud_background(t: &iced::Theme) -> iced::widget::container::Style {
+    fn capsule_pill(t: &iced::Theme) -> iced::widget::container::Style {
         iced::widget::container::Style {
             background: Some(t.extended_palette().background.base.color.into()),
             border: iced::Border {
@@ -215,6 +215,14 @@ pub mod style {
             },
             ..Default::default()
         }
+    }
+
+    pub fn speed_hud_background(t: &iced::Theme) -> iced::widget::container::Style {
+        capsule_pill(t)
+    }
+
+    pub fn toolbar_capsule(t: &iced::Theme) -> iced::widget::container::Style {
+        capsule_pill(t)
     }
 
     pub fn toast(t: &iced::Theme) -> iced::widget::container::Style {

@@ -7,6 +7,7 @@ use crate::message::{ConfirmAction, Message, SortField, SortOrder};
 use crate::task::{format_duration, format_size, format_speed, DownloadTask, TaskStatus};
 use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::components::tooltip as tip;
+use crate::ui::components::truncated_text::truncated_text;
 use crate::ui::icon;
 use crate::ui::theme;
 
@@ -219,7 +220,14 @@ fn task_card<'a>(
 ) -> Element<'a, Message> {
     let text_secondary = theme::text_secondary(theme);
     let pct = t.progress_pct();
-    let name = text(t.name.clone()).size(15);
+    let name = tip::standard(
+        truncated_text(t.name.clone())
+            .size(15)
+            .max_lines(2)
+            .wrapping(text::Wrapping::Glyph),
+        text(t.name.clone()).size(12),
+        tooltip::Position::Bottom,
+    );
 
     let toolbar_icon =
         |glyph: iced::widget::Text<'a>, msg: Option<Message>| -> Element<'a, Message> {
@@ -309,14 +317,18 @@ fn task_card<'a>(
         )
     };
 
-    let toolbar = row![]
-        .push(pause_resume_btn)
-        .push(show_in_folder_btn)
-        .push(copy_link_btn)
-        .push(details_btn)
-        .push(delete_btn)
-        .spacing(2)
-        .align_y(Alignment::Center);
+    let toolbar = container(
+        row![]
+            .push(pause_resume_btn)
+            .push(show_in_folder_btn)
+            .push(copy_link_btn)
+            .push(details_btn)
+            .push(delete_btn)
+            .spacing(2)
+            .align_y(Alignment::Center),
+    )
+    .padding([2, 6])
+    .style(theme::style::toolbar_capsule);
 
     let bar_color = match t.status {
         TaskStatus::Paused => theme::primary_weak(theme),
@@ -337,7 +349,7 @@ fn task_card<'a>(
         }
     );
 
-    let speed_text = if t.speed > 0 {
+    let speed_text = if t.is_download_active() || t.speed > 0 {
         format_speed(t.speed)
     } else {
         "—".to_string()
@@ -373,12 +385,9 @@ fn task_card<'a>(
     let content = column![]
         .spacing(8)
         .push(
-            row![
-                name,
-                iced::widget::Space::new().width(Length::Fill),
-                toolbar
-            ]
-            .align_y(Alignment::Center),
+            row![name, toolbar]
+                .align_y(iced::alignment::Vertical::Top)
+                .spacing(12),
         )
         .push(bar)
         .push(row3)
