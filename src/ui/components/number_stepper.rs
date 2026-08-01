@@ -494,13 +494,26 @@ where
 
     fn mouse_interaction(
         &self,
-        _tree: &Tree,
-        _layout: Layout<'_>,
-        _cursor: mouse::Cursor,
-        _viewport: &Rectangle,
-        _renderer: &iced::Renderer,
+        tree: &Tree,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+        renderer: &iced::Renderer,
     ) -> mouse::Interaction {
-        mouse::Interaction::Pointer
+        if !cursor.is_over(layout.bounds()) {
+            return mouse::Interaction::None;
+        }
+        if let Some(child_layout) = layout.children().next() {
+            self.child.as_widget().mouse_interaction(
+                &tree.children[0],
+                child_layout,
+                cursor,
+                viewport,
+                renderer,
+            )
+        } else {
+            mouse::Interaction::None
+        }
     }
 
     fn overlay<'b>(
