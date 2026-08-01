@@ -16,7 +16,7 @@ use crate::db::Db;
 use crate::engine::{EngineCmd, EngineEvent, EngineHandle, EventRx, TaskAdvancedOptions};
 use crate::i18n::{Fluent, Locale, Tr};
 use crate::message::{
-    AddField, CloseDialogChoice, ConfirmAction, Message, Page, PathPickerId, SettingKey,
+    AddField, AddTab, CloseDialogChoice, ConfirmAction, Message, Page, PathPickerId, SettingKey,
     SettingsCategory, SortField, SortOrder, TaskFilter, WindowCmd,
 };
 use crate::task::{DownloadTask, TaskStatus};
@@ -24,6 +24,7 @@ use crate::ui::add_dialog::AddDialogState;
 use crate::ui::category_bar::Counts;
 use crate::ui::components::path_picker::PathPickerAction;
 use crate::ui::components::toast::{Toast, ToastKind, ToastPosition};
+use crate::ui::components::torrent_upload::{self, TorrentUploadAction};
 use crate::ui::details_dialog::DetailsDialogState;
 use crate::ui::icons::{CATEGORY_W, SIDEBAR_W};
 use crate::ui::settings_page::SettingsUiState;
@@ -359,15 +360,53 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         }
         Message::OpenAddDialog => {
             state.add_dialog.save_picker.close_history();
-            state.add_dialog.torrent_picker.close_history();
             state
                 .add_dialog
                 .open(state.settings.download_dir.clone(), state.settings.split);
         }
         Message::CancelAdd => {
             state.add_dialog.save_picker.close_history();
-            state.add_dialog.torrent_picker.close_history();
             state.add_dialog.close();
+        }
+        Message::SelectAddTab(tab) => {
+            state.add_dialog.active_tab = tab;
+        }
+        Message::TorrentUpload(event) => {
+            if let Some(TorrentUploadAction::Browse) = state.add_dialog.torrent_upload.update(event)
+            {
+                return pick_path(PathPickerId::Torrent);
+            }
+        }
+        Message::FileHovered(_) => {
+            if state.add_dialog.is_visible() && state.add_dialog.active_tab == AddTab::Torrent {
+                state.add_dialog.torrent_upload.set_dragging(true);
+            }
+        }
+        Message::FilesHoveredLeft => {
+            if state.add_dialog.is_visible() {
+                state.add_dialog.torrent_upload.set_dragging(false);
+            }
+        }
+        Message::FileDropped(path) => {
+            if state.add_dialog.is_visible() {
+                state.add_dialog.torrent_upload.set_dragging(false);
+                if torrent_upload::is_valid_torrent_file(&path) {
+                    state
+                        .add_dialog
+                        .torrent_upload
+                        .set_path(path.to_string_lossy());
+                    state.add_dialog.active_tab = AddTab::Torrent;
+                } else {
+                    let (_, task) = spawn_toast(
+                        state,
+                        ToastKind::Warning,
+                        state.fluent.get(Tr::InvalidTorrent),
+                        Some(Duration::from_secs(4)),
+                        false,
+                    );
+                    return task;
+                }
+            }
         }
         Message::UrlEditor(action) => {
             state.add_dialog.url_editor.perform(action);
@@ -440,8 +479,8 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     proxy_password: state.add_dialog.proxy_password.clone(),
                 };
 
-                let tpath_str = state.add_dialog.torrent_picker.value().to_string();
-                if !tpath_str.is_empty() {
+                let tpath_str = state.add_dialog.torrent_upload.path().to_string();
+                if !tpath_str.is_empty() && state.add_dialog.active_tab == AddTab::Torrent {
                     let tpath = PathBuf::from(&tpath_str);
                     let save_dir = PathBuf::from(state.add_dialog.save_picker.value());
                     let mut torrent_advanced = advanced.clone();
@@ -1849,6 +1888,19 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         _ => None,
     });
 
+    let files = iced::event::listen_with(|event, _status, _window| match event {
+        iced::event::Event::Window(iced::window::Event::FileHovered(path)) => {
+            Some(Message::FileHovered(path))
+        }
+        iced::event::Event::Window(iced::window::Event::FileDropped(path)) => {
+            Some(Message::FileDropped(path))
+        }
+        iced::event::Event::Window(iced::window::Event::FilesHoveredLeft) => {
+            Some(Message::FilesHoveredLeft)
+        }
+        _ => None,
+    });
+
     let flush = iced::time::every(Duration::from_millis(1000)).map(|_| Message::FlushDirty);
 
     let resizes = iced::window::resize_events().map(|(_id, size)| Message::WindowResized(size));
@@ -1874,6 +1926,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         open,
         close,
         focus,
+        files,
         flush,
         resizes,
         persist_periodic,
@@ -1890,7 +1943,7 @@ fn picker_mut(
     match id {
         PathPickerId::DownloadDir => &mut state.settings_ui.download_picker,
         PathPickerId::SaveDir => &mut state.add_dialog.save_picker,
-        PathPickerId::Torrent => &mut state.add_dialog.torrent_picker,
+        PathPickerId::Torrent => unreachable!("torrent upload is not a PathPicker"),
         PathPickerId::Ed2kServerList => &mut state.settings_ui.ed2k_server_list_picker,
         PathPickerId::Ed2kNodeList => &mut state.settings_ui.ed2k_node_list_picker,
     }
@@ -1915,12 +1968,21 @@ fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
             config::save(&state.settings);
         }
         PathPickerId::Torrent => {
-            state
-                .add_dialog
-                .torrent_picker
-                .set_value(p.to_string_lossy());
-            state.add_dialog.torrent_picker.close_history();
-            config::save(&state.settings);
+            if torrent_upload::is_valid_torrent_file(&p) {
+                state
+                    .add_dialog
+                    .torrent_upload
+                    .set_path(p.to_string_lossy());
+                config::save(&state.settings);
+            } else {
+                let mut toast =
+                    Toast::new(ToastKind::Warning, state.fluent.get(Tr::InvalidTorrent))
+                        .position(ToastPosition::Top)
+                        .close_after(Some(Duration::from_secs(4)));
+                toast.id = state.next_toast_id;
+                state.next_toast_id += 1;
+                push_toast(state, toast);
+            }
         }
         PathPickerId::Ed2kServerList => {
             state.settings.aria2.ed2k_server_list = p.to_string_lossy().into_owned();

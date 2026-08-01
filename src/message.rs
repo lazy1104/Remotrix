@@ -17,6 +17,12 @@ pub enum PathPickerId {
     Ed2kNodeList,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AddTab {
+    Url,
+    Torrent,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AddField {
     Out,
@@ -57,6 +63,11 @@ pub enum Message {
     SetSettingsCategory(SettingsCategory),
     PathPicker(PathPickerId, PathPickerEvent),
     PathPicked(PathPickerId, Option<PathBuf>),
+    SelectAddTab(AddTab),
+    TorrentUpload(crate::ui::components::torrent_upload::TorrentUploadEvent),
+    FileHovered(PathBuf),
+    FileDropped(PathBuf),
+    FilesHoveredLeft,
     CopyPath(String),
     SplitChanged(String),
     AddDownload,

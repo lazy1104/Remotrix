@@ -18,6 +18,12 @@ removed = Removed
 new-download = New Download
 url-placeholder = One link per line (https:// or magnet:?xt=urn:btih:...)
 or-torrent = Or choose a .torrent file
+tab-url = Link
+tab-torrent = Torrent
+drop-torrent-hint = Drag a .torrent file here, or click to select
+drop-torrent-active = Release to add the torrent file
+remove = Remove
+invalid-torrent = Only .torrent files are supported
 browse = Browse
 save-to = Save to
 split-connections = Split / max connections

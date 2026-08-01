@@ -196,6 +196,27 @@ pub mod style {
         }
     }
 
+    pub fn drop_zone(active: bool) -> impl Fn(&iced::Theme) -> iced::widget::container::Style {
+        move |t| {
+            let accent = t.extended_palette().primary.base.color;
+            let palette = t.extended_palette();
+            iced::widget::container::Style {
+                background: Some(if active {
+                    Color::from_rgba(accent.r, accent.g, accent.b, 0.18).into()
+                } else {
+                    palette.background.weak.color.into()
+                }),
+                text_color: Some(if active {
+                    accent
+                } else {
+                    palette.background.weak.text
+                }),
+                border: iced::Border::default(),
+                ..Default::default()
+            }
+        }
+    }
+
     pub fn active_filter(t: &iced::Theme) -> iced::widget::container::Style {
         let accent = t.extended_palette().primary.base.color;
         iced::widget::container::Style {

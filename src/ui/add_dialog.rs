@@ -5,21 +5,23 @@ use iced::widget::{button, column, row, rule, text, text_editor, text_input};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
-use crate::message::{AddField, Message, PathPickerId};
+use crate::message::{AddField, AddTab, Message, PathPickerId};
 use crate::ui::components::dialog::{overlay, Dialog};
 use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::path_picker::PathPicker;
 use crate::ui::components::slim_scrollable::slim_scrollable;
+use crate::ui::components::torrent_upload::TorrentUpload;
 use crate::ui::dims::*;
 use crate::ui::theme;
 
 #[derive(Debug, Clone)]
 pub struct AddDialogState {
     pub visible: bool,
+    pub active_tab: AddTab,
     pub url_editor: text_editor::Content,
     pub save_picker: PathPicker,
     pub split: u16,
-    pub torrent_picker: PathPicker,
+    pub torrent_upload: TorrentUpload,
     pub out: String,
     pub advanced_open: bool,
     pub user_agent: String,
@@ -36,10 +38,11 @@ impl AddDialogState {
     pub fn new(default_dir: PathBuf) -> Self {
         Self {
             visible: false,
+            active_tab: AddTab::Url,
             url_editor: text_editor::Content::new(),
             save_picker: PathPicker::folder(default_dir.to_string_lossy(), true),
             split: 16,
-            torrent_picker: PathPicker::file(String::new()),
+            torrent_upload: TorrentUpload::new(),
             out: String::new(),
             advanced_open: false,
             user_agent: String::new(),
@@ -55,10 +58,11 @@ impl AddDialogState {
 
     pub fn open(&mut self, default_dir: PathBuf, default_split: u16) {
         self.visible = true;
+        self.active_tab = AddTab::Url;
         self.url_editor = text_editor::Content::new();
         self.save_picker.set_value(default_dir.to_string_lossy());
         self.split = default_split;
-        self.torrent_picker.set_value("");
+        self.torrent_upload.clear();
         self.out.clear();
         self.advanced_open = false;
         self.user_agent.clear();
@@ -86,12 +90,12 @@ impl AddDialogState {
         payload: crate::clipboard_watch::ClipboardPayload,
     ) {
         self.save_picker.close_history();
-        self.torrent_picker.close_history();
         self.open(default_dir, default_split);
         match payload {
             crate::clipboard_watch::ClipboardPayload::Urls(urls) => self.set_urls(urls),
             crate::clipboard_watch::ClipboardPayload::Torrent(path) => {
-                self.torrent_picker.set_value(path.to_string_lossy());
+                self.torrent_upload.set_path(path.to_string_lossy());
+                self.active_tab = AddTab::Torrent;
             }
         }
     }
@@ -101,8 +105,11 @@ impl AddDialogState {
     }
 
     pub fn can_submit(&self) -> bool {
-        (!self.url_editor.text().trim().is_empty() && !self.save_picker.value().is_empty())
-            || !self.torrent_picker.value().is_empty()
+        let save_dir_ok = !self.save_picker.value().is_empty();
+        match self.active_tab {
+            AddTab::Url => !self.url_editor.text().trim().is_empty() && save_dir_ok,
+            AddTab::Torrent => !self.torrent_upload.is_empty() && save_dir_ok,
+        }
     }
 
     pub fn url_count(&self) -> usize {
@@ -112,10 +119,6 @@ impl AddDialogState {
             .map(|l| l.trim())
             .filter(|l| !l.is_empty())
             .count()
-    }
-
-    pub fn has_torrent(&self) -> bool {
-        !self.torrent_picker.value().is_empty()
     }
 }
 
@@ -133,17 +136,6 @@ pub fn view<'a>(
         .padding(PADDING_EDITOR)
         .size(FONT_BODY)
         .style(theme::style::text_editor::standard);
-
-    let torrent_row = column![]
-        .spacing(SPACE_SM)
-        .push(
-            text(fluent.get(Tr::OrTorrent))
-                .size(FONT_SMALL)
-                .style(theme::style::text::secondary),
-        )
-        .push(state.torrent_picker.view(fluent, theme, &[], |e| {
-            Message::PathPicker(PathPickerId::Torrent, e)
-        }));
 
     let hist_save: &[String] = path_history
         .get("save_dir")
@@ -213,15 +205,36 @@ pub fn view<'a>(
         .label(fluent.get(Tr::AdvancedOptions))
         .on_toggle(Message::ToggleAdvanced);
 
-    let mut body_items = vec![
-        url_input.into(),
-        torrent_row.into(),
-        save_row.into(),
-        split_input.into(),
-    ];
-    if !state.has_torrent() {
-        body_items.push(rename_row.into());
+    let tab_bar = {
+        let tabs = [(AddTab::Url, Tr::TabUrl), (AddTab::Torrent, Tr::TabTorrent)];
+        let mut bar = row![].spacing(SPACE_SM);
+        for (tab, tr) in tabs {
+            let active = state.active_tab == tab;
+            let btn = button(text(fluent.get(tr)).size(FONT_MEDIUM))
+                .on_press(Message::SelectAddTab(tab))
+                .padding(PADDING_TAB)
+                .style(theme::style::button::sidebar_icon(active));
+            bar = bar.push(btn);
+        }
+        bar
+    };
+
+    let mut body_items: Vec<Element<'a, Message>> = Vec::new();
+    match state.active_tab {
+        AddTab::Url => {
+            body_items.push(url_input.into());
+            body_items.push(rename_row.into());
+        }
+        AddTab::Torrent => {
+            body_items.push(
+                state
+                    .torrent_upload
+                    .view(fluent, theme, Message::TorrentUpload),
+            );
+        }
     }
+    body_items.push(save_row.into());
+    body_items.push(split_input.into());
     body_items.push(advanced_checkbox.into());
     if state.advanced_open {
         body_items.push(advanced_form(fluent, theme, state));
@@ -229,6 +242,13 @@ pub fn view<'a>(
 
     let body = slim_scrollable(column(body_items).spacing(SPACE_3XL).width(Length::Fill))
         .height(Length::Fixed(400.0));
+
+    let content = column![]
+        .push(tab_bar)
+        .push(rule::horizontal(1))
+        .push(body)
+        .spacing(SPACE_LG)
+        .width(Length::Fill);
 
     let buttons = row![]
         .push(
@@ -255,7 +275,7 @@ pub fn view<'a>(
             .spacing(SPACE_3XL)
             .title(fluent.get(Tr::NewDownload))
             .with_close(Message::CancelAdd)
-            .body(body)
+            .body(content)
             .footer(buttons)
             .build(),
     )
