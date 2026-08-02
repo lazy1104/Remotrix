@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use iced::mouse;
-use iced::widget::{button, canvas, column, container, mouse_area, row, stack, text, Space};
+use iced::widget::{button, canvas, column, container, mouse_area, row, stack, text};
 use iced::{Alignment, Color, Element, Length, Point, Rectangle, Renderer, Size, Theme};
 
 use super::tooltip;
@@ -225,14 +225,10 @@ impl TorrentUpload {
             .spacing(SPACE_SM)
             .width(Length::Fill);
 
-            let replace_btn = tooltip::standard(
-                button(icon::folder_open().size(FONT_ICON).color(text_secondary))
-                    .on_press(map(TorrentUploadEvent::Browse))
-                    .padding(PADDING_XS)
-                    .style(theme::style::button::secondary()),
-                text(fluent.get(Tr::Browse)).size(FONT_SMALL),
-                iced::widget::tooltip::Position::Top,
-            );
+            let reselect = mouse_area(info)
+                .on_press(map(TorrentUploadEvent::Browse))
+                .interaction(mouse::Interaction::Pointer);
+
             let clear_btn = tooltip::standard(
                 button(icon::x().size(FONT_ICON).color(text_secondary))
                     .on_press(map(TorrentUploadEvent::Clear))
@@ -242,16 +238,16 @@ impl TorrentUpload {
                 iced::widget::tooltip::Position::Top,
             );
 
-            let actions = column![replace_btn, clear_btn].spacing(SPACE_XS);
-
             let zone = container(
-                row![info, Space::new().width(Length::Fill), actions]
+                row![reselect, clear_btn]
+                    .spacing(SPACE_MD)
                     .align_y(Alignment::Center)
                     .padding(PADDING_CARD),
             )
             .width(Length::Fill)
             .height(Length::Fixed(DROP_ZONE_HEIGHT))
-            .style(theme::style::drop_zone(false));
+            .align_y(Alignment::Center)
+            .style(theme::style::drop_zone(self.dragging));
             mouse_area(
                 stack![zone, dashed]
                     .width(Length::Fill)
