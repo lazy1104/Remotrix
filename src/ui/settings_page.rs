@@ -269,6 +269,7 @@ fn font_family_row<'a>(
     let pick: Element<'a, Message> =
         pick_list(options, selected, |o| Message::FontFamilyChanged(o.value))
             .placeholder(&placeholder)
+            .text_size(FONT_MEDIUM)
             .width(Length::Fixed(240.0))
             .style(theme::style::pick_list::standard)
             .menu_style(theme::style::pick_list::menu)
@@ -1093,6 +1094,7 @@ fn logging_view<'a>(
             Message::SettingChanged(SettingKey::AppLogLevel, opt.value)
         })
         .placeholder(&placeholder)
+        .text_size(FONT_MEDIUM)
         .width(Length::Fixed(140.0))
         .style(theme::style::pick_list::standard)
         .menu_style(theme::style::pick_list::menu)
@@ -1104,6 +1106,7 @@ fn logging_view<'a>(
             Message::SettingChanged(SettingKey::EngineLogLevel, opt.value)
         })
         .placeholder(&placeholder)
+        .text_size(FONT_MEDIUM)
         .width(Length::Fixed(140.0))
         .style(theme::style::pick_list::standard)
         .menu_style(theme::style::pick_list::menu)
@@ -1268,6 +1271,7 @@ where
         label,
         pick_list(options, sel, on_select)
             .placeholder(&placeholder)
+            .text_size(FONT_MEDIUM)
             .width(Length::Fixed(180.0))
             .style(theme::style::pick_list::standard)
             .menu_style(theme::style::pick_list::menu)
@@ -1355,6 +1359,7 @@ fn speed_labeled_input<'a>(
             ))
             .push(
                 pick_list(unit_opts, sel, move |o| on_unit(o.value))
+                    .text_size(FONT_MEDIUM)
                     .width(Length::Fixed(80.0))
                     .style(theme::style::pick_list::standard)
                     .menu_style(theme::style::pick_list::menu),
