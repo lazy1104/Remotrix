@@ -854,6 +854,24 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             SettingKey::DetectClipboardOnStart => {
                 state.settings.detect_clipboard_on_start = value == "true";
             }
+            SettingKey::ClipboardHttp => {
+                state.settings.clipboard_types.http = value == "true";
+            }
+            SettingKey::ClipboardFtp => {
+                state.settings.clipboard_types.ftp = value == "true";
+            }
+            SettingKey::ClipboardMagnet => {
+                state.settings.clipboard_types.magnet = value == "true";
+            }
+            SettingKey::ClipboardEd2k => {
+                state.settings.clipboard_types.ed2k = value == "true";
+            }
+            SettingKey::ClipboardThunder => {
+                state.settings.clipboard_types.thunder = value == "true";
+            }
+            SettingKey::ClipboardBtInfohash => {
+                state.settings.clipboard_types.bt_infohash = value == "true";
+            }
             SettingKey::Ed2kServer => {
                 state.settings.aria2.ed2k_server = value;
             }
@@ -1340,10 +1358,22 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 return Task::none();
             };
             let trimmed = text.trim().to_string();
-            let hash = hex::encode(Sha256::digest(trimmed.as_bytes()));
+            let prefs = state.settings.clipboard_types;
+            let hash = hex::encode(Sha256::digest(
+                format!(
+                    "{trimmed}|{}{}{}{}{}{}",
+                    prefs.http,
+                    prefs.ftp,
+                    prefs.magnet,
+                    prefs.ed2k,
+                    prefs.thunder,
+                    prefs.bt_infohash
+                )
+                .as_bytes(),
+            ));
             return Task::perform(
                 async move {
-                    let payload = crate::clipboard_watch::parse_clipboard(&trimmed);
+                    let payload = crate::clipboard_watch::parse_clipboard(&trimmed, prefs);
                     (payload, hash)
                 },
                 |(payload, hash)| Message::ClipboardParsed(payload, hash),

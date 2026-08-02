@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use iced::widget::{
-    button, column, container, pick_list, row, text, text_editor, text_input, toggler,
+    button, checkbox, column, container, pick_list, row, text, text_editor, text_input, toggler,
 };
 use iced::{Alignment, Element, Length};
 
@@ -205,12 +205,6 @@ fn general_view<'a>(
             |opt| Message::LocaleChanged(opt.value),
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
-        .push(group_title(fluent, Tr::Clipboard, accent))
-        .push(labeled_toggle(
-            fluent.get(Tr::DetectClipboardOnStart),
-            settings.detect_clipboard_on_start,
-            SettingKey::DetectClipboardOnStart,
-        ))
         .into()
 }
 
@@ -807,9 +801,52 @@ fn advanced_view<'a>(
         engine_col = engine_col.push(elem);
     }
 
+    let mut clipboard_col = column![].spacing(SPACE_SM);
+    clipboard_col = clipboard_col
+        .push(group_title(fluent, Tr::Clipboard, accent))
+        .push(labeled_toggle(
+            fluent.get(Tr::DetectClipboardOnStart),
+            settings.detect_clipboard_on_start,
+            SettingKey::DetectClipboardOnStart,
+        ));
+    if settings.detect_clipboard_on_start {
+        clipboard_col = clipboard_col
+            .push(labeled_checkbox(
+                fluent.get(Tr::LinkTypeHttp),
+                settings.clipboard_types.http,
+                SettingKey::ClipboardHttp,
+            ))
+            .push(labeled_checkbox(
+                fluent.get(Tr::LinkTypeFtp),
+                settings.clipboard_types.ftp,
+                SettingKey::ClipboardFtp,
+            ))
+            .push(labeled_checkbox(
+                fluent.get(Tr::LinkTypeMagnet),
+                settings.clipboard_types.magnet,
+                SettingKey::ClipboardMagnet,
+            ))
+            .push(labeled_checkbox(
+                fluent.get(Tr::LinkTypeEd2k),
+                settings.clipboard_types.ed2k,
+                SettingKey::ClipboardEd2k,
+            ))
+            .push(labeled_checkbox(
+                fluent.get(Tr::LinkTypeThunder),
+                settings.clipboard_types.thunder,
+                SettingKey::ClipboardThunder,
+            ))
+            .push(labeled_checkbox(
+                fluent.get(Tr::LinkTypeBtInfohash),
+                settings.clipboard_types.bt_infohash,
+                SettingKey::ClipboardBtInfohash,
+            ));
+    }
+
     column![]
         .spacing(SPACE_2XL)
         .push(update_toggle)
+        .push(clipboard_col)
         .push(group_title(fluent, Tr::Performance, accent))
         .push({
             let fa_none = fluent.get(Tr::FileAllocationNone);
@@ -907,6 +944,15 @@ fn labeled_toggle<'a>(label: String, value: bool, key: SettingKey) -> Element<'a
         toggler(value)
             .on_toggle(move |v| Message::SettingChanged(key, v.to_string()))
             .width(Length::Fixed(50.0))
+            .into(),
+    )
+}
+
+fn labeled_checkbox<'a>(label: String, value: bool, key: SettingKey) -> Element<'a, Message> {
+    setting_row(
+        label,
+        checkbox(value)
+            .on_toggle(move |v| Message::SettingChanged(key, v.to_string()))
             .into(),
     )
 }

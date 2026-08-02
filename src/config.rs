@@ -5,6 +5,7 @@ use aria2_ws::TaskOptions;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use crate::clipboard_watch::ClipboardLinkTypes;
 use crate::i18n::Locale;
 use crate::ui::theme::ThemeMode;
 
@@ -400,6 +401,8 @@ pub struct Settings {
     #[serde(default = "default_true")]
     pub detect_clipboard_on_start: bool,
     #[serde(default)]
+    pub clipboard_types: ClipboardLinkTypes,
+    #[serde(default)]
     pub last_clipboard_hash: String,
     #[serde(default = "default_window_width")]
     pub window_width: f32,
@@ -420,6 +423,8 @@ impl Settings {
             && self.split == other.split
             && self.nav_to_tasks_after_add == other.nav_to_tasks_after_add
             && self.delete_torrent_after_complete == other.delete_torrent_after_complete
+            && self.detect_clipboard_on_start == other.detect_clipboard_on_start
+            && self.clipboard_types == other.clipboard_types
             && self.aria2 == other.aria2
     }
 
@@ -452,6 +457,7 @@ impl Default for Settings {
             nav_to_tasks_after_add: true,
             delete_torrent_after_complete: false,
             detect_clipboard_on_start: true,
+            clipboard_types: ClipboardLinkTypes::default(),
             last_clipboard_hash: String::new(),
             window_width: default_window_width(),
             window_height: default_window_height(),
