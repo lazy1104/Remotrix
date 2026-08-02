@@ -7,6 +7,7 @@ pub struct TorrentFile {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TorrentMeta {
+    pub name: String,
     pub files: Vec<TorrentFile>,
 }
 
@@ -64,7 +65,7 @@ pub fn parse_torrent(bytes: &[u8]) -> Option<TorrentMeta> {
         return None;
     }
 
-    Some(TorrentMeta { files })
+    Some(TorrentMeta { name, files })
 }
 
 enum Value<'a> {

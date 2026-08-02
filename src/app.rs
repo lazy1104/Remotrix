@@ -260,6 +260,54 @@ fn remove_task_local(state: &mut Remotrix, gid: &str) {
     }
 }
 
+fn resolve_metadata_name(path: &std::path::Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    crate::torrent_meta::parse_torrent(&bytes).map(|m| m.name)
+}
+
+fn apply_task_name(db: &Option<Db>, gid: &str, t: &mut DownloadTask, incoming: String) {
+    if incoming.starts_with("[METADATA]") {
+        let placeholder =
+            t.name.is_empty() || t.name.starts_with("[METADATA]") || t.name == "magnet:";
+        if placeholder {
+            let path = t.save_dir.join(&incoming);
+            let size = std::fs::metadata(&path).ok().map(|m| m.len());
+            if size.is_some() && size != t.metadata_probe_size {
+                t.metadata_probe_size = size;
+                if let Some(real) = resolve_metadata_name(&path) {
+                    let real = std::path::Path::new(&real)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or_default()
+                        .to_string();
+                    if !real.is_empty() {
+                        t.name = real;
+                        if let Some(ref db) = db {
+                            db.update_name(gid, &t.name);
+                        }
+                        return;
+                    }
+                }
+            }
+        } else {
+            return;
+        }
+        if !t.name.starts_with("[METADATA]") {
+            t.name = incoming;
+            if let Some(ref db) = db {
+                db.update_name(gid, &t.name);
+            }
+        }
+        return;
+    }
+    if t.name != incoming {
+        t.name = incoming;
+        if let Some(ref db) = db {
+            db.update_name(gid, &t.name);
+        }
+    }
+}
+
 fn clear_completed_local(state: &mut Remotrix, gids: &[String]) {
     if let Some(ref db) = state.db {
         db.clear_completed(gids);
@@ -1106,7 +1154,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     .unwrap_or_default()
                     .as_secs() as i64;
                 if let Some(existing) = state.tasks.get_mut(&gid) {
-                    existing.name = name;
+                    apply_task_name(&state.db, &gid, existing, name);
                     existing.url = url;
                     existing.save_dir = PathBuf::from(dir);
                     if info_hash.is_some() {
@@ -1127,6 +1175,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         connections: 0,
                         added_at: now,
                         info_hash,
+                        metadata_probe_size: None,
                     };
                     state.tasks.insert(gid.clone(), task);
                     state.task_order.insert(0, gid.clone());
@@ -1193,6 +1242,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             connections: 0,
                             added_at: now,
                             info_hash: info_hash.clone(),
+                            metadata_probe_size: None,
                         },
                     );
                     state.task_order.insert(0, gid.clone());
@@ -1210,7 +1260,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 }
                 if let Some(t) = state.tasks.get_mut(&gid) {
                     let was_active = t.status == TaskStatus::Active;
-                    t.name = name;
+                    apply_task_name(&state.db, &gid, t, name);
                     if info_hash.is_some() {
                         t.info_hash = info_hash;
                     }
@@ -1722,6 +1772,23 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             let Some(t) = state.tasks.get(&gid).cloned() else {
                 return Task::none();
             };
+            let path = t.save_dir.join(&t.name);
+            if path.exists()
+                && (crate::engine::is_torrent_url(&t.name) || t.name.starts_with("[METADATA]"))
+            {
+                let default_dir = if t.save_dir.as_os_str().is_empty() {
+                    state.settings.download_dir.clone()
+                } else {
+                    t.save_dir.clone()
+                };
+                state.add_dialog.save_picker.close_history();
+                state.add_dialog.open(default_dir, state.settings.split);
+                state
+                    .add_dialog
+                    .set_torrent_path(path.to_string_lossy().to_string());
+                state.add_dialog.active_tab = AddTab::Torrent;
+                return Task::none();
+            }
             let has_hash = t
                 .info_hash
                 .as_deref()
@@ -1746,7 +1813,6 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 state.add_dialog.set_urls(vec![link]);
                 return Task::none();
             }
-            let path = t.save_dir.join(&t.name);
             if path.exists() {
                 return Task::perform(
                     async move {

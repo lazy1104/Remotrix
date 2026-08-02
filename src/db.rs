@@ -108,6 +108,7 @@ impl Db {
                 } else {
                     Some(info_hash)
                 },
+                metadata_probe_size: None,
             })
         }) {
             Ok(r) => r,
@@ -175,6 +176,14 @@ impl Db {
             );
         }
         let _ = conn.execute_batch("COMMIT");
+    }
+
+    pub fn update_name(&self, gid: &str, name: &str) {
+        let conn = self.conn.lock().expect("db lock");
+        let _ = conn.execute(
+            "UPDATE tasks SET name=?1 WHERE gid=?2",
+            rusqlite::params![name, gid],
+        );
     }
 
     pub fn delete(&self, gid: &str) {

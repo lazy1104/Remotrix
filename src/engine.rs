@@ -533,7 +533,29 @@ async fn remove_task_from_aria2(client: &Client, gid: &str) {
     if client.remove(gid).await.is_err() {
         let _ = client.force_remove(gid).await;
     }
+    let mut gone = false;
+    for _ in 0..25 {
+        match client.tell_status(gid).await {
+            Err(_) => {
+                gone = true;
+                break;
+            }
+            Ok(s) => {
+                if matches!(
+                    s.status,
+                    Aria2TaskStatus::Removed | Aria2TaskStatus::Complete | Aria2TaskStatus::Error
+                ) {
+                    gone = true;
+                    break;
+                }
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
     let _ = client.remove_download_result(gid).await;
+    if !gone {
+        tracing::warn!(?gid, "remove: task still present after grace period");
+    }
 }
 
 async fn delete_task_files(paths: &[String]) {
@@ -696,12 +718,23 @@ async fn handle_client_cmd(
         }
         EngineCmd::Remove { gid, delete_files } => {
             tracing::info!(?gid, delete_files, "remove");
-            let paths = client
-                .tell_status(&gid)
-                .await
-                .ok()
-                .map(|s| collect_file_paths(&s))
-                .unwrap_or_default();
+            let status = client.tell_status(&gid).await.ok();
+            let paths = status.as_ref().map(collect_file_paths).unwrap_or_default();
+            let mut related: Vec<String> = Vec::new();
+            if let Some(s) = &status {
+                if let Some(followed) = &s.followed_by {
+                    related.extend(followed.iter().cloned());
+                }
+                if let Some(parent) = &s.belongs_to {
+                    related.push(parent.clone());
+                }
+            }
+            for other in related {
+                if other != gid {
+                    remove_task_from_aria2(client, &other).await;
+                    let _ = event_tx.send(EngineEvent::Removed(other));
+                }
+            }
             remove_task_from_aria2(client, &gid).await;
             let _ = client.save_session().await;
             if delete_files {
