@@ -76,6 +76,7 @@ pub enum Message {
     TorrentFilesScroll(f32),
     TorrentFilesTogglePanel,
     DetailsFilesScroll(f32),
+    DetailsFilesFlush(u64),
     FileHovered(PathBuf),
     FileDropped(PathBuf),
     FilesHoveredLeft,

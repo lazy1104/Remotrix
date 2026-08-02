@@ -888,8 +888,19 @@ async fn handle_client_cmd(
                 },
                 ..Default::default()
             };
-            match client.change_option(&gid, options).await {
-                Ok(()) => {
+            let params = match serde_json::to_value(options) {
+                Ok(v) => vec![serde_json::Value::String(gid.clone()), v],
+                Err(e) => {
+                    tracing::warn!(?gid, error = ?e, "serialize select-file options failed");
+                    let _ = event_tx.send(EngineEvent::SelectFilesFailed { gid });
+                    return Ok(());
+                }
+            };
+            match client
+                .call_and_wait::<serde_json::Value>("changeOption", params)
+                .await
+            {
+                Ok(_) => {
                     let _ = client.save_session().await;
                 }
                 Err(e) => {

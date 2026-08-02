@@ -62,6 +62,8 @@ pub struct Remotrix {
     db: Option<Db>,
     dirty: HashSet<String>,
     details: DetailsDialogState,
+    details_pending_select: Option<(String, Vec<u64>)>,
+    details_select_gen: u64,
     window_size: iced::Size,
     last_resize: Option<iced::Size>,
     geometry_dirty: bool,
@@ -154,6 +156,8 @@ pub fn init() -> (Remotrix, Task<Message>) {
         db,
         dirty: HashSet::new(),
         details: DetailsDialogState::new(),
+        details_pending_select: None,
+        details_select_gen: 0,
         window_size: iced::Size::new(window_w, window_h),
         last_resize: None,
         geometry_dirty: false,
@@ -294,6 +298,13 @@ fn begin_close(state: &mut Remotrix) -> Task<Message> {
     }
     state.closing = true;
     state.show_close_dialog = false;
+    state.details_select_gen += 1;
+    if let Some((gid, files)) = state.details_pending_select.take() {
+        let _ = state
+            .handle
+            .cmd_tx
+            .send(EngineCmd::SelectFiles { gid, files });
+    }
     tracing::info!("ui: shutdown requested");
     if state.handle.cmd_tx.send(EngineCmd::Shutdown).is_err() {
         tracing::warn!("ui: shutdown cmd send failed");
@@ -1488,6 +1499,8 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             config::save(&state.settings);
         }
         Message::OpenTaskDetails(gid) => {
+            state.details_select_gen = 0;
+            state.details_pending_select = None;
             state.details.open(gid.clone());
             if state
                 .handle
@@ -1499,6 +1512,13 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
         }
         Message::CloseTaskDetails => {
+            state.details_select_gen += 1;
+            if let Some((gid, files)) = state.details_pending_select.take() {
+                let _ = state
+                    .handle
+                    .cmd_tx
+                    .send(EngineCmd::SelectFiles { gid, files });
+            }
             state.details.close();
         }
         Message::RefreshTaskDetails => {
@@ -1554,14 +1574,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     }
                 }
             }
-            let selected = selected_details_indices(state);
-            if !selected.is_empty() {
-                let _ = state.handle.cmd_tx.send(EngineCmd::SelectFiles {
-                    gid: gid.clone(),
-                    files: selected,
-                });
-                let _ = state.handle.cmd_tx.send(EngineCmd::FetchTaskDetails(gid));
-            }
+            return schedule_details_select_flush(state);
         }
         Message::DetailsFilesSelectAll => {
             if let Some(ref mut details) = state.details.details {
@@ -1569,17 +1582,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     file.selected = true;
                 }
             }
-            let gid = state.details.gid.clone();
-            let selected = selected_details_indices(state);
-            if let Some(gid) = gid {
-                if !selected.is_empty() {
-                    let _ = state.handle.cmd_tx.send(EngineCmd::SelectFiles {
-                        gid: gid.clone(),
-                        files: selected,
-                    });
-                    let _ = state.handle.cmd_tx.send(EngineCmd::FetchTaskDetails(gid));
-                }
-            }
+            return schedule_details_select_flush(state);
         }
         Message::DetailsFilesSelectNone => {
             if let Some(ref mut details) = state.details.details {
@@ -1590,20 +1593,22 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     first.selected = true;
                 }
             }
-            let gid = state.details.gid.clone();
-            let selected = selected_details_indices(state);
-            if let Some(gid) = gid {
-                if !selected.is_empty() {
-                    let _ = state.handle.cmd_tx.send(EngineCmd::SelectFiles {
-                        gid: gid.clone(),
-                        files: selected,
-                    });
-                    let _ = state.handle.cmd_tx.send(EngineCmd::FetchTaskDetails(gid));
-                }
-            }
+            return schedule_details_select_flush(state);
         }
         Message::DetailsFilesScroll(off) => {
             state.details.files_scroll_offset = off;
+        }
+        Message::DetailsFilesFlush(gen) => {
+            if gen != state.details_select_gen {
+                return Task::none();
+            }
+            if let Some((gid, files)) = state.details_pending_select.take() {
+                let _ = state.handle.cmd_tx.send(EngineCmd::SelectFiles {
+                    gid: gid.clone(),
+                    files,
+                });
+                let _ = state.handle.cmd_tx.send(EngineCmd::FetchTaskDetails(gid));
+            }
         }
         Message::OpenTaskFolder(gid) => {
             let dir = state
@@ -2168,6 +2173,26 @@ fn selected_details_indices(state: &Remotrix) -> Vec<u64> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn schedule_details_select_flush(state: &mut Remotrix) -> Task<Message> {
+    let Some(gid) = state.details.gid.clone() else {
+        return Task::none();
+    };
+    let selected = selected_details_indices(state);
+    if selected.is_empty() {
+        return Task::none();
+    }
+    state.details_pending_select = Some((gid, selected));
+    state.details_select_gen += 1;
+    let gen = state.details_select_gen;
+    Task::perform(
+        async move {
+            tokio::time::sleep(Duration::from_millis(350)).await;
+            gen
+        },
+        Message::DetailsFilesFlush,
+    )
 }
 
 fn push_toast(state: &mut Remotrix, toast: Toast) {
