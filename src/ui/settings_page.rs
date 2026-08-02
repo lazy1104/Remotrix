@@ -860,9 +860,13 @@ fn setting_row<'a>(label: String, control: Element<'a, Message>) -> Element<'a, 
 
 fn setting_row_auto<'a>(label: String, control: Element<'a, Message>) -> Element<'a, Message> {
     row![]
-        .push(text(label).size(FONT_MEDIUM).width(Length::Fixed(200.0)))
+        .push(
+            container(text(label).size(FONT_MEDIUM))
+                .width(Length::Fixed(200.0))
+                .center_y(Length::Fixed(36.0)),
+        )
         .push(control)
-        .align_y(Alignment::Center)
+        .align_y(Alignment::Start)
         .into()
 }
 
