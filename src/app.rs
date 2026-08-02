@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use iced::alignment::{Horizontal, Vertical};
 use iced::futures::SinkExt;
@@ -75,6 +75,7 @@ pub struct Remotrix {
     global_speed: Option<(u64, u64)>,
     paused_gids: HashSet<String>,
     synced_gids: HashSet<String>,
+    removed_gids: HashMap<String, Instant>,
     sync_done: bool,
     active_count: usize,
     toasts: Vec<crate::ui::components::toast::Toast>,
@@ -168,6 +169,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         global_speed: None,
         paused_gids: HashSet::new(),
         synced_gids: HashSet::new(),
+        removed_gids: HashMap::new(),
         sync_done: false,
         active_count,
         toasts: Vec::new(),
@@ -233,6 +235,9 @@ fn revert_apply_settings(state: &mut Remotrix) {
 }
 
 fn clear_all_local(state: &mut Remotrix) {
+    for gid in state.tasks.keys() {
+        state.removed_gids.insert(gid.clone(), Instant::now());
+    }
     state.tasks.clear();
     state.task_order.clear();
     state.dirty.clear();
@@ -249,6 +254,7 @@ fn remove_task_local(state: &mut Remotrix, gid: &str) {
             state.active_count = state.active_count.saturating_sub(1);
         }
     }
+    state.removed_gids.insert(gid.to_string(), Instant::now());
     let _ = state.torrent_files.remove(gid);
     state.torrent_followed.remove(gid);
     state.paused_gids.remove(gid);
@@ -257,6 +263,19 @@ fn remove_task_local(state: &mut Remotrix, gid: &str) {
     state.dirty.remove(gid);
     if let Some(ref db) = state.db {
         db.delete(gid);
+    }
+}
+
+const REMOVED_GID_GRACE: Duration = Duration::from_secs(60);
+
+fn gid_recently_removed(state: &mut Remotrix, gid: &str) -> bool {
+    match state.removed_gids.get(gid) {
+        Some(&removed_at) if removed_at.elapsed() < REMOVED_GID_GRACE => true,
+        Some(_) => {
+            state.removed_gids.remove(gid);
+            false
+        }
+        None => false,
     }
 }
 
@@ -1161,7 +1180,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         existing.info_hash = info_hash;
                     }
                     state.dirty.insert(gid.clone());
-                } else {
+                } else if !gid_recently_removed(state, &gid) {
                     let task = DownloadTask {
                         gid: gid.clone(),
                         name,
@@ -1217,6 +1236,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     }
                 }
                 if !state.tasks.contains_key(&gid)
+                    && !gid_recently_removed(state, &gid)
                     && !matches!(status.as_str(), "complete" | "error" | "removed")
                 {
                     let now = std::time::SystemTime::now()

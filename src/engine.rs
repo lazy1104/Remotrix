@@ -530,8 +530,8 @@ async fn sync_existing_tasks(client: &Client, event_tx: &EventTx) -> bool {
 }
 
 async fn remove_task_from_aria2(client: &Client, gid: &str) {
-    if client.remove(gid).await.is_err() {
-        let _ = client.force_remove(gid).await;
+    if client.force_remove(gid).await.is_err() {
+        let _ = client.remove(gid).await;
     }
     let mut gone = false;
     for _ in 0..25 {
@@ -554,7 +554,7 @@ async fn remove_task_from_aria2(client: &Client, gid: &str) {
     }
     let _ = client.remove_download_result(gid).await;
     if !gone {
-        tracing::warn!(?gid, "remove: task still present after grace period");
+        tracing::warn!(?gid, "remove: task still present after force");
     }
 }
 
