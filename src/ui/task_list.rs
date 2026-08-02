@@ -244,7 +244,13 @@ pub fn view<'a>(
         list = list.push(task_card(fluent, theme, t));
     }
 
-    let body = slim_scrollable(column![].spacing(SPACE_XL).push(list)).height(Length::Fill);
+    let body = slim_scrollable(
+        column![]
+            .spacing(SPACE_XL)
+            .push(list)
+            .push(iced::widget::Space::new().height(Length::Fixed(72.0))),
+    )
+    .height(Length::Fill);
 
     container(column![].push(toolbar).push(body))
         .width(Length::Fill)
