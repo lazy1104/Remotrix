@@ -49,15 +49,22 @@
 - `view` 签名保持不变，返回值仍为 `Element<'a, Message>`。
 - 折叠分支（原 line 20-25）：
   ```rust
-  button(icon::download().size(FONT_HERO).color(primary_weak))
-      .on_press(Message::Noop)
-      .padding(iced::Padding::ZERO)
-      .width(Length::Fixed(44.0))
-      .height(Length::Fixed(44.0))
-      .style(theme::style::button::speed_hud())
-      .into()
+  button(
+      container(icon::download().size(FONT_HERO).color(primary_weak))
+          .center_x(Length::Fill)
+          .center_y(Length::Fill)
+          .width(Length::Fill)
+          .height(Length::Fill),
+  )
+  .on_press(Message::Noop)
+  .padding(iced::Padding::ZERO)
+  .width(Length::Fixed(44.0))
+  .height(Length::Fixed(44.0))
+  .style(theme::style::button::speed_hud())
+  .into()
   ```
-  - `button` 内容默认居中，44×44 + padding 0 与原有 `center_x/center_y(Fixed(44))` 表现一致。
+  - **重要**：`button` 的布局用 `layout::padded`（`iced_core/src/layout.rs:170`），子元素定位在内容盒左上角，**不会居中**（与 `container` 不同）。所以必须把图标包一层 `container(...).center_x(Fill).center_y(Fill).width(Fill).height(Fill)`，使其铺满 44×44 的 button 内容盒并居中，等价于原有 `center_x/center_y(Fixed(44))`。
+  - `container` 已在 speed_hud.rs 导入（用于 `icon_col`），无需新增。
 - 展开分支：
   - `icon_col` 大图标 `.color(primary_weak)`（保持 `center_x(Fixed(44))`，配合 `PADDING_HUD.left=0` 左内缩与折叠一致）。
   - `up_row` 的 arrow_up 与文本 `.color(primary_weak)`。
@@ -73,8 +80,10 @@
 - button 会捕获 HUD 区域内的点击事件（触发 `Message::Noop`，无实际副作用）；HUD 位于右下角覆盖层，点击原无意义，行为可接受。
 - `primary.weak` 为弱化强调色，浅/深主题下均为低饱和强调色调，不会过黑——符合要求。
 - 需确认 `Message::Noop` 已存在且 `app.rs:1999` 有对应处理（已核实），无需改 message.rs/app.rs。
+- **回归点**：上一轮把折叠态从 `container` 改为裸 `button` 后，图标因 button 不居中而偏左上。本计划的折叠分支必须包一层居中 container，否则问题依旧。
 
 ## 验证
 - `cargo build`、`cargo clippy --workspace`、`cargo fmt --check` 全部通过（无 warning）。
 - 运行：明/暗主题下图标、上传速度呈 `primary.weak` 色调；边框普通态 `background.strong`，鼠标移入变 `primary.weak`；折叠/展开图标左对齐一致。
+- **折叠态回归验证**：空闲（无活动任务）时折叠胶囊内的下载图标应水平/垂直居中（四边等距），且悬停仍触发边框变色。
 - 移除 `speed_hud_background` 容器样式后确认无残留引用（原仅 speed_hud.rs 引用）。

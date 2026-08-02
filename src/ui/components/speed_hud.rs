@@ -18,13 +18,19 @@ pub fn view<'a>(
     let primary = palette.primary.base.color;
 
     if !active && download == 0 && upload == 0 {
-        button(icon::download().size(FONT_HERO).color(primary_weak))
-            .on_press(Message::Noop)
-            .padding(iced::Padding::ZERO)
-            .width(Length::Fixed(44.0))
-            .height(Length::Fixed(44.0))
-            .style(theme::style::button::speed_hud())
-            .into()
+        button(
+            container(icon::download().size(FONT_HERO).color(primary_weak))
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .on_press(Message::Noop)
+        .padding(iced::Padding::ZERO)
+        .width(Length::Fixed(44.0))
+        .height(Length::Fixed(44.0))
+        .style(theme::style::button::speed_hud())
+        .into()
     } else {
         let icon_col = container(icon::download().size(FONT_HERO).color(primary_weak))
             .center_x(Length::Fixed(44.0));
