@@ -1,9 +1,11 @@
 use std::collections::HashSet;
 
-use iced::widget::{button, checkbox, column, container, progress_bar, row, text, Space};
+use iced::widget::{button, column, row, text, Space};
 use iced::{Alignment, Element, Length};
 
 use crate::task::format_size;
+use crate::ui::components::slim_scrollable::slim_scrollable;
+use crate::ui::components::tri_checkbox::{tri_checkbox, CheckState};
 use crate::ui::components::truncated_text::truncated_text;
 use crate::ui::dims::*;
 use crate::ui::icon;
@@ -229,7 +231,7 @@ where
             on_expand,
         ));
     }
-    col.into()
+    slim_scrollable(col).height(Length::Fill).into()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -253,6 +255,7 @@ where
             depth,
             expanded,
             is_selected,
+            progress,
             enabled,
             on_toggle,
             on_expand,
@@ -277,11 +280,13 @@ where
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_dir_row<'a, M>(
     node: &'a FileTreeNode,
     depth: u32,
     expanded: &'a HashSet<String>,
     is_selected: &impl Fn(u64) -> bool,
+    progress: Option<&impl Fn(u64) -> Option<(u64, u64)>>,
     enabled: bool,
     on_toggle: &'a impl Fn(String) -> M,
     on_expand: &impl Fn(String) -> M,
@@ -303,30 +308,33 @@ where
     };
 
     let state = dir_state(node, is_selected);
-    let on_toggle_maybe = if enabled {
-        Some(on_toggle(node.rel_path.clone()))
-    } else {
-        None
+    let check_state = match state {
+        Some(true) => CheckState::Checked,
+        Some(false) => CheckState::Partial,
+        None => CheckState::Unchecked,
     };
-    let tri_btn = match state {
-        Some(true) => button(icon::circle_check().size(FONT_MEDIUM))
-            .on_press_maybe(on_toggle_maybe)
-            .padding(PADDING_XS)
-            .style(theme::style::button::toolbar_icon(true)),
-        Some(false) => button(icon::minus().size(FONT_MEDIUM))
-            .on_press_maybe(on_toggle_maybe)
-            .padding(PADDING_XS)
-            .style(theme::style::button::toolbar_icon(true)),
-        None => button(icon::square().size(FONT_MEDIUM).color(NONE_COLOR))
-            .on_press_maybe(on_toggle_maybe)
-            .padding(PADDING_XS)
-            .style(theme::style::button::toolbar_icon(false)),
+    let mut chk = tri_checkbox(check_state).size(16.0);
+    if enabled {
+        let rel = node.rel_path.clone();
+        chk = chk.on_toggle_maybe(Some(move || on_toggle(rel.clone())));
+    } else {
+        chk = chk.on_toggle_maybe(None::<fn() -> M>);
+    }
+
+    let size_text = if let Some(p) = progress {
+        let done: u64 = descendant_indices(node)
+            .iter()
+            .map(|&i| p(i).map(|(d, _)| d).unwrap_or(0))
+            .sum();
+        format!("{} / {}", format_size(done), format_size(node.length))
+    } else {
+        format_size(node.length)
     };
 
     row![]
         .push(Space::new().width(Length::Fixed(depth as f32 * INDENT_STEP)))
         .push(chevron)
-        .push(tri_btn)
+        .push(chk)
         .push(icon::folder().size(FONT_ICON).color(NONE_COLOR))
         .push(
             truncated_text(node.name.clone())
@@ -335,7 +343,7 @@ where
                 .width(Length::Fill),
         )
         .push(
-            text(format_size(node.length))
+            text(size_text)
                 .size(FONT_SMALL)
                 .style(theme::style::text::secondary),
         )
@@ -357,50 +365,44 @@ where
     M: Clone + 'a,
 {
     let idx = node.file_index.unwrap_or(0);
-    let mut chk = checkbox(is_selected(idx)).size(16.0);
+    let mut chk = tri_checkbox(if is_selected(idx) {
+        CheckState::Checked
+    } else {
+        CheckState::Unchecked
+    })
+    .size(16.0);
     if enabled {
         let rel = node.rel_path.clone();
-        chk = chk.on_toggle_maybe(Some(move |_| on_toggle(rel.clone())));
+        chk = chk.on_toggle_maybe(Some(move || on_toggle(rel.clone())));
     } else {
-        chk = chk.on_toggle_maybe(None::<fn(bool) -> M>);
+        chk = chk.on_toggle_maybe(None::<fn() -> M>);
     }
 
-    let mut content = column![].spacing(SPACE_XS).width(Length::Fill);
-    content = content.push(
-        row![]
-            .push(Space::new().width(Length::Fixed(depth as f32 * INDENT_STEP)))
-            .push(Space::new().width(Length::Fixed(CHEVRON_SLOT)))
-            .push(chk)
-            .push(icon::file().size(FONT_ICON).color(NONE_COLOR))
-            .push(
-                truncated_text(node.name.clone())
-                    .size(FONT_MEDIUM)
-                    .max_lines(1)
-                    .width(Length::Fill),
-            )
-            .push(
-                text(format_size(node.length))
-                    .size(FONT_SMALL)
-                    .style(theme::style::text::secondary),
-            )
-            .spacing(SPACE_SM)
-            .align_y(Alignment::Center)
-            .width(Length::Fill),
-    );
+    let size_text = if let Some(p) = progress {
+        let done = p(idx).map(|(d, _)| d).unwrap_or(0);
+        format!("{} / {}", format_size(done), format_size(node.length))
+    } else {
+        format_size(node.length)
+    };
 
-    if let Some(p) = progress {
-        if let Some((done, total)) = p(idx) {
-            let pct = if total == 0 {
-                0.0
-            } else {
-                (done as f64 / total as f64 * 100.0).min(100.0) as f32
-            };
-            content = content.push(
-                container(progress_bar(0.0..=100.0, pct).girth(Length::Fixed(4.0)))
-                    .width(Length::Fill),
-            );
-        }
-    }
-
-    content.into()
+    row![]
+        .push(Space::new().width(Length::Fixed(depth as f32 * INDENT_STEP)))
+        .push(Space::new().width(Length::Fixed(CHEVRON_SLOT)))
+        .push(chk)
+        .push(icon::file().size(FONT_ICON).color(NONE_COLOR))
+        .push(
+            truncated_text(node.name.clone())
+                .size(FONT_MEDIUM)
+                .max_lines(1)
+                .width(Length::Fill),
+        )
+        .push(
+            text(size_text)
+                .size(FONT_SMALL)
+                .style(theme::style::text::secondary),
+        )
+        .spacing(SPACE_SM)
+        .align_y(Alignment::Center)
+        .width(Length::Fill)
+        .into()
 }

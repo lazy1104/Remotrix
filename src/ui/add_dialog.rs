@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use iced::widget::{button, column, container, row, rule, text, text_editor, text_input};
+use iced::widget::{button, column, row, rule, text, text_editor, text_input};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
@@ -392,40 +392,6 @@ pub fn view<'a>(
                     .map(|f| (f.index, f.selected))
                     .collect();
                 let is_selected = |i: u64| sel_map.get(&i).copied().unwrap_or(false);
-                let tree_el = container(file_tree::view(
-                    &state.torrent_tree,
-                    &state.torrent_expanded,
-                    &is_selected,
-                    None::<&fn(u64) -> Option<(u64, u64)>>,
-                    true,
-                    &torrent_tree_toggle,
-                    &torrent_tree_expand,
-                ))
-                .width(Length::Fill);
-
-                let header = row![
-                    text(format!(
-                        "{} ({})",
-                        fluent.get(Tr::TorrentFiles),
-                        total_count
-                    ))
-                    .size(FONT_MEDIUM),
-                    iced::widget::Space::new().width(Length::Fill),
-                    text(format_size(total_size))
-                        .size(FONT_SMALL)
-                        .style(theme::style::text::secondary),
-                    button(text(fluent.get(Tr::SelectAll)).size(FONT_SMALL))
-                        .on_press(Message::TorrentFilesSelectAll)
-                        .padding(PADDING_XS)
-                        .style(theme::style::button::text()),
-                    button(text(fluent.get(Tr::SelectNone)).size(FONT_SMALL))
-                        .on_press(Message::TorrentFilesSelectNone)
-                        .padding(PADDING_XS)
-                        .style(theme::style::button::text()),
-                ]
-                .spacing(SPACE_SM)
-                .align_y(Alignment::Center)
-                .width(Length::Fill);
 
                 let selected_line = text(format!(
                     "{} / {} · {}",
@@ -436,15 +402,22 @@ pub fn view<'a>(
                 .size(FONT_SMALL)
                 .style(theme::style::text::secondary);
 
-                body_items.push(
-                    column![
-                        header,
-                        slim_scrollable(tree_el).height(Length::Fixed(200.0))
-                    ]
-                    .spacing(SPACE_MD)
-                    .width(Length::Fill)
-                    .into(),
-                );
+                body_items.push(crate::ui::components::torrent_file_list::view(
+                    fluent,
+                    theme,
+                    format!("{} ({})", fluent.get(Tr::TorrentFiles), total_count),
+                    Some(format_size(total_size)),
+                    Length::Fixed(230.0),
+                    &state.torrent_tree,
+                    &state.torrent_expanded,
+                    &is_selected,
+                    None::<&fn(u64) -> Option<(u64, u64)>>,
+                    true,
+                    &torrent_tree_toggle,
+                    &torrent_tree_expand,
+                    Message::TorrentFilesSelectAll,
+                    Message::TorrentFilesSelectNone,
+                ));
                 body_items.push(selected_line.into());
             }
         }

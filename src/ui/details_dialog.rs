@@ -10,7 +10,6 @@ use crate::task::{
 };
 use crate::ui::components::dialog::overlay;
 use crate::ui::components::file_tree;
-use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::components::truncated_text::truncated_text;
 use crate::ui::dims::*;
 use crate::ui::icon;
@@ -349,29 +348,6 @@ fn files_tab<'a>(
     .size(FONT_SMALL)
     .style(text_secondary_fn);
 
-    let header = row![]
-        .push(
-            text(fluent.get(Tr::TorrentFiles))
-                .size(FONT_MEDIUM)
-                .style(text_secondary_fn),
-        )
-        .push(iced::widget::Space::new().width(Length::Fill))
-        .push(
-            button(text(fluent.get(Tr::SelectAll)).size(FONT_SMALL))
-                .on_press(Message::DetailsFilesSelectAll)
-                .padding(PADDING_XS)
-                .style(theme::style::button::text()),
-        )
-        .push(
-            button(text(fluent.get(Tr::SelectNone)).size(FONT_SMALL))
-                .on_press(Message::DetailsFilesSelectNone)
-                .padding(PADDING_XS)
-                .style(theme::style::button::text()),
-        )
-        .spacing(SPACE_SM)
-        .align_y(Alignment::Center)
-        .width(Length::Fill);
-
     let file_list: Element<'a, Message> = if let Some(ref details) = state.details {
         let files_map: HashMap<u64, (bool, u64, u64)> = details
             .files
@@ -384,7 +360,12 @@ fn files_tab<'a>(
             task.status,
             crate::task::TaskStatus::Completed | crate::task::TaskStatus::Removed
         );
-        container(file_tree::view(
+        crate::ui::components::torrent_file_list::view(
+            fluent,
+            theme,
+            fluent.get(Tr::TorrentFiles),
+            None,
+            Length::Fill,
             &state.files_tree,
             &state.files_expanded,
             &is_selected,
@@ -392,26 +373,30 @@ fn files_tab<'a>(
             enabled,
             &details_tree_toggle,
             &details_tree_expand,
-        ))
-        .width(Length::Fill)
-        .into()
+            Message::DetailsFilesSelectAll,
+            Message::DetailsFilesSelectNone,
+        )
     } else {
         container(
-            text(fluent.get(Tr::Loading))
-                .size(FONT_BODY)
-                .style(text_secondary_fn),
+            container(
+                text(fluent.get(Tr::Loading))
+                    .size(FONT_BODY)
+                    .style(text_secondary_fn),
+            )
+            .center_x(Length::Fill)
+            .center_y(Length::Fill),
         )
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .padding(PADDING_XS)
+        .style(theme::style::tree_frame)
         .into()
     };
 
     column![]
         .push(overall_bar)
         .push(overall_info)
-        .push(header)
-        .push(iced::widget::rule::horizontal(1))
-        .push(slim_scrollable(file_list).height(Length::Fill))
+        .push(file_list)
         .spacing(SPACE_LG)
         .width(Length::Fill)
         .height(Length::Fill)

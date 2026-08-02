@@ -264,6 +264,18 @@ pub mod style {
         }
     }
 
+    pub fn tree_frame(t: &iced::Theme) -> iced::widget::container::Style {
+        iced::widget::container::Style {
+            background: Some(t.extended_palette().background.base.color.into()),
+            border: iced::Border {
+                color: super::border_color(t),
+                width: 1.0,
+                radius: iced::border::rounded(super::RADIUS_CARD).radius,
+            },
+            ..Default::default()
+        }
+    }
+
     pub fn separator(t: &iced::Theme) -> iced::widget::container::Style {
         iced::widget::container::Style {
             background: Some(super::border_color(t).into()),
