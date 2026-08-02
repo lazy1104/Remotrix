@@ -175,6 +175,7 @@ speed = 速度
 connections = 连接数
 show-in-folder = 在文件夹中显示
 copy-link = 复制链接
+re-download = 重新下载
 open = 打开
 file-missing = 下载文件不存在
 loading = 加载中…

@@ -175,6 +175,7 @@ speed = Speed
 connections = Connections
 show-in-folder = Show in folder
 copy-link = Copy link
+re-download = Re-download
 open = Open
 file-missing = The downloaded file is missing
 loading = Loading…

@@ -245,19 +245,25 @@ fn task_card<'a>(
     .on_double_click(Message::OpenTaskFile(t.gid.clone()))
     .interaction(mouse::Interaction::Pointer);
 
-    let toolbar_icon =
-        |glyph: iced::widget::Text<'a>, msg: Option<Message>| -> Element<'a, Message> {
-            let btn = match msg {
-                Some(m) => button(glyph)
-                    .on_press(m)
-                    .padding(PADDING_ICON_BTN)
-                    .style(theme::style::button::toolbar_icon(false)),
-                None => button(glyph)
-                    .padding(PADDING_ICON_BTN)
-                    .style(theme::style::button::toolbar_icon(false)),
-            };
-            btn.into()
+    let toolbar_icon = |glyph: iced::widget::Text<'a>,
+                        msg: Option<Message>,
+                        tip_label: String|
+     -> Element<'a, Message> {
+        let btn = match msg {
+            Some(m) => button(glyph)
+                .on_press(m)
+                .padding(PADDING_ICON_BTN)
+                .style(theme::style::button::toolbar_icon(false)),
+            None => button(glyph)
+                .padding(PADDING_ICON_BTN)
+                .style(theme::style::button::toolbar_icon(false)),
         };
+        tip::standard(
+            btn,
+            text(tip_label).size(FONT_SMALL),
+            tooltip::Position::Bottom,
+        )
+    };
 
     let open_btn: Element<'a, Message> = {
         let glyph = icon::external_link().size(FONT_ICON).color(text_secondary);
@@ -271,16 +277,38 @@ fn task_card<'a>(
         )
     };
 
-    let pause_resume_btn = match t.status {
+    let pause_resume_btn: Element<'a, Message> = match t.status {
         TaskStatus::Active | TaskStatus::Waiting => toolbar_icon(
             icon::pause().size(FONT_ICON).color(text_secondary),
             Some(Message::PauseTask(t.gid.clone())),
+            fluent.get(Tr::Pause),
         ),
         TaskStatus::Paused => toolbar_icon(
             icon::play().size(FONT_ICON).color(text_secondary),
             Some(Message::ResumeTask(t.gid.clone())),
+            fluent.get(Tr::Resume),
         ),
-        _ => toolbar_icon(icon::pause().size(FONT_ICON).color(text_secondary), None),
+        TaskStatus::Completed => {
+            let can_redownload = !t.url.is_empty() || t.info_hash.is_some();
+            let btn = button(icon::refresh().size(FONT_ICON).color(text_secondary))
+                .padding(PADDING_ICON_BTN)
+                .style(theme::style::button::toolbar_icon(false));
+            let btn = if can_redownload {
+                btn.on_press(Message::RedownloadTask(t.gid.clone()))
+            } else {
+                btn
+            };
+            tip::standard(
+                btn,
+                text(fluent.get(Tr::ReDownload)).size(FONT_SMALL),
+                tooltip::Position::Bottom,
+            )
+        }
+        _ => toolbar_icon(
+            icon::pause().size(FONT_ICON).color(text_secondary),
+            None,
+            fluent.get(Tr::Pause),
+        ),
     };
 
     let show_in_folder_btn: Element<'a, Message> = if !t.save_dir.as_os_str().is_empty() {
@@ -295,10 +323,13 @@ fn task_card<'a>(
         )
     } else {
         let glyph = icon::folder_open().size(FONT_ICON).color(text_secondary);
-        button(glyph)
-            .padding(PADDING_ICON_BTN)
-            .style(theme::style::button::toolbar_icon(false))
-            .into()
+        tip::standard(
+            button(glyph)
+                .padding(PADDING_ICON_BTN)
+                .style(theme::style::button::toolbar_icon(false)),
+            text(fluent.get(Tr::ShowInFolder)).size(FONT_SMALL),
+            tooltip::Position::Bottom,
+        )
     };
 
     let copy_link_btn: Element<'a, Message> = if !t.url.is_empty() || t.info_hash.is_some() {
@@ -313,10 +344,13 @@ fn task_card<'a>(
         )
     } else {
         let glyph = icon::copy().size(FONT_ICON).color(text_secondary);
-        button(glyph)
-            .padding(PADDING_ICON_BTN)
-            .style(theme::style::button::toolbar_icon(false))
-            .into()
+        tip::standard(
+            button(glyph)
+                .padding(PADDING_ICON_BTN)
+                .style(theme::style::button::toolbar_icon(false)),
+            text(fluent.get(Tr::CopyLink)).size(FONT_SMALL),
+            tooltip::Position::Bottom,
+        )
     };
 
     let details_btn: Element<'a, Message> = {
@@ -353,7 +387,7 @@ fn task_card<'a>(
             .push(copy_link_btn)
             .push(details_btn)
             .push(delete_btn)
-            .spacing(SPACE_XS)
+            .spacing(SPACE_SM)
             .align_y(Alignment::Center),
     )
     .padding(PADDING_TOOLBAR_CAPSULE)

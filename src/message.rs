@@ -89,6 +89,7 @@ pub enum Message {
     OpenAddDialog,
     PauseTask(String),
     ResumeTask(String),
+    RedownloadTask(String),
     RemoveTask(String),
     DeleteTask(String),
     StartAll,

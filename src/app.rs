@@ -691,6 +691,45 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 tracing::warn!("ui: resume cmd send failed");
             }
         }
+        Message::RedownloadTask(gid) => {
+            state.paused_gids.remove(&gid);
+            let (url, save_dir, split) = match state.tasks.get(&gid) {
+                Some(t) => {
+                    let url = if !t.url.is_empty() {
+                        t.url.clone()
+                    } else {
+                        let hash = t.info_hash.clone().unwrap_or_default();
+                        if hash.is_empty() {
+                            tracing::warn!(?gid, "ui: redownload skipped (no url or info hash)");
+                            return Task::none();
+                        }
+                        format!("magnet:?xt=urn:btih:{hash}")
+                    };
+                    (url, t.save_dir.clone(), state.settings.split)
+                }
+                None => return Task::none(),
+            };
+            if state
+                .handle
+                .cmd_tx
+                .send(EngineCmd::Redownload {
+                    gid: gid.clone(),
+                    url,
+                    save_dir,
+                    split,
+                })
+                .is_err()
+            {
+                tracing::warn!("ui: redownload cmd send failed");
+            }
+            if let Some(t) = state.tasks.get_mut(&gid) {
+                t.downloaded = 0;
+                t.total = 0;
+                t.speed = 0;
+                t.upload_speed = 0;
+                t.connections = 0;
+            }
+        }
         Message::RemoveTask(gid) => {
             state.paused_gids.remove(&gid);
             if state

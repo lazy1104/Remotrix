@@ -120,6 +120,12 @@ pub enum EngineCmd {
         split: u16,
         paused: bool,
     },
+    Redownload {
+        gid: String,
+        url: String,
+        save_dir: PathBuf,
+        split: u16,
+    },
     Shutdown,
     CheckAria2Update,
     RetryAria2Fetch,
@@ -964,6 +970,38 @@ async fn handle_client_cmd(
                 Err(e) => {
                     tracing::warn!(?gid, error = ?e, "re-add ghost task failed");
                     let _ = event_tx.send(EngineEvent::TaskDetailsFailed { gid });
+                }
+            }
+        }
+        EngineCmd::Redownload {
+            gid,
+            url,
+            save_dir,
+            split,
+        } => {
+            tracing::info!(?gid, ?url, ?save_dir, split, "re-download task");
+            let _ = client.remove_download_result(&gid).await;
+            let options = TaskOptions {
+                gid: Some(gid.clone()),
+                dir: Some(save_dir.to_string_lossy().to_string()),
+                split: Some(split as i32),
+                max_connection_per_server: Some((split as i32).max(1)),
+                r#continue: Some(false),
+                auto_file_renaming: Some(true),
+                ..Default::default()
+            };
+            match client
+                .add_uri(vec![url.clone()], Some(options), None, None)
+                .await
+            {
+                Ok(_) => {
+                    if let Ok(status) = client.tell_status(&gid).await {
+                        emit_added(event_tx, &status).await;
+                        emit_progress(event_tx, &status).await;
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(?gid, error = ?e, "re-download failed");
                 }
             }
         }
