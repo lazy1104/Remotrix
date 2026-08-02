@@ -1,6 +1,6 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// ca66c51108f6b78fd270aa31966099fcb4db9f0326a74fdb5d49f95c2a7c9305
+// e1efa297adccdd15841b624337981d5971a546d1c76a665011ed2adfb55b45d9
 use iced::widget::{text, Text};
 use iced::Font;
 
@@ -15,12 +15,14 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("chevron_right", "\u{E06F}"),
     ("circle_check", "\u{E226}"),
     ("circle_x", "\u{E084}"),
+    ("collapse", "\u{E228}"),
     ("connections", "\u{E37F}"),
     ("copy", "\u{E09E}"),
     ("details", "\u{E0CC}"),
     ("download", "\u{E0B2}"),
     ("download_arrow", "\u{E455}"),
     ("eraser", "\u{E28F}"),
+    ("expand", "\u{E211}"),
     ("file", "\u{E0C0}"),
     ("folder", "\u{E0D7}"),
     ("folder_clock", "\u{E32F}"),
@@ -66,6 +68,10 @@ pub fn circle_x<'a>() -> Text<'a> {
     icon("\u{E084}")
 }
 
+pub fn collapse<'a>() -> Text<'a> {
+    icon("\u{E228}")
+}
+
 pub fn connections<'a>() -> Text<'a> {
     icon("\u{E37F}")
 }
@@ -88,6 +94,10 @@ pub fn download_arrow<'a>() -> Text<'a> {
 
 pub fn eraser<'a>() -> Text<'a> {
     icon("\u{E28F}")
+}
+
+pub fn expand<'a>() -> Text<'a> {
+    icon("\u{E211}")
 }
 
 pub fn file<'a>() -> Text<'a> {

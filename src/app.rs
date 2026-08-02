@@ -390,6 +390,12 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::TorrentFilesSelectNone => {
             state.add_dialog.set_all_torrent_files(false);
         }
+        Message::TorrentFilesScroll(off) => {
+            state.add_dialog.torrent_scroll_offset = off;
+        }
+        Message::TorrentFilesTogglePanel => {
+            state.add_dialog.toggle_torrent_panel();
+        }
         Message::FileHovered(_) => {
             if state.add_dialog.is_visible() && state.add_dialog.active_tab == AddTab::Torrent {
                 state.add_dialog.torrent_upload.set_dragging(true);
@@ -1595,6 +1601,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     let _ = state.handle.cmd_tx.send(EngineCmd::FetchTaskDetails(gid));
                 }
             }
+        }
+        Message::DetailsFilesScroll(off) => {
+            state.details.files_scroll_offset = off;
         }
         Message::OpenTaskFolder(gid) => {
             let dir = state

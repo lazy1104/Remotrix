@@ -1,10 +1,10 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use iced::widget::{button, column, row, text, Space};
+use iced::widget::scrollable::{self, Scrollbar};
+use iced::widget::{button, container, keyed_column, row, text, Space};
 use iced::{Alignment, Element, Length};
 
 use crate::task::format_size;
-use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::components::tri_checkbox::{tri_checkbox, CheckState};
 use crate::ui::components::truncated_text::truncated_text;
 use crate::ui::dims::*;
@@ -15,6 +15,11 @@ const INDENT_STEP: f32 = 14.0;
 const CHEVRON_SLOT: f32 = 20.0;
 const NONE_COLOR: iced::Color = iced::Color::from_rgb(0.55, 0.55, 0.55);
 const MAX_TREE_DEPTH: usize = 128;
+const ROW_PITCH: f32 = 24.0;
+const VIRTUAL_BUFFER_ROWS: usize = 40;
+const VIRTUAL_WINDOW_ROWS: usize = 200;
+const SPACER_TOP_KEY: u64 = u64::MAX - 1;
+const SPACER_BOTTOM_KEY: u64 = u64::MAX;
 
 #[derive(Debug, Clone)]
 pub struct FileTreeNode {
@@ -188,24 +193,54 @@ pub fn collect_dir_paths(nodes: &[FileTreeNode], out: &mut HashSet<String>) {
     }
 }
 
-fn dir_state(node: &FileTreeNode, is_selected: &impl Fn(u64) -> bool) -> Option<bool> {
-    let indices = descendant_indices(node);
-    let mut all = true;
-    let mut any = false;
-    for i in indices {
-        let selected = is_selected(i);
-        all &= selected;
-        any |= selected;
+#[derive(Clone, Default)]
+struct DirAgg {
+    selected: u32,
+    total: u32,
+    done: u64,
+}
+
+fn collect_aggregates(
+    node: &FileTreeNode,
+    is_selected: &impl Fn(u64) -> bool,
+    progress: Option<&impl Fn(u64) -> Option<(u64, u64)>>,
+    out: &mut HashMap<String, DirAgg>,
+) -> DirAgg {
+    let mut agg = DirAgg::default();
+    for child in &node.children {
+        let child_agg = collect_aggregates(child, is_selected, progress, out);
+        agg.selected += child_agg.selected;
+        agg.total += child_agg.total;
+        agg.done += child_agg.done;
     }
-    if all {
-        Some(true)
-    } else if any {
-        Some(false)
+    if node.is_dir {
+        out.insert(node.rel_path.clone(), agg.clone());
     } else {
-        None
+        let idx = node.file_index.unwrap_or(0);
+        agg.selected += u32::from(is_selected(idx));
+        agg.total += 1;
+        if let Some(p) = progress {
+            agg.done += p(idx).map(|(d, _)| d).unwrap_or(0);
+        }
+    }
+    agg
+}
+
+fn flatten_visible<'a>(
+    node: &'a FileTreeNode,
+    expanded: &HashSet<String>,
+    out: &mut Vec<(&'a FileTreeNode, u32)>,
+    depth: u32,
+) {
+    out.push((node, depth));
+    if node.is_dir && expanded.contains(&node.rel_path) {
+        for child in &node.children {
+            flatten_visible(child, expanded, out, depth + 1);
+        }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn view<'a, M>(
     nodes: &'a [FileTreeNode],
     expanded: &'a HashSet<String>,
@@ -214,70 +249,67 @@ pub fn view<'a, M>(
     enabled: bool,
     on_toggle: &'a impl Fn(String) -> M,
     on_expand: &impl Fn(String) -> M,
+    scroll_offset: f32,
+    on_scroll: &'a impl Fn(f32) -> M,
 ) -> Element<'a, M>
 where
     M: Clone + 'a,
 {
-    let mut col = column![].spacing(SPACE_SM).width(Length::Fill);
+    let mut aggs: HashMap<String, DirAgg> = HashMap::new();
     for node in nodes {
-        col = col.push(render_node(
-            node,
-            0,
-            expanded,
-            is_selected,
-            progress,
-            enabled,
-            on_toggle,
-            on_expand,
-        ));
+        collect_aggregates(node, is_selected, progress, &mut aggs);
     }
-    slim_scrollable(col).height(Length::Fill).into()
-}
 
-#[allow(clippy::too_many_arguments)]
-fn render_node<'a, M>(
-    node: &'a FileTreeNode,
-    depth: u32,
-    expanded: &'a HashSet<String>,
-    is_selected: &impl Fn(u64) -> bool,
-    progress: Option<&impl Fn(u64) -> Option<(u64, u64)>>,
-    enabled: bool,
-    on_toggle: &'a impl Fn(String) -> M,
-    on_expand: &impl Fn(String) -> M,
-) -> Element<'a, M>
-where
-    M: Clone + 'a,
-{
-    if node.is_dir {
-        let mut col = column![].spacing(SPACE_XS).width(Length::Fill);
-        col = col.push(render_dir_row(
-            node,
-            depth,
-            expanded,
-            is_selected,
-            progress,
-            enabled,
-            on_toggle,
-            on_expand,
-        ));
-        if expanded.contains(&node.rel_path) {
-            for child in &node.children {
-                col = col.push(render_node(
-                    child,
-                    depth + 1,
-                    expanded,
-                    is_selected,
-                    progress,
-                    enabled,
-                    on_toggle,
-                    on_expand,
-                ));
-            }
-        }
-        col.into()
-    } else {
-        render_file_row(node, depth, is_selected, progress, enabled, on_toggle)
+    let mut rows: Vec<(&FileTreeNode, u32)> = Vec::with_capacity(nodes.len());
+    for node in nodes {
+        flatten_visible(node, expanded, &mut rows, 0);
     }
+    let total = rows.len();
+
+    let first = (scroll_offset / ROW_PITCH).floor().max(0.0) as usize;
+    let first = first.saturating_sub(VIRTUAL_BUFFER_ROWS).min(total);
+    let last = (first + VIRTUAL_WINDOW_ROWS).min(total);
+
+    let default_agg = DirAgg::default();
+    let mut items: Vec<(u64, Element<'a, M>)> = Vec::with_capacity(last - first + 2);
+    items.push((
+        SPACER_TOP_KEY,
+        Space::new()
+            .height(Length::Fixed(first as f32 * ROW_PITCH))
+            .into(),
+    ));
+    for (i, (node, depth)) in rows[first..last].iter().enumerate() {
+        let el = if node.is_dir {
+            let agg = aggs.get(&node.rel_path).unwrap_or(&default_agg);
+            render_dir_row(
+                node, *depth, expanded, agg, progress, enabled, on_toggle, on_expand,
+            )
+        } else {
+            render_file_row(node, *depth, is_selected, progress, enabled, on_toggle)
+        };
+        items.push(((first + i) as u64, el));
+    }
+    items.push((
+        SPACER_BOTTOM_KEY,
+        Space::new()
+            .height(Length::Fixed((total - last) as f32 * ROW_PITCH))
+            .into(),
+    ));
+    let col = keyed_column(items).spacing(SPACE_NONE).width(Length::Fill);
+
+    iced::widget::scrollable(
+        container(col)
+            .width(Length::Fill)
+            .padding(iced::padding::bottom(5.0)),
+    )
+    .direction(scrollable::Direction::Vertical(
+        Scrollbar::new().width(6.0).scroller_width(6.0),
+    ))
+    .spacing(SPACE_SCROLL)
+    .style(theme::style::scrollable::standard)
+    .height(Length::Fill)
+    .on_scroll(move |v: scrollable::Viewport| on_scroll(v.absolute_offset().y))
+    .into()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -285,7 +317,7 @@ fn render_dir_row<'a, M>(
     node: &'a FileTreeNode,
     depth: u32,
     expanded: &'a HashSet<String>,
-    is_selected: &impl Fn(u64) -> bool,
+    agg: &DirAgg,
     progress: Option<&impl Fn(u64) -> Option<(u64, u64)>>,
     enabled: bool,
     on_toggle: &'a impl Fn(String) -> M,
@@ -307,11 +339,12 @@ where
             .style(theme::style::button::toolbar_icon(false))
     };
 
-    let state = dir_state(node, is_selected);
-    let check_state = match state {
-        Some(true) => CheckState::Checked,
-        Some(false) => CheckState::Partial,
-        None => CheckState::Unchecked,
+    let check_state = if agg.total > 0 && agg.selected == agg.total {
+        CheckState::Checked
+    } else if agg.selected > 0 {
+        CheckState::Partial
+    } else {
+        CheckState::Unchecked
     };
     let mut chk = tri_checkbox(check_state).size(16.0);
     if enabled {
@@ -321,12 +354,8 @@ where
         chk = chk.on_toggle_maybe(None::<fn() -> M>);
     }
 
-    let size_text = if let Some(p) = progress {
-        let done: u64 = descendant_indices(node)
-            .iter()
-            .map(|&i| p(i).map(|(d, _)| d).unwrap_or(0))
-            .sum();
-        format!("{} / {}", format_size(done), format_size(node.length))
+    let size_text = if progress.is_some() {
+        format!("{} / {}", format_size(agg.done), format_size(node.length))
     } else {
         format_size(node.length)
     };
@@ -350,6 +379,7 @@ where
         .spacing(SPACE_SM)
         .align_y(Alignment::Center)
         .width(Length::Fill)
+        .height(Length::Fixed(ROW_PITCH))
         .into()
 }
 
@@ -404,5 +434,6 @@ where
         .spacing(SPACE_SM)
         .align_y(Alignment::Center)
         .width(Length::Fill)
+        .height(Length::Fixed(ROW_PITCH))
         .into()
 }

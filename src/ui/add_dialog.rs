@@ -37,6 +37,8 @@ pub struct AddDialogState {
     pub torrent_tree: Vec<FileTreeNode>,
     pub torrent_expanded: std::collections::HashSet<String>,
     pub torrent_parse_failed: bool,
+    pub torrent_scroll_offset: f32,
+    pub torrent_panel_collapsed: bool,
     pub out: String,
     pub advanced_open: bool,
     pub user_agent: String,
@@ -62,6 +64,8 @@ impl AddDialogState {
             torrent_tree: Vec::new(),
             torrent_expanded: std::collections::HashSet::new(),
             torrent_parse_failed: false,
+            torrent_scroll_offset: 0.0,
+            torrent_panel_collapsed: false,
             out: String::new(),
             advanced_open: false,
             user_agent: String::new(),
@@ -86,6 +90,8 @@ impl AddDialogState {
         self.torrent_tree.clear();
         self.torrent_expanded.clear();
         self.torrent_parse_failed = false;
+        self.torrent_scroll_offset = 0.0;
+        self.torrent_panel_collapsed = false;
         self.out.clear();
         self.advanced_open = false;
         self.user_agent.clear();
@@ -147,6 +153,7 @@ impl AddDialogState {
             self.torrent_tree.clear();
             self.torrent_expanded.clear();
             self.torrent_parse_failed = false;
+            self.torrent_scroll_offset = 0.0;
             return;
         }
         let bytes = std::fs::read(&path).ok();
@@ -172,12 +179,14 @@ impl AddDialogState {
                 self.torrent_expanded.clear();
                 file_tree::collect_dir_paths(&self.torrent_tree, &mut self.torrent_expanded);
                 self.torrent_parse_failed = false;
+                self.torrent_scroll_offset = 0.0;
             }
             None => {
                 self.torrent_files.clear();
                 self.torrent_tree.clear();
                 self.torrent_expanded.clear();
                 self.torrent_parse_failed = true;
+                self.torrent_scroll_offset = 0.0;
             }
         }
     }
@@ -197,6 +206,7 @@ impl AddDialogState {
             self.torrent_tree.clear();
             self.torrent_expanded.clear();
             self.torrent_parse_failed = false;
+            self.torrent_scroll_offset = 0.0;
         }
         action
     }
@@ -224,6 +234,10 @@ impl AddDialogState {
         if !self.torrent_expanded.remove(&path) {
             self.torrent_expanded.insert(path);
         }
+    }
+
+    pub fn toggle_torrent_panel(&mut self) {
+        self.torrent_panel_collapsed = !self.torrent_panel_collapsed;
     }
 
     pub fn set_all_torrent_files(&mut self, selected: bool) {
@@ -413,10 +427,14 @@ pub fn view<'a>(
                     &is_selected,
                     None::<&fn(u64) -> Option<(u64, u64)>>,
                     true,
+                    state.torrent_panel_collapsed,
                     &torrent_tree_toggle,
                     &torrent_tree_expand,
                     Message::TorrentFilesSelectAll,
                     Message::TorrentFilesSelectNone,
+                    Some(Message::TorrentFilesTogglePanel),
+                    state.torrent_scroll_offset,
+                    &torrent_files_scroll,
                 ));
                 body_items.push(selected_line.into());
             }
@@ -570,4 +588,8 @@ fn torrent_tree_toggle(path: String) -> Message {
 
 fn torrent_tree_expand(path: String) -> Message {
     Message::TorrentTreeExpand(path)
+}
+
+fn torrent_files_scroll(y: f32) -> Message {
+    Message::TorrentFilesScroll(y)
 }

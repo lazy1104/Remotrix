@@ -1,17 +1,19 @@
 use std::collections::HashSet;
 
-use iced::widget::{column, container, row, rule, text};
+use iced::widget::{button, column, container, row, rule, text};
 use iced::{Alignment, Element, Length};
 
-use crate::i18n::Fluent;
+use crate::i18n::{Fluent, Tr};
 use crate::ui::components::file_tree::{self, FileTreeNode};
+use crate::ui::components::tooltip;
 use crate::ui::components::tri_checkbox::{tri_checkbox, CheckState};
 use crate::ui::dims::*;
+use crate::ui::icon;
 use crate::ui::theme;
 
 #[allow(clippy::too_many_arguments)]
 pub fn view<'a, M>(
-    _fluent: &'a Fluent,
+    fluent: &'a Fluent,
     _theme: &'a iced::Theme,
     title: String,
     subtitle: Option<String>,
@@ -21,10 +23,14 @@ pub fn view<'a, M>(
     is_selected: &impl Fn(u64) -> bool,
     progress: Option<&impl Fn(u64) -> Option<(u64, u64)>>,
     enabled: bool,
+    collapsed: bool,
     on_toggle: &'a impl Fn(String) -> M,
     on_expand: &impl Fn(String) -> M,
     on_select_all: M,
     on_select_none: M,
+    on_toggle_collapse: Option<M>,
+    scroll_offset: f32,
+    on_scroll: &'a impl Fn(f32) -> M,
 ) -> Element<'a, M>
 where
     M: Clone + 'a,
@@ -69,12 +75,34 @@ where
                 .style(theme::style::text::secondary),
         );
     }
+    if let Some(msg) = on_toggle_collapse {
+        let (icon, label) = if collapsed {
+            (icon::expand(), fluent.get(Tr::ExpandList))
+        } else {
+            (icon::collapse(), fluent.get(Tr::CollapseList))
+        };
+        let btn = button(icon.size(FONT_SMALL))
+            .padding(PADDING_XS)
+            .style(theme::style::button::toolbar_icon(false));
+        let btn = if enabled {
+            btn.on_press(msg)
+        } else {
+            btn.on_press_maybe(None)
+        };
+        header = header.push(tooltip::standard(
+            btn,
+            text(label).size(FONT_TINY),
+            iced::widget::tooltip::Position::Bottom,
+        ));
+    }
     header = header
         .spacing(SPACE_SM)
         .align_y(Alignment::Center)
         .width(Length::Fill);
 
-    container(
+    let content = if collapsed {
+        column![header].spacing(SPACE_MD).width(Length::Fill)
+    } else {
         column![]
             .push(header)
             .push(rule::horizontal(1))
@@ -86,18 +114,22 @@ where
                 enabled,
                 on_toggle,
                 on_expand,
+                scroll_offset,
+                on_scroll,
             ))
             .spacing(SPACE_MD)
-            .width(Length::Fill),
-    )
-    .width(Length::Fill)
-    .height(height)
-    .padding(iced::Padding {
-        top: SPACE_LG,
-        right: SPACE_MD,
-        bottom: PADDING_XS as f32,
-        left: SPACE_MD,
-    })
-    .style(theme::style::tree_frame)
-    .into()
+            .width(Length::Fill)
+    };
+
+    container(content)
+        .width(Length::Fill)
+        .height(if collapsed { Length::Shrink } else { height })
+        .padding(iced::Padding {
+            top: SPACE_LG,
+            right: SPACE_MD,
+            bottom: PADDING_XS as f32,
+            left: SPACE_MD,
+        })
+        .style(theme::style::tree_frame)
+        .into()
 }

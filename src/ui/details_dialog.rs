@@ -23,6 +23,7 @@ pub struct DetailsDialogState {
     pub loading: bool,
     pub files_expanded: HashSet<String>,
     pub files_tree: Vec<file_tree::FileTreeNode>,
+    pub files_scroll_offset: f32,
 }
 
 impl DetailsDialogState {
@@ -35,6 +36,7 @@ impl DetailsDialogState {
             loading: false,
             files_expanded: HashSet::new(),
             files_tree: Vec::new(),
+            files_scroll_offset: 0.0,
         }
     }
 
@@ -45,6 +47,7 @@ impl DetailsDialogState {
         self.details = None;
         self.loading = true;
         self.files_expanded.clear();
+        self.files_scroll_offset = 0.0;
     }
 
     pub fn close(&mut self) {
@@ -54,6 +57,7 @@ impl DetailsDialogState {
         self.loading = false;
         self.files_expanded.clear();
         self.files_tree.clear();
+        self.files_scroll_offset = 0.0;
     }
 
     pub fn is_visible(&self) -> bool {
@@ -371,10 +375,14 @@ fn files_tab<'a>(
             &is_selected,
             Some(&progress),
             enabled,
+            false,
             &details_tree_toggle,
             &details_tree_expand,
             Message::DetailsFilesSelectAll,
             Message::DetailsFilesSelectNone,
+            None,
+            state.files_scroll_offset,
+            &details_files_scroll,
         )
     } else {
         container(
@@ -409,4 +417,8 @@ fn details_tree_toggle(path: String) -> Message {
 
 fn details_tree_expand(path: String) -> Message {
     Message::DetailsTreeExpand(path)
+}
+
+fn details_files_scroll(y: f32) -> Message {
+    Message::DetailsFilesScroll(y)
 }
