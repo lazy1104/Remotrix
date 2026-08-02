@@ -288,6 +288,12 @@ impl Sidecar {
         for arg in settings.aria2.ed2k_startup_args() {
             cmd.arg(arg);
         }
+        if let Some(log_file) = crate::logging::engine_log_path() {
+            let level = crate::logging::normalize_engine_level(&settings.log.engine_level);
+            cmd.arg("--log").arg(&log_file);
+            cmd.arg("--log-level").arg(&level);
+            tracing::info!(?log_file, level, "aria2-next log file");
+        }
         let mut child = cmd
             .arg("--enable-rpc")
             .arg("--rpc-listen-all=false")

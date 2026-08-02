@@ -85,6 +85,7 @@ pub fn view<'a>(
     settings_ui: &'a SettingsUiState,
     category: SettingsCategory,
     applied_settings: &'a Settings,
+    engine_restart_pending: bool,
     aria2_version: Option<&'a str>,
     aria2_check_msg: Option<&'a str>,
     aria2_status: Option<(&'a str, &'a str)>,
@@ -108,6 +109,8 @@ pub fn view<'a>(
             fluent,
             theme,
             settings,
+            applied_settings,
+            engine_restart_pending,
             aria2_version,
             aria2_check_msg,
             aria2_status,
@@ -815,6 +818,8 @@ fn advanced_view<'a>(
     fluent: &'a Fluent,
     theme: &'a iced::Theme,
     settings: &'a Settings,
+    applied_settings: &'a Settings,
+    engine_restart_pending: bool,
     aria2_version: Option<&'a str>,
     aria2_check_msg: Option<&'a str>,
     aria2_status: Option<(&'a str, &'a str)>,
@@ -871,14 +876,6 @@ fn advanced_view<'a>(
             theme,
             fluent.get(Tr::EngineSessionFile),
             &sf.to_string_lossy(),
-        ));
-    }
-    if let Some(dir) = crate::config::log_dir() {
-        engine_rows.push(labeled_readonly(
-            fluent,
-            theme,
-            fluent.get(Tr::EngineLogFile),
-            &dir.to_string_lossy(),
         ));
     }
 
@@ -1033,9 +1030,117 @@ fn advanced_view<'a>(
             1,
             SettingKey::DiskCache,
         ))
+        .push(group_title(fluent, Tr::Logging, accent))
+        .push(logging_view(
+            fluent,
+            theme,
+            settings,
+            applied_settings,
+            engine_restart_pending,
+        ))
         .push(group_title(fluent, Tr::Engine, accent))
         .push(engine_col)
         .into()
+}
+
+fn logging_view<'a>(
+    fluent: &'a Fluent,
+    theme: &'a iced::Theme,
+    settings: &'a Settings,
+    applied_settings: &'a Settings,
+    engine_restart_pending: bool,
+) -> Element<'a, Message> {
+    let placeholder = fluent.get(Tr::SelectPlaceholder);
+
+    let app_opts: Vec<Labeled<String>> = crate::logging::app_level_options()
+        .iter()
+        .map(|level| Labeled {
+            value: level.to_string(),
+            label: level_label(fluent, level),
+        })
+        .collect();
+    let engine_opts: Vec<Labeled<String>> = crate::logging::engine_level_options()
+        .iter()
+        .map(|level| Labeled {
+            value: level.to_string(),
+            label: level_label(fluent, level),
+        })
+        .collect();
+
+    let sel_app = app_opts
+        .iter()
+        .find(|o| o.value == settings.log.app_level)
+        .cloned();
+    let sel_engine = engine_opts
+        .iter()
+        .find(|o| o.value == settings.log.engine_level)
+        .cloned();
+
+    let mut col = column![].spacing(SPACE_SM);
+
+    if let Some(dir) = crate::config::log_dir() {
+        col = col.push(labeled_readonly(
+            fluent,
+            theme,
+            fluent.get(Tr::LogLocation),
+            &dir.to_string_lossy(),
+        ));
+    }
+
+    col = col.push(setting_row(
+        fluent.get(Tr::LogLevelApp),
+        pick_list(app_opts, sel_app, |opt| {
+            Message::SettingChanged(SettingKey::AppLogLevel, opt.value)
+        })
+        .placeholder(&placeholder)
+        .width(Length::Fixed(140.0))
+        .style(theme::style::pick_list::standard)
+        .menu_style(theme::style::pick_list::menu)
+        .into(),
+    ));
+    col = col.push(setting_row(
+        fluent.get(Tr::LogLevelEngine),
+        pick_list(engine_opts, sel_engine, |opt| {
+            Message::SettingChanged(SettingKey::EngineLogLevel, opt.value)
+        })
+        .placeholder(&placeholder)
+        .width(Length::Fixed(140.0))
+        .style(theme::style::pick_list::standard)
+        .menu_style(theme::style::pick_list::menu)
+        .into(),
+    ));
+
+    if engine_restart_pending || settings.log.engine_level != applied_settings.log.engine_level {
+        col = col.push(
+            text(fluent.get(Tr::LogLevelEngineHint))
+                .size(FONT_SMALL)
+                .style(theme::style::text::secondary),
+        );
+    }
+
+    col = col.push(setting_row(
+        String::new(),
+        button(text(fluent.get(Tr::ClearLogs)).size(FONT_BODY))
+            .on_press(Message::ClearLogs)
+            .padding(PADDING_BUTTON_SM)
+            .style(theme::style::button::secondary())
+            .into(),
+    ));
+
+    col.into()
+}
+
+fn level_label(fluent: &Fluent, level: &str) -> String {
+    let key = match level {
+        "trace" => Tr::LevelTrace,
+        "debug" => Tr::LevelDebug,
+        "info" => Tr::LevelInfo,
+        "notice" => Tr::LevelNotice,
+        "warn" => Tr::LevelWarn,
+        "error" => Tr::LevelError,
+        _ => return level.to_string(),
+    };
+    fluent.get(key)
 }
 
 fn setting_row<'a>(label: String, control: Element<'a, Message>) -> Element<'a, Message> {

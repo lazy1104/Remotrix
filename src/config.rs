@@ -197,6 +197,31 @@ fn default_schedule_end() -> String {
     "07:00".into()
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LogPrefs {
+    #[serde(default = "default_app_log_level")]
+    pub app_level: String,
+    #[serde(default = "default_engine_log_level")]
+    pub engine_level: String,
+}
+
+impl Default for LogPrefs {
+    fn default() -> Self {
+        Self {
+            app_level: default_app_log_level(),
+            engine_level: default_engine_log_level(),
+        }
+    }
+}
+
+fn default_app_log_level() -> String {
+    crate::logging::DEFAULT_APP_LEVEL.into()
+}
+
+fn default_engine_log_level() -> String {
+    crate::logging::DEFAULT_ENGINE_LEVEL.into()
+}
+
 pub fn all_proxy_url(server: &str, username: &str, password: &str) -> Option<String> {
     if server.trim().is_empty() {
         return None;
@@ -476,6 +501,8 @@ pub struct Settings {
     #[serde(default)]
     pub speed_limit_schedule: SpeedLimitSchedule,
     #[serde(default)]
+    pub log: LogPrefs,
+    #[serde(default)]
     pub schedules: Vec<ScheduledTask>,
 }
 
@@ -494,6 +521,7 @@ impl Settings {
             && self.clipboard_types == other.clipboard_types
             && self.aria2 == other.aria2
             && self.speed_limit_schedule == other.speed_limit_schedule
+            && self.log == other.log
     }
 
     pub fn record_path(&mut self, key: &str, path: &str) {
@@ -535,6 +563,7 @@ impl Default for Settings {
             window_maximized: false,
             path_history: std::collections::HashMap::new(),
             speed_limit_schedule: SpeedLimitSchedule::default(),
+            log: LogPrefs::default(),
             schedules: Vec::new(),
         }
     }
@@ -655,6 +684,9 @@ pub fn announce() {
     }
     if let Some(p) = log_dir() {
         tracing::info!(?p, "log dir");
+    }
+    if let Some(p) = crate::logging::engine_log_path() {
+        tracing::info!(?p, "engine log path");
     }
     if let Some(p) = aria2_dir() {
         tracing::info!(?p, "aria2 dir");

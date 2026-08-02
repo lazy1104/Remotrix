@@ -72,6 +72,7 @@ pub struct Remotrix {
     applied_settings: Settings,
     applied_font_family: String,
     restart_pending: bool,
+    engine_restart_pending: bool,
     settings_ui: SettingsUiState,
     global_speed: Option<(u64, u64)>,
     paused_gids: HashSet<String>,
@@ -138,6 +139,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         applied_settings: settings.clone(),
         applied_font_family: settings.font_family.clone(),
         restart_pending: false,
+        engine_restart_pending: false,
         settings,
         fluent,
         theme,
@@ -235,6 +237,8 @@ fn revert_apply_settings(state: &mut Remotrix) {
         .ed2k_node_list_picker
         .set_value(state.settings.aria2.ed2k_node_list.clone());
     state.ua_editor = text_editor::Content::with_text(&state.settings.aria2.user_agent);
+    state.settings.log = state.applied_settings.log.clone();
+    crate::logging::set_app_level(&state.settings.log.app_level);
 }
 
 fn clear_all_local(state: &mut Remotrix) {
@@ -1073,11 +1077,22 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 }
                 state.settings_ui.schedule_end_picker_open = false;
             }
+            SettingKey::AppLogLevel => {
+                state.settings.log.app_level = crate::logging::normalize_app_level(&value);
+                crate::logging::set_app_level(&state.settings.log.app_level);
+            }
+            SettingKey::EngineLogLevel => {
+                state.settings.log.engine_level = crate::logging::normalize_engine_level(&value);
+            }
         },
         Message::ApplySettings => {
             config::save(&state.settings);
             let opts = state.settings.effective_task_options();
-            tracing::info!("ui: apply settings");
+            tracing::info!(
+                app_log_level = %state.settings.log.app_level,
+                engine_log_level = %state.settings.log.engine_level,
+                "ui: apply settings"
+            );
             if state
                 .handle
                 .cmd_tx
@@ -1102,12 +1117,38 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             {
                 tracing::warn!("ui: restart engine cmd send failed");
             }
+            if !state
+                .settings
+                .aria2
+                .ed2k_equal(&state.applied_settings.aria2)
+                || state.settings.log.engine_level != state.applied_settings.log.engine_level
+            {
+                state.engine_restart_pending = true;
+            }
             state.applied_settings = state.settings.clone();
         }
         Message::ResetSettings => {
             revert_apply_settings(state);
             config::save(&state.settings);
         }
+        Message::ClearLogs => match crate::logging::clear_logs() {
+            Ok(count) => {
+                tracing::info!(count, "ui: cleared log files");
+                let mut toast = Toast::new(ToastKind::Success, state.fluent.get(Tr::LogsCleared))
+                    .close_after(Some(Duration::from_secs(3)));
+                toast.id = state.next_toast_id;
+                state.next_toast_id += 1;
+                push_toast(state, toast);
+            }
+            Err(e) => {
+                tracing::warn!(?e, "ui: clear log files failed");
+                let mut toast = Toast::new(ToastKind::Error, state.fluent.get(Tr::LogsClearFailed))
+                    .close_after(Some(Duration::from_secs(5)));
+                toast.id = state.next_toast_id;
+                state.next_toast_id += 1;
+                push_toast(state, toast);
+            }
+        },
         Message::Engine(event) => match event {
             EngineEvent::EngineReady => {
                 tracing::info!("engine ready");
@@ -1121,6 +1162,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     dismiss_toast(state, id);
                 }
                 state.startup_starting_toast_shown = false;
+                state.engine_restart_pending = false;
                 state.aria2_status = Some(("ready".to_string(), state.fluent.get(Tr::Aria2Ready)));
                 let (_, task) = spawn_toast(
                     state,
@@ -2008,6 +2050,11 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         }
         Message::ApplyAndLeaveSettings => {
             if let Some(ConfirmAction::LeaveSettings { target }) = state.confirm.take() {
+                tracing::info!(
+                    app_log_level = %state.settings.log.app_level,
+                    engine_log_level = %state.settings.log.engine_level,
+                    "ui: apply settings (leave)"
+                );
                 config::save(&state.settings);
                 let opts = state.settings.effective_task_options();
                 let _ = state
@@ -2021,6 +2068,14 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     .ed2k_equal(&state.applied_settings.aria2)
                 {
                     let _ = state.handle.cmd_tx.send(EngineCmd::RestartEngine);
+                }
+                if !state
+                    .settings
+                    .aria2
+                    .ed2k_equal(&state.applied_settings.aria2)
+                    || state.settings.log.engine_level != state.applied_settings.log.engine_level
+                {
+                    state.engine_restart_pending = true;
                 }
                 state.applied_settings = state.settings.clone();
                 state.page = target;
@@ -2146,6 +2201,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             &state.settings_ui,
             state.settings_cat,
             &state.applied_settings,
+            state.engine_restart_pending,
             state.aria2_version.as_deref(),
             state.aria2_check_msg.as_deref(),
             state

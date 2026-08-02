@@ -132,6 +132,7 @@ pub enum Message {
     RetryAria2Fetch,
     RestartEngine,
     SetAutoCheck(bool),
+    ClearLogs,
     CheckMissingFiles,
     ToggleScheduleStartPicker,
     ToggleScheduleEndPicker,
@@ -294,6 +295,8 @@ pub enum SettingKey {
     SpeedLimitScheduleEnabled,
     ScheduleStart,
     ScheduleEnd,
+    AppLogLevel,
+    EngineLogLevel,
 }
 
 impl TaskStatus {
