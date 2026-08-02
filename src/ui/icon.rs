@@ -1,6 +1,6 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// 344038c204d91e8c9acbd1497e61fc14b2087fdaf2f05326671fae58481b7000
+// 1b26fabcae9ec29dac3cc1699fa8b4bdd7c1b1dace99c67b8c30e658b8eb57ba
 use iced::widget::{text, Text};
 use iced::Font;
 
@@ -17,6 +17,7 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("circle_check", "\u{E226}"),
     ("circle_help", "\u{E082}"),
     ("circle_x", "\u{E084}"),
+    ("clock", "\u{E087}"),
     ("collapse", "\u{E228}"),
     ("connections", "\u{E37F}"),
     ("copy", "\u{E09E}"),
@@ -76,6 +77,10 @@ pub fn circle_help<'a>() -> Text<'a> {
 
 pub fn circle_x<'a>() -> Text<'a> {
     icon("\u{E084}")
+}
+
+pub fn clock<'a>() -> Text<'a> {
+    icon("\u{E087}")
 }
 
 pub fn collapse<'a>() -> Text<'a> {

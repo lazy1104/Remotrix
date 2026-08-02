@@ -29,6 +29,7 @@ fn main() -> iced::Result {
         )
         .font(crate::ui::icon::FONT as &[_])
         .font(include_bytes!("../fonts/HarmonyOS_Sans_SC_Regular.ttf") as &[_])
+        .font(iced_aw::ICED_AW_FONT_BYTES)
         .default_font(crate::ui::theme::font_from_family(&cfg.font_family))
         .window(iced::window::Settings {
             size: iced::Size::new(w, h),

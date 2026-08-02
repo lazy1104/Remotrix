@@ -103,7 +103,7 @@ futures = "0.3"
 base64 = "0.22"
 hex = "0.4"
 num-traits = "0.2"
-iced_aw = { version = "0.14", default-features = false, features = ["number_input", "drop_down"] }
+iced_aw = { version = "0.14", default-features = false, features = ["time_picker"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 sha2 = "0.10"
 rusqlite = { version = "0.32", features = ["bundled"] }
@@ -117,6 +117,7 @@ iced_lucide = "0.1"
 ## Code Conventions
 - **Module structure**: `src/` with flat top-level modules (`app.rs`, `config.rs`, `db.rs`, `engine.rs`, `aria2_fetcher.rs`, `updater.rs`, `message.rs`, `task.rs`, `i18n.rs`) + `ui/` subdirectory
 - **UI pattern**: Each page is a `fn` returning `iced::Element<'_, Message, Theme>`; no widget OOP wrappers
+- **Time pickers** (`Settings > Download > Speed Limits`): `iced_aw` clock component (`time_picker` feature) wrapped in `src/ui/components/time_picker.rs`; the wrapper re-seeds iced_aw state on the open transition via `tree.children[0].state` so reopening shows the committed value.
 - **Theme**: single accent color → iced `Theme::custom` palette generation (`src/ui/theme.rs`), with the background derived as an M3-style surface from the accent hue (`surface_from_seed`); colors read from `iced::Theme::extended_palette()`, no hardcoded palette constants.
 - **Naming**: `snake_case` for fns/vars, `PascalCase` for types/enums, `SCREAMING_SNAKE` for constants
 - **Error handling**: Use `String` errors in engine layer, map to `EngineEvent::EngineStopped` for fatal

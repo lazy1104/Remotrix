@@ -36,6 +36,7 @@ croner = "3"
 open = "5"
 libc = "0.2"
 fontdb = "0.23"
+iced_aw = { version = "0.14", default-features = false, features = ["time_picker"] }
 
 [build-dependencies]
 iced_lucide = "0.1"

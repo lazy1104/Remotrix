@@ -538,7 +538,6 @@ fn download_view<'a>(
                             settings_ui.schedule_start_picker_open,
                             Message::ToggleScheduleStartPicker,
                             move |s| Message::SettingChanged(SettingKey::ScheduleStart, s),
-                            Length::Fixed(160.0),
                         ),
                     ),
                     setting_row(
@@ -548,7 +547,6 @@ fn download_view<'a>(
                             settings_ui.schedule_end_picker_open,
                             Message::ToggleScheduleEndPicker,
                             move |s| Message::SettingChanged(SettingKey::ScheduleEnd, s),
-                            Length::Fixed(160.0),
                         ),
                     ),
                     text(fluent.get(Tr::ScheduleHint))

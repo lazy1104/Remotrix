@@ -1065,11 +1065,13 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 if crate::scheduler::parse_hhmm(&value).is_some() {
                     state.settings.speed_limit_schedule.start = value;
                 }
+                state.settings_ui.schedule_start_picker_open = false;
             }
             SettingKey::ScheduleEnd => {
                 if crate::scheduler::parse_hhmm(&value).is_some() {
                     state.settings.speed_limit_schedule.end = value;
                 }
+                state.settings_ui.schedule_end_picker_open = false;
             }
         },
         Message::ApplySettings => {
