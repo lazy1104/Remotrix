@@ -1,6 +1,6 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// e1efa297adccdd15841b624337981d5971a546d1c76a665011ed2adfb55b45d9
+// 733a7dee9ebff4bb208b78eee881bfd1816f7ecc6a86a3754409e36f1c3e1cbe
 use iced::widget::{text, Text};
 use iced::Font;
 
@@ -13,12 +13,13 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("arrow_up", "\u{E45A}"),
     ("chevron_down", "\u{E06D}"),
     ("chevron_right", "\u{E06F}"),
+    ("circle_alert", "\u{E077}"),
     ("circle_check", "\u{E226}"),
+    ("circle_help", "\u{E082}"),
     ("circle_x", "\u{E084}"),
     ("collapse", "\u{E228}"),
     ("connections", "\u{E37F}"),
     ("copy", "\u{E09E}"),
-    ("details", "\u{E0CC}"),
     ("download", "\u{E0B2}"),
     ("download_arrow", "\u{E455}"),
     ("eraser", "\u{E28F}"),
@@ -60,8 +61,16 @@ pub fn chevron_right<'a>() -> Text<'a> {
     icon("\u{E06F}")
 }
 
+pub fn circle_alert<'a>() -> Text<'a> {
+    icon("\u{E077}")
+}
+
 pub fn circle_check<'a>() -> Text<'a> {
     icon("\u{E226}")
+}
+
+pub fn circle_help<'a>() -> Text<'a> {
+    icon("\u{E082}")
 }
 
 pub fn circle_x<'a>() -> Text<'a> {
@@ -78,10 +87,6 @@ pub fn connections<'a>() -> Text<'a> {
 
 pub fn copy<'a>() -> Text<'a> {
     icon("\u{E09E}")
-}
-
-pub fn details<'a>() -> Text<'a> {
-    icon("\u{E0CC}")
 }
 
 pub fn download<'a>() -> Text<'a> {

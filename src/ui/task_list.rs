@@ -304,7 +304,7 @@ fn task_card<'a>(
     };
 
     let details_btn: Element<'a, Message> = {
-        let glyph = icon::details().size(FONT_ICON).color(text_secondary);
+        let glyph = icon::circle_alert().size(FONT_ICON).color(text_secondary);
         tip::standard(
             button(glyph)
                 .on_press(Message::OpenTaskDetails(t.gid.clone()))

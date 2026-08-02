@@ -1,10 +1,11 @@
-use iced::widget::{button, column, container, image, text};
+use iced::widget::{button, column, container, image, text, Text};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, Page};
 use crate::ui::components::tooltip;
 use crate::ui::dims::*;
+use crate::ui::icon;
 use crate::ui::theme;
 
 pub fn view<'a>(
@@ -23,11 +24,7 @@ pub fn view<'a>(
     .padding(PADDING_SIDEBAR_LOGO);
 
     let icon_btn =
-        |codepoint: char, tip: String, msg: Message, active: bool| -> Element<'a, Message> {
-            let glyph = text(codepoint.to_string())
-                .font(iced::Font::with_name("lucide"))
-                .size(FONT_DIALOG_TITLE)
-                .line_height(1.0);
+        |glyph: Text<'a>, tip: String, msg: Message, active: bool| -> Element<'a, Message> {
             let btn_content = container(glyph)
                 .center_x(Length::Fill)
                 .center_y(Length::Fill)
@@ -44,20 +41,25 @@ pub fn view<'a>(
         };
 
     let list_area = icon_btn(
-        '\u{E106}',
+        icon::list().size(FONT_DIALOG_TITLE).line_height(1.0),
         fluent.get(Tr::Tasks),
         Message::NavigatePage(Page::Tasks),
         page == Page::Tasks,
     );
     let new_area = icon_btn(
-        '\u{E13D}',
+        icon::plus().size(FONT_DIALOG_TITLE).line_height(1.0),
         fluent.get(Tr::New),
         Message::OpenAddDialog,
         false,
     );
-    let about_area = icon_btn('\u{E0F9}', fluent.get(Tr::About), Message::OpenAbout, false);
+    let about_area = icon_btn(
+        icon::circle_help().size(FONT_DIALOG_TITLE).line_height(1.0),
+        fluent.get(Tr::About),
+        Message::OpenAbout,
+        false,
+    );
     let sett_area = icon_btn(
-        '\u{E154}',
+        icon::settings().size(FONT_DIALOG_TITLE).line_height(1.0),
         fluent.get(Tr::Settings),
         Message::NavigatePage(Page::Settings),
         page == Page::Settings,
