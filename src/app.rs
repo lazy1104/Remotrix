@@ -904,6 +904,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             SettingKey::Locale => {
                 state.settings.locale = match value.as_str() {
+                    "system" => Locale::System,
                     "zh-CN" => Locale::ZhCN,
                     _ => Locale::EnUS,
                 };

@@ -202,6 +202,10 @@ fn general_view<'a>(
             fluent.get(Tr::Locale),
             vec![
                 Labeled {
+                    value: Locale::System,
+                    label: fluent.get(Tr::LocaleSystem),
+                },
+                Labeled {
                     value: Locale::ZhCN,
                     label: fluent.get(Tr::LocaleZh),
                 },

@@ -12,40 +12,37 @@ use serde::{Deserialize, Serialize};
 static EN: LanguageIdentifier = langid!("en");
 static ZH_CN: LanguageIdentifier = langid!("zh-CN");
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum Locale {
+    #[serde(rename = "system")]
+    #[default]
+    System,
     #[serde(rename = "zh-CN")]
     ZhCN,
     #[serde(rename = "en")]
     EnUS,
 }
 
-impl Default for Locale {
-    fn default() -> Self {
-        detect_locale()
-    }
-}
-
 impl Locale {
-    pub fn label(self) -> &'static str {
+    pub fn resolved(self) -> Locale {
         match self {
-            Locale::ZhCN => "中文",
-            Locale::EnUS => "English",
+            Locale::System => detect_locale(),
+            other => other,
         }
     }
 
     pub fn langid(&self) -> &'static LanguageIdentifier {
-        match self {
+        match self.resolved() {
             Locale::ZhCN => &ZH_CN,
-            Locale::EnUS => &EN,
+            _ => &EN,
         }
     }
 }
 
 pub fn detect_locale() -> Locale {
-    let lang = std::env::var("LANG")
-        .or_else(|_| std::env::var("LC_ALL"))
+    let lang = std::env::var("LC_ALL")
         .or_else(|_| std::env::var("LC_MESSAGES"))
+        .or_else(|_| std::env::var("LANG"))
         .unwrap_or_default();
     let lower = lang.to_lowercase();
     if lower.starts_with("zh") {
@@ -149,6 +146,7 @@ pub enum Tr {
     ThemeLight,
     ThemeSystem,
     Locale,
+    LocaleSystem,
     LocaleZh,
     LocaleEn,
     FontFamily,
@@ -381,6 +379,7 @@ impl Tr {
             Tr::ThemeLight => "theme-light",
             Tr::ThemeSystem => "theme-system",
             Tr::Locale => "locale",
+            Tr::LocaleSystem => "locale-system",
             Tr::LocaleZh => "locale-zh",
             Tr::LocaleEn => "locale-en",
             Tr::FontFamily => "font-family",
