@@ -248,7 +248,7 @@ pub fn view<'a>(
         column![]
             .spacing(SPACE_XL)
             .push(list)
-            .push(iced::widget::Space::new().height(Length::Fixed(72.0))),
+            .push(iced::widget::Space::new().height(Length::Fixed(36.0))),
     )
     .height(Length::Fill);
 
