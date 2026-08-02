@@ -379,9 +379,11 @@ pub mod style {
             background: Some(t.extended_palette().background.weak.color.into()),
             text_color: Some(t.extended_palette().background.weak.text),
             border: iced::Border {
+                color: super::border_color(t),
+                width: 1.0,
                 radius: super::RADIUS_BUTTON.into(),
-                ..Default::default()
             },
+            shadow: card_shadow(),
             ..Default::default()
         }
     }

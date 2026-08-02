@@ -39,7 +39,7 @@ pub fn view<'a>(
                 .on_press(msg)
                 .padding(PADDING_BUTTON_XS)
                 .style(theme::style::button::toolbar_icon(active));
-            tip::standard(btn, text(tip), tooltip::Position::Bottom)
+            tip::standard(btn, text(tip).size(FONT_SMALL), tooltip::Position::Bottom)
         };
 
     let sort_active = sort_menu_open || sort_field != SortField::AddedTime;
@@ -138,7 +138,7 @@ pub fn view<'a>(
             .style(theme::style::button::toolbar_icon(true));
         tip::standard(
             btn,
-            text(fluent.get(Tr::NewDownload)),
+            text(fluent.get(Tr::NewDownload)).size(FONT_SMALL),
             tooltip::Position::Bottom,
         )
     };
