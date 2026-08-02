@@ -410,7 +410,11 @@ fn begin_close(state: &mut Remotrix) -> Task<Message> {
     if state.handle.cmd_tx.send(EngineCmd::Shutdown).is_err() {
         tracing::warn!("ui: shutdown cmd send failed");
     }
-    shutdown_timeout_task()
+    let hide = state
+        .window_id
+        .map(|id| iced::window::set_mode::<Message>(id, iced::window::Mode::Hidden))
+        .unwrap_or_else(Task::none);
+    hide.chain(shutdown_timeout_task())
 }
 
 fn shutdown_timeout_task() -> Task<Message> {
