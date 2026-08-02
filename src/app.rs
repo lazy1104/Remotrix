@@ -9,7 +9,6 @@ use iced::futures::SinkExt;
 use iced::widget::{column, container, row, stack, text_editor};
 use iced::window::Id;
 use iced::{Element, Length, Padding, Subscription, Task};
-use sha2::{Digest, Sha256};
 
 use crate::config::{self, Settings};
 use crate::db::Db;
@@ -1639,21 +1638,10 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             };
             let trimmed = text.trim().to_string();
             let prefs = state.settings.clipboard_types;
-            let hash = hex::encode(Sha256::digest(
-                format!(
-                    "{trimmed}|{}{}{}{}{}{}",
-                    prefs.http,
-                    prefs.ftp,
-                    prefs.magnet,
-                    prefs.ed2k,
-                    prefs.thunder,
-                    prefs.bt_infohash
-                )
-                .as_bytes(),
-            ));
             return Task::perform(
                 async move {
                     let payload = crate::clipboard_watch::parse_clipboard(&trimmed, prefs);
+                    let hash = crate::clipboard_watch::payload_hash(&payload);
                     (payload, hash)
                 },
                 |(payload, hash)| Message::ClipboardParsed(payload, hash),

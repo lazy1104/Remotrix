@@ -1,8 +1,12 @@
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+
+pub const MAX_CLIPBOARD_CONTENT: u64 = 64 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ClipboardLinkTypes {
@@ -44,14 +48,20 @@ pub enum ClipboardPayload {
 }
 
 pub fn parse_clipboard(text: &str, prefs: ClipboardLinkTypes) -> Option<ClipboardPayload> {
+    if text.len() as u64 > MAX_CLIPBOARD_CONTENT {
+        return None;
+    }
     let lines: Vec<&str> = text
         .lines()
         .map(str::trim)
         .filter(|l| !l.is_empty())
         .collect();
     if lines.len() == 1 {
-        if let Some(path) = torrent_path_from_line(lines[0]) {
-            return Some(ClipboardPayload::Torrent(path));
+        if let Some((path, len)) = file_path_from_line(lines[0]) {
+            if is_torrent_path(&path) {
+                return Some(ClipboardPayload::Torrent(path));
+            }
+            return file_content_links(&path, len, prefs);
         }
     }
     let urls = extract_links(text, prefs);
@@ -59,6 +69,18 @@ pub fn parse_clipboard(text: &str, prefs: ClipboardLinkTypes) -> Option<Clipboar
         None
     } else {
         Some(ClipboardPayload::Urls(urls))
+    }
+}
+
+pub fn payload_hash(payload: &Option<ClipboardPayload>) -> String {
+    match payload {
+        Some(ClipboardPayload::Urls(urls)) => hex::encode(Sha256::digest(
+            format!("urls|{}", urls.join("\n")).as_bytes(),
+        )),
+        Some(ClipboardPayload::Torrent(path)) => hex::encode(Sha256::digest(
+            format!("torrent|{}", path.display()).as_bytes(),
+        )),
+        None => String::new(),
     }
 }
 
@@ -306,7 +328,7 @@ fn thunder_url(token: &str) -> String {
     }
 }
 
-fn torrent_path_from_line(line: &str) -> Option<PathBuf> {
+fn file_path_from_line(line: &str) -> Option<(PathBuf, u64)> {
     let line = line.trim();
     let decoded = line
         .strip_prefix("file://localhost")
@@ -314,14 +336,42 @@ fn torrent_path_from_line(line: &str) -> Option<PathBuf> {
         .map(percent_decode);
     let path_str = decoded.as_deref().unwrap_or(line);
     let path = PathBuf::from(path_str);
-    let is_torrent = path
-        .extension()
-        .map(|e| e.eq_ignore_ascii_case("torrent"))
-        .unwrap_or(false);
-    if is_torrent && path.is_file() {
-        Some(path)
+    let meta = std::fs::metadata(&path).ok()?;
+    if meta.is_file() {
+        Some((path, meta.len()))
     } else {
         None
+    }
+}
+
+fn is_torrent_path(path: &Path) -> bool {
+    path.extension()
+        .map(|e| e.eq_ignore_ascii_case("torrent"))
+        .unwrap_or(false)
+}
+
+fn file_content_links(
+    path: &Path,
+    len: u64,
+    prefs: ClipboardLinkTypes,
+) -> Option<ClipboardPayload> {
+    if len == 0 || len > MAX_CLIPBOARD_CONTENT {
+        return None;
+    }
+    let file = std::fs::File::open(path).ok()?;
+    let mut bytes = Vec::with_capacity(len as usize);
+    file.take(MAX_CLIPBOARD_CONTENT + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    if bytes.len() as u64 > MAX_CLIPBOARD_CONTENT {
+        return None;
+    }
+    let content = String::from_utf8(bytes).ok()?;
+    let urls = extract_links(&content, prefs);
+    if urls.is_empty() {
+        None
+    } else {
+        Some(ClipboardPayload::Urls(urls))
     }
 }
 
@@ -495,5 +545,89 @@ mod tests {
         let p = parse_clipboard(&path.to_string_lossy(), prefs());
         assert_eq!(p, Some(ClipboardPayload::Torrent(path)));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("remotrix-test-{}-{name}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn oversized_text_is_ignored() {
+        let mut text = String::new();
+        while (text.len() as u64) <= MAX_CLIPBOARD_CONTENT {
+            text.push_str("http://example.com/a.iso\n");
+        }
+        assert_eq!(parse_clipboard(&text, prefs()), None);
+    }
+
+    #[test]
+    fn small_txt_file_bare_path_yields_urls() {
+        let dir = temp_dir("txt_bare");
+        let path = dir.join("links.txt");
+        std::fs::write(&path, "Download from http://example.com/a.iso").unwrap();
+        let p = parse_clipboard(&path.to_string_lossy(), prefs());
+        assert_eq!(
+            p,
+            Some(ClipboardPayload::Urls(vec![
+                "http://example.com/a.iso".to_string()
+            ]))
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn small_txt_file_uri_yields_urls() {
+        let dir = temp_dir("txt_uri");
+        let path = dir.join("links.txt");
+        std::fs::write(&path, "https://example.com/b.iso").unwrap();
+        let uri = format!("file://{}", path.to_string_lossy());
+        let p = parse_clipboard(&uri, prefs());
+        assert_eq!(
+            p,
+            Some(ClipboardPayload::Urls(vec![
+                "https://example.com/b.iso".to_string()
+            ]))
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn oversized_file_is_ignored() {
+        let dir = temp_dir("big_file");
+        let path = dir.join("big.txt");
+        let mut content = String::new();
+        while (content.len() as u64) <= MAX_CLIPBOARD_CONTENT {
+            content.push_str("http://example.com/a.iso\n");
+        }
+        std::fs::write(&path, content).unwrap();
+        assert_eq!(parse_clipboard(&path.to_string_lossy(), prefs()), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn binary_file_is_ignored() {
+        let dir = temp_dir("bin");
+        let path = dir.join("data.bin");
+        std::fs::write(&path, [0xffu8, 0x00, 0xfe, 0x01, b'x']).unwrap();
+        assert_eq!(parse_clipboard(&path.to_string_lossy(), prefs()), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn payload_hash_is_stable_and_distinct() {
+        let none = None;
+        assert_eq!(payload_hash(&none), "");
+        let urls = Some(ClipboardPayload::Urls(vec![
+            "http://example.com/a.iso".to_string()
+        ]));
+        let hash1 = payload_hash(&urls);
+        assert_eq!(payload_hash(&urls), hash1);
+        assert_ne!(hash1, "");
+        let torrent_a = Some(ClipboardPayload::Torrent(PathBuf::from("/tmp/a.torrent")));
+        let torrent_b = Some(ClipboardPayload::Torrent(PathBuf::from("/tmp/b.torrent")));
+        assert_ne!(hash1, payload_hash(&torrent_a));
+        assert_ne!(payload_hash(&torrent_a), payload_hash(&torrent_b));
     }
 }
