@@ -25,6 +25,8 @@ pub const SPACE_2XL: f32 = 12.0; // 工具栏、操作行
 pub const SPACE_3XL: f32 = 14.0; // 对话框正文
 pub const SPACE_4XL: f32 = 16.0; // 区块间距
 
+pub const SWATCH_SIZE: f32 = 28.0; // 主题色圆点尺寸
+
 // ---- 内边距 ----
 pub const PADDING_NONE: u16 = 0; // 铺满按钮（标题栏、侧栏导航）
 pub const PADDING_XS: u16 = 2; // toast 关闭按钮

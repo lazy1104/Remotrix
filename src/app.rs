@@ -99,7 +99,10 @@ pub fn init() -> (Remotrix, Task<Message>) {
     let add_dialog = AddDialogState::new(settings.download_dir.clone());
     let fluent = Fluent::new(settings.locale);
 
-    let theme = theme::build_iced(effective_theme_id(&settings));
+    let theme = theme::build_iced(
+        settings_accent(&settings),
+        theme::resolve_mode(settings.theme_mode, None),
+    );
     let logo_handle =
         iced::widget::image::Handle::from_bytes(&include_bytes!("../assets/icon.png")[..]);
 
@@ -182,16 +185,13 @@ pub fn theme(state: &Remotrix) -> iced::Theme {
     state.theme.clone()
 }
 
-fn effective_theme_id(settings: &Settings) -> &str {
-    if theme::resolve_mode(settings.theme_mode, None) {
-        &settings.dark_theme
-    } else {
-        &settings.light_theme
-    }
+fn settings_accent(settings: &Settings) -> iced::Color {
+    theme::accent_color(&settings.theme_color)
 }
 
 fn rebuild_theme(state: &mut Remotrix) {
-    state.theme = theme::build_iced(effective_theme_id(&state.settings));
+    let dark = theme::resolve_mode(state.settings.theme_mode, None);
+    state.theme = theme::build_iced(settings_accent(&state.settings), dark);
 }
 
 fn sync_geometry_to_settings(state: &mut Remotrix) {
@@ -1433,18 +1433,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             rebuild_theme(state);
             config::save(&state.settings);
         }
-        Message::LightThemeChanged(id) => {
-            state.settings.light_theme = id;
-            if !theme::resolve_mode(state.settings.theme_mode, None) {
-                rebuild_theme(state);
-            }
-            config::save(&state.settings);
-        }
-        Message::DarkThemeChanged(id) => {
-            state.settings.dark_theme = id;
-            if theme::resolve_mode(state.settings.theme_mode, None) {
-                rebuild_theme(state);
-            }
+        Message::ThemeColorChanged(color) => {
+            state.settings.theme_color = theme::color_to_hex(color);
+            rebuild_theme(state);
             config::save(&state.settings);
         }
         Message::LocaleChanged(locale) => {

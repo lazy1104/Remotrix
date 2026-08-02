@@ -15,7 +15,7 @@ sidecar engine driven over WebSocket JSON-RPC ([`aria2-ws`](https://crates.io/cr
 - **Embedded persistence** — task metadata and progress are stored in a local SQLite database and survive restarts
 - **Self-managing engine** — aria2-next is fetched at runtime from GitHub Releases (sha256-verified, cached, self-healing), with automatic update checks and staged background updates applied on the next restart
 - **Frameless window** — custom title bar with minimize / maximize / close controls and a close-confirmation dialog
-- **Theming** — multiple light / dark themes via [`opaline`](https://crates.io/crates/opaline), or follow the system appearance (`dark-light` detection)
+- **Theming** — pick an accent color (a row of swatches); iced auto-generates the full light / dark palette from it, and the app can follow the system appearance (`dark-light` detection)
 - **Internationalization** — auto-detects `zh_CN` / `en_US` from the system locale, switchable in Settings
 - **Task details** — summary / activity / files tabs with a BitTorrent piece-completion map
 - **Sorting & filters** — sort by added time, name, size, progress, or status; filter by All / Downloading / Completed
@@ -81,7 +81,7 @@ src/
 ├── i18n.rs                # Locale detection + Fluent translations
 └── ui/
     ├── mod.rs             # ui module re-exports
-    ├── theme.rs           # opaline theme loading, ThemeMode, widget styles
+    ├── theme.rs           # accent-color → iced palette generation, ThemeMode, widget styles
     ├── icon.rs            # iced_lucide icon font module (build-generated)
     ├── icons.rs           # icon glyph constants + layout widths
     ├── title_bar.rs       # custom frameless title bar + window controls
@@ -152,7 +152,7 @@ DHT, and more).
 | Engine | `aria2-next` sidecar + `aria2-ws 0.5` | C++ aria2 fork, JSON-RPC over WebSocket, spawned as subprocess |
 | Async | `tokio 1.x` (full) | Shared runtime for engine + UI |
 | Persistence | `rusqlite 0.32` (bundled) | Embedded SQLite for task metadata / progress |
-| Themes | `opaline 0.4` (builtin-themes, iced) | Multiple light / dark palettes |
+| Themes | iced `Theme::custom` (built-in) | Accent-color swatches; iced auto-generates light/dark palettes |
 | i18n | `fluent-templates 0.14` | Fluent translations (zh / en) |
 | System theme | `dark-light 1.1` | Detect system dark / light preference |
 | File dialog | `rfd 0.15` | Native OS file picker |
@@ -169,7 +169,7 @@ DHT, and more).
 - [x] Dual-loop engine bridge + aria2-next sidecar supervisor
 - [x] Basic UI: sidebar, category bar, task list, add dialog, settings
 - [x] Frameless window + custom title bar
-- [x] i18n (zh / en) + opaline themes + system auto theme
+- [x] i18n (zh / en) + accent-color theme + system auto theme
 - [x] SQLite task persistence
 - [x] aria2-next runtime auto-fetch + auto-update
 - [x] Task details dialog (piece map, files, BT info)

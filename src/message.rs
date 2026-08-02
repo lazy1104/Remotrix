@@ -118,8 +118,7 @@ pub enum Message {
     ShutdownTimeout,
 
     ThemeModeChanged(ThemeMode),
-    LightThemeChanged(String),
-    DarkThemeChanged(String),
+    ThemeColorChanged(iced::Color),
     LocaleChanged(Locale),
 
     CheckAria2Update,

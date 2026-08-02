@@ -13,7 +13,9 @@ use iced::Color;
 use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::path_picker::{PathPicker, PathPickerEvent};
 use crate::ui::components::slim_scrollable::slim_scrollable;
+use crate::ui::components::tooltip;
 use crate::ui::dims::*;
+use crate::ui::icon;
 use crate::ui::theme;
 
 #[derive(Debug, Clone)]
@@ -158,20 +160,6 @@ fn general_view<'a>(
     settings: &'a Settings,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
-    let light_opts: Vec<Labeled<String>> = theme::light_themes()
-        .into_iter()
-        .map(|(name, display)| Labeled {
-            value: name,
-            label: display,
-        })
-        .collect();
-    let dark_opts: Vec<Labeled<String>> = theme::dark_themes()
-        .into_iter()
-        .map(|(name, display)| Labeled {
-            value: name,
-            label: display,
-        })
-        .collect();
     let mode_opts = vec![
         Labeled {
             value: crate::ui::theme::ThemeMode::Dark,
@@ -190,20 +178,7 @@ fn general_view<'a>(
     column![]
         .spacing(SPACE_SM)
         .push(group_title(fluent, Tr::Appearance, accent))
-        .push(labeled_pick(
-            fluent,
-            fluent.get(Tr::LightTheme),
-            light_opts,
-            Some(settings.light_theme.clone()),
-            |opt| Message::LightThemeChanged(opt.value),
-        ))
-        .push(labeled_pick(
-            fluent,
-            fluent.get(Tr::DarkTheme),
-            dark_opts,
-            Some(settings.dark_theme.clone()),
-            |opt| Message::DarkThemeChanged(opt.value),
-        ))
+        .push(theme_color_swatches(fluent, settings))
         .push(labeled_pick(
             fluent,
             fluent.get(Tr::ColorMode),
@@ -237,6 +212,30 @@ fn general_view<'a>(
             SettingKey::DetectClipboardOnStart,
         ))
         .into()
+}
+
+fn theme_color_swatches<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, Message> {
+    let current = theme::accent_color(&settings.theme_color);
+    let mut swatch_row = row![].spacing(SPACE_XL).align_y(Alignment::Center);
+    for (color, name) in theme::candidate_colors() {
+        let selected = *color == current;
+        let swatch = button(if selected {
+            icon::circle_check().size(FONT_ICON)
+        } else {
+            text("").size(FONT_ICON)
+        })
+        .on_press(Message::ThemeColorChanged(*color))
+        .width(Length::Fixed(SWATCH_SIZE))
+        .height(Length::Fixed(SWATCH_SIZE))
+        .padding(0)
+        .style(theme::style::button::swatch(*color, selected));
+        swatch_row = swatch_row.push(tooltip::standard(
+            swatch,
+            text(*name),
+            iced::widget::tooltip::Position::Bottom,
+        ));
+    }
+    setting_row(fluent.get(Tr::ThemeColor), swatch_row.into())
 }
 
 fn download_view<'a>(

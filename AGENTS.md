@@ -9,7 +9,7 @@ Rust-native desktop download manager inspired by Motrix.app. Built with `iced` G
 | Engine | `aria2-next` sidecar + `aria2-ws 0.5` | C++ aria2 fork, JSON-RPC over WebSocket; spawned as subprocess |
 | Async | `tokio 1.x` (full) | Shared runtime for engine + UI |
 | Persistence | `rusqlite 0.32` (bundled) | Embedded SQLite for task metadata / progress |
-| Themes | `opaline 0.4` (builtin-themes, iced) + `dark-light 1.1` | Multiple light/dark palettes; system detection |
+| Themes | iced `Theme::custom` (built-in) + `dark-light 1.1` | Accent-color swatches; iced auto-generates light/dark palettes; system detection |
 | i18n | `fluent-templates 0.14` | Fluent translations (zh/en) |
 | File dialog | `rfd 0.15` | Native OS file picker |
 | Config dirs | `directories 5` | XDG/user data paths |
@@ -104,7 +104,6 @@ num-traits = "0.2"
 iced_aw = { version = "0.14", default-features = false, features = ["number_input", "drop_down"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 sha2 = "0.10"
-opaline = { version = "0.4", default-features = false, features = ["builtin-themes", "iced"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 open = "5"
@@ -116,7 +115,7 @@ iced_lucide = "0.1"
 ## Code Conventions
 - **Module structure**: `src/` with flat top-level modules (`app.rs`, `config.rs`, `db.rs`, `engine.rs`, `aria2_fetcher.rs`, `updater.rs`, `message.rs`, `task.rs`, `i18n.rs`) + `ui/` subdirectory
 - **UI pattern**: Each page is a `fn` returning `iced::Element<'_, Message, Theme>`; no widget OOP wrappers
-- **Theme**: `opaline` builtin themes loaded via the iced adapter (`src/ui/theme.rs`); colors read from `iced::Theme::extended_palette()`, no hardcoded palette constants.
+- **Theme**: single accent color → iced `Theme::custom` palette generation (`src/ui/theme.rs`); colors read from `iced::Theme::extended_palette()`, no hardcoded palette constants.
 - **Naming**: `snake_case` for fns/vars, `PascalCase` for types/enums, `SCREAMING_SNAKE` for constants
 - **Error handling**: Use `String` errors in engine layer, map to `EngineEvent::EngineStopped` for fatal
 - **No comments** in source code unless explaining a non-obvious design decision

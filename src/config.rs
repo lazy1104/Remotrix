@@ -112,11 +112,8 @@ fn default_ed2k_udp_listen_port() -> u16 {
 fn default_ed2k_upload_slots() -> u16 {
     3
 }
-fn default_light_theme() -> String {
-    "silkcircuit-dawn".into()
-}
-fn default_dark_theme() -> String {
-    "silkcircuit-neon".into()
+fn default_theme_color() -> String {
+    crate::ui::theme::color_to_hex(crate::ui::theme::DEFAULT_THEME_COLOR)
 }
 fn default_window_width() -> f32 {
     1040.0
@@ -386,10 +383,8 @@ pub struct Settings {
     pub download_limit_kb: u64,
     pub upload_limit_kb: u64,
     pub split: u16,
-    #[serde(default = "default_light_theme")]
-    pub light_theme: String,
-    #[serde(default = "default_dark_theme")]
-    pub dark_theme: String,
+    #[serde(default = "default_theme_color")]
+    pub theme_color: String,
     #[serde(default)]
     pub theme_mode: ThemeMode,
     #[serde(default)]
@@ -449,8 +444,7 @@ impl Default for Settings {
             download_limit_kb: 0,
             upload_limit_kb: 0,
             split: 16,
-            light_theme: default_light_theme(),
-            dark_theme: default_dark_theme(),
+            theme_color: default_theme_color(),
             theme_mode: ThemeMode::System,
             locale: Locale::default(),
             update: UpdatePrefs::default(),

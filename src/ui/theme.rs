@@ -1,7 +1,6 @@
-use std::sync::Arc;
-
 use serde::{Deserialize, Serialize};
 
+use iced::theme::Palette;
 use iced::{Color, Theme};
 
 use crate::ui::dims;
@@ -68,28 +67,59 @@ where
     editor.padding(INPUT_PADDING).size(dims::FONT_MEDIUM)
 }
 
-pub fn build_iced(theme_id: &str) -> iced::Theme {
-    let opaline = opaline::builtins::load_by_name(theme_id).unwrap_or_default();
-    let custom = opaline::adapters::iced::to_iced_custom(&opaline);
-    iced::Theme::Custom(Arc::new(custom))
+pub const DEFAULT_THEME_COLOR: Color = Color::from_rgb8(0x58, 0x65, 0xF2);
+
+pub fn build_iced(color: Color, dark: bool) -> iced::Theme {
+    let palette = if dark {
+        Palette {
+            primary: color,
+            ..Palette::DARK
+        }
+    } else {
+        Palette {
+            primary: color,
+            ..Palette::LIGHT
+        }
+    };
+    iced::Theme::custom("remotrix", palette)
 }
 
-fn themes_for_variant(variant: opaline::schema::ThemeVariant) -> Vec<(String, String)> {
-    let mut v: Vec<_> = opaline::builtins::list_available_themes()
-        .into_iter()
-        .filter(|i| i.variant == variant)
-        .map(|i| (i.name, i.display_name))
-        .collect();
-    v.sort_by_key(|a| a.1.to_lowercase());
-    v
+pub fn color_to_hex(c: Color) -> String {
+    let to = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+    format!("#{:02X}{:02X}{:02X}", to(c.r), to(c.g), to(c.b))
 }
 
-pub fn light_themes() -> Vec<(String, String)> {
-    themes_for_variant(opaline::schema::ThemeVariant::Light)
+pub fn color_from_hex(s: &str) -> Option<Color> {
+    let h = s.trim().strip_prefix('#')?;
+    if h.len() != 6 || !h.is_ascii() || !h.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let r = u8::from_str_radix(&h[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&h[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&h[4..6], 16).ok()?;
+    Some(Color::from_rgb8(r, g, b))
 }
 
-pub fn dark_themes() -> Vec<(String, String)> {
-    themes_for_variant(opaline::schema::ThemeVariant::Dark)
+pub fn accent_color(hex: &str) -> Color {
+    color_from_hex(hex).unwrap_or(DEFAULT_THEME_COLOR)
+}
+
+pub static CANDIDATE_COLORS: &[(Color, &str)] = &[
+    (DEFAULT_THEME_COLOR, "Blue"),
+    (Color::from_rgb8(0x63, 0x66, 0xF1), "Indigo"),
+    (Color::from_rgb8(0xA8, 0x55, 0xF7), "Purple"),
+    (Color::from_rgb8(0xEC, 0x48, 0x99), "Pink"),
+    (Color::from_rgb8(0xEF, 0x44, 0x44), "Red"),
+    (Color::from_rgb8(0xF9, 0x73, 0x16), "Orange"),
+    (Color::from_rgb8(0xF5, 0x9E, 0x0B), "Amber"),
+    (Color::from_rgb8(0x84, 0xCC, 0x16), "Lime"),
+    (Color::from_rgb8(0x22, 0xC5, 0x5E), "Green"),
+    (Color::from_rgb8(0x14, 0xB8, 0xA6), "Teal"),
+    (Color::from_rgb8(0x0E, 0xA5, 0xE9), "Cyan"),
+];
+
+pub fn candidate_colors() -> &'static [(Color, &'static str)] {
+    CANDIDATE_COLORS
 }
 
 pub fn accent(t: &Theme) -> Color {
@@ -473,6 +503,50 @@ pub mod style {
             move |t: &iced::Theme, status: Status| -> Style {
                 let p = t.extended_palette().danger;
                 filled(p.base.color, p.strong.color, p.base.text, status)
+            }
+        }
+
+        pub fn swatch<'a>(
+            color: Color,
+            selected: bool,
+        ) -> impl Fn(&iced::Theme, Status) -> Style + 'a {
+            move |t: &iced::Theme, status: Status| -> Style {
+                let radius = crate::ui::dims::SWATCH_SIZE / 2.0;
+                let actual_bg = match status {
+                    Status::Hovered => super::lighten(color, 0.12),
+                    Status::Pressed => super::darken(color, 0.15),
+                    _ => color,
+                };
+                let border = if selected {
+                    iced::Border {
+                        color: t.extended_palette().background.base.text,
+                        width: 2.0,
+                        radius: iced::border::rounded(radius).radius,
+                    }
+                } else {
+                    iced::Border {
+                        color: Color::from_rgba(0.5, 0.5, 0.5, 0.6),
+                        width: 1.0,
+                        radius: iced::border::rounded(radius).radius,
+                    }
+                };
+                let luminance = 0.299 * color.r + 0.587 * color.g + 0.114 * color.b;
+                let mark = if selected {
+                    if luminance > 0.55 {
+                        Color::from_rgb8(0x11, 0x11, 0x11)
+                    } else {
+                        Color::WHITE
+                    }
+                } else {
+                    Color::TRANSPARENT
+                };
+                Style {
+                    background: Some(Background::Color(actual_bg)),
+                    text_color: mark,
+                    border,
+                    shadow: Shadow::default(),
+                    ..Default::default()
+                }
             }
         }
 
