@@ -129,6 +129,7 @@ pub enum Message {
     RetryAria2Fetch,
     RestartEngine,
     SetAutoCheck(bool),
+    CheckMissingFiles,
 
     OpenTaskDetails(String),
     CloseTaskDetails,
@@ -270,6 +271,8 @@ pub enum SettingKey {
     EnableProxy,
     NavToTasksAfterAdd,
     DeleteTorrentAfterComplete,
+    CleanupCompletedOnClose,
+    RemoveTaskIfFilesMissing,
     DetectClipboardOnStart,
     ClipboardHttp,
     ClipboardFtp,

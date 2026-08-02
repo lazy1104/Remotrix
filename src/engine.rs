@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use aria2_ws::response::TaskStatus as Aria2TaskStatus;
 use aria2_ws::{Client, Event, Notification, TaskOptions};
@@ -8,9 +9,11 @@ use tokio::io::AsyncBufReadExt;
 use tokio::process::{Child, Command};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-use tokio::time::{interval, Duration};
+use tokio::time::{interval, timeout, Duration};
 
 use crate::aria2_fetcher;
+
+static MISSING_CHECK_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Default)]
 pub struct TaskAdvancedOptions {
@@ -120,6 +123,7 @@ pub enum EngineCmd {
     CheckAria2Update,
     RetryAria2Fetch,
     RestartEngine,
+    CheckMissingFiles,
 }
 
 #[derive(Debug, Clone)]
@@ -189,6 +193,9 @@ pub enum EngineEvent {
     },
     EngineDegraded {
         reason: String,
+    },
+    FilesMissing {
+        gids: Vec<String>,
     },
 }
 
@@ -460,6 +467,30 @@ async fn fetch_all_tasks_strict(
     all.extend(waiting);
     all.extend(stopped);
     Ok((all, truncated))
+}
+
+async fn check_missing_files(client: &Client) -> Vec<String> {
+    let mut missing = Vec::new();
+    for s in fetch_all_tasks(client).await {
+        if s.status != Aria2TaskStatus::Complete {
+            continue;
+        }
+        let paths = collect_file_paths(&s);
+        if paths.is_empty() {
+            continue;
+        }
+        if paths.iter().all(|p| !path_exists(p)) {
+            missing.push(s.gid.clone());
+        }
+    }
+    missing
+}
+
+fn path_exists(p: &str) -> bool {
+    match std::fs::metadata(p) {
+        Err(e) => e.kind() != std::io::ErrorKind::NotFound,
+        Ok(_) => true,
+    }
 }
 
 fn url_host(uri: &str) -> Option<String> {
@@ -740,6 +771,22 @@ async fn handle_client_cmd(
             for gid in gids {
                 let _ = client.remove_download_result(&gid).await;
             }
+        }
+        EngineCmd::CheckMissingFiles => {
+            if MISSING_CHECK_IN_FLIGHT.swap(true, Ordering::AcqRel) {
+                return Ok(());
+            }
+            let client = client.clone();
+            let tx = event_tx.clone();
+            tokio::spawn(async move {
+                let gids = timeout(Duration::from_secs(30), check_missing_files(&client))
+                    .await
+                    .unwrap_or_default();
+                MISSING_CHECK_IN_FLIGHT.store(false, Ordering::Release);
+                if !gids.is_empty() {
+                    let _ = tx.send(EngineEvent::FilesMissing { gids });
+                }
+            });
         }
         EngineCmd::AddTorrent {
             path,

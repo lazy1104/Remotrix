@@ -217,6 +217,9 @@ fn revert_apply_settings(state: &mut Remotrix) {
     state.settings.nav_to_tasks_after_add = state.applied_settings.nav_to_tasks_after_add;
     state.settings.delete_torrent_after_complete =
         state.applied_settings.delete_torrent_after_complete;
+    state.settings.cleanup_completed_on_close = state.applied_settings.cleanup_completed_on_close;
+    state.settings.remove_task_if_files_missing =
+        state.applied_settings.remove_task_if_files_missing;
     state.settings.aria2 = state.applied_settings.aria2.clone();
     state
         .settings_ui
@@ -255,6 +258,28 @@ fn remove_task_local(state: &mut Remotrix, gid: &str) {
     if let Some(ref db) = state.db {
         db.delete(gid);
     }
+}
+
+fn clear_completed_local(state: &mut Remotrix, gids: &[String]) {
+    if let Some(ref db) = state.db {
+        db.clear_completed(gids);
+    }
+    if !gids.is_empty()
+        && state
+            .handle
+            .cmd_tx
+            .send(EngineCmd::PurgeResults(gids.to_vec()))
+            .is_err()
+    {
+        tracing::warn!("ui: purge results cmd send failed");
+    }
+    for gid in gids {
+        state.dirty.remove(gid);
+    }
+    state
+        .tasks
+        .retain(|_k, t| !matches!(t.status, TaskStatus::Completed | TaskStatus::Removed));
+    state.task_order.retain(|gid| state.tasks.contains_key(gid));
 }
 
 fn flush_dirty(state: &mut Remotrix) {
@@ -304,6 +329,15 @@ fn begin_close(state: &mut Remotrix) -> Task<Message> {
             .handle
             .cmd_tx
             .send(EngineCmd::SelectFiles { gid, files });
+    }
+    if state.settings.cleanup_completed_on_close {
+        let completed: Vec<String> = state
+            .tasks
+            .iter()
+            .filter(|(_, t)| matches!(t.status, TaskStatus::Completed | TaskStatus::Removed))
+            .map(|(gid, _)| gid.clone())
+            .collect();
+        clear_completed_local(state, &completed);
     }
     tracing::info!("ui: shutdown requested");
     if state.handle.cmd_tx.send(EngineCmd::Shutdown).is_err() {
@@ -669,25 +703,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 .filter(|(_, t)| matches!(t.status, TaskStatus::Completed | TaskStatus::Removed))
                 .map(|(gid, _)| gid.clone())
                 .collect();
-            if let Some(ref db) = state.db {
-                db.clear_completed(&completed);
-            }
-            if !completed.is_empty()
-                && state
-                    .handle
-                    .cmd_tx
-                    .send(EngineCmd::PurgeResults(completed.clone()))
-                    .is_err()
-            {
-                tracing::warn!("ui: purge results cmd send failed");
-            }
-            for gid in &completed {
-                state.dirty.remove(gid);
-            }
-            state
-                .tasks
-                .retain(|_k, t| !matches!(t.status, TaskStatus::Completed | TaskStatus::Removed));
-            state.task_order.retain(|gid| state.tasks.contains_key(gid));
+            clear_completed_local(state, &completed);
             state.confirm = None;
         }
         Message::Refresh => {
@@ -850,6 +866,12 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             SettingKey::DeleteTorrentAfterComplete => {
                 state.settings.delete_torrent_after_complete = value == "true";
+            }
+            SettingKey::CleanupCompletedOnClose => {
+                state.settings.cleanup_completed_on_close = value == "true";
+            }
+            SettingKey::RemoveTaskIfFilesMissing => {
+                state.settings.remove_task_if_files_missing = value == "true";
             }
             SettingKey::DetectClipboardOnStart => {
                 state.settings.detect_clipboard_on_start = value == "true";
@@ -1025,6 +1047,44 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     {
                         tracing::warn!("ui: re-add ghost task cmd send failed");
                     }
+                }
+                if state.settings.remove_task_if_files_missing
+                    && state
+                        .handle
+                        .cmd_tx
+                        .send(EngineCmd::CheckMissingFiles)
+                        .is_err()
+                {
+                    tracing::warn!("check missing files cmd send failed");
+                }
+            }
+            EngineEvent::FilesMissing { gids } => {
+                let removed: Vec<String> = gids
+                    .iter()
+                    .filter(|g| state.tasks.contains_key(*g))
+                    .cloned()
+                    .collect();
+                for gid in &removed {
+                    tracing::info!(?gid, "ui: removed task with missing files");
+                    remove_task_local(state, gid);
+                }
+                if !removed.is_empty() {
+                    if state
+                        .handle
+                        .cmd_tx
+                        .send(EngineCmd::PurgeResults(removed))
+                        .is_err()
+                    {
+                        tracing::warn!("ui: purge missing-files results cmd send failed");
+                    }
+                    let (_, task) = spawn_toast(
+                        state,
+                        ToastKind::Normal,
+                        state.fluent.get(Tr::FilesMissingRemoved),
+                        Some(Duration::from_secs(3)),
+                        false,
+                    );
+                    return task;
                 }
             }
             EngineEvent::Added {
@@ -1527,6 +1587,16 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::SetAutoCheck(enabled) => {
             state.settings.update.set_ignored("aria2-next", !enabled);
             config::save(&state.settings);
+        }
+        Message::CheckMissingFiles => {
+            if state
+                .handle
+                .cmd_tx
+                .send(EngineCmd::CheckMissingFiles)
+                .is_err()
+            {
+                tracing::warn!("check missing files cmd send failed");
+            }
         }
         Message::OpenTaskDetails(gid) => {
             state.details_select_gen = 0;
@@ -2080,6 +2150,12 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
 
     let signals = Subscription::run_with((), |_| signal_stream());
 
+    let missing_check = if state.settings.remove_task_if_files_missing && state.sync_done {
+        iced::time::every(Duration::from_secs(30)).map(|_| Message::CheckMissingFiles)
+    } else {
+        Subscription::none()
+    };
+
     Subscription::batch(vec![
         engine,
         open,
@@ -2092,6 +2168,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         refresh,
         toast_tick,
         signals,
+        missing_check,
     ])
 }
 

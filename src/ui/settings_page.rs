@@ -441,6 +441,16 @@ fn download_view<'a>(
             settings.delete_torrent_after_complete,
             SettingKey::DeleteTorrentAfterComplete,
         ))
+        .push(labeled_toggle(
+            fluent.get(Tr::CleanupCompletedOnClose),
+            settings.cleanup_completed_on_close,
+            SettingKey::CleanupCompletedOnClose,
+        ))
+        .push(labeled_toggle(
+            fluent.get(Tr::RemoveTaskIfFilesMissing),
+            settings.remove_task_if_files_missing,
+            SettingKey::RemoveTaskIfFilesMissing,
+        ))
         .into()
 }
 

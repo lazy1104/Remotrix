@@ -398,6 +398,10 @@ pub struct Settings {
     pub nav_to_tasks_after_add: bool,
     #[serde(default)]
     pub delete_torrent_after_complete: bool,
+    #[serde(default)]
+    pub cleanup_completed_on_close: bool,
+    #[serde(default)]
+    pub remove_task_if_files_missing: bool,
     #[serde(default = "default_true")]
     pub detect_clipboard_on_start: bool,
     #[serde(default)]
@@ -423,6 +427,8 @@ impl Settings {
             && self.split == other.split
             && self.nav_to_tasks_after_add == other.nav_to_tasks_after_add
             && self.delete_torrent_after_complete == other.delete_torrent_after_complete
+            && self.cleanup_completed_on_close == other.cleanup_completed_on_close
+            && self.remove_task_if_files_missing == other.remove_task_if_files_missing
             && self.detect_clipboard_on_start == other.detect_clipboard_on_start
             && self.clipboard_types == other.clipboard_types
             && self.aria2 == other.aria2
@@ -456,6 +462,8 @@ impl Default for Settings {
             aria2: Aria2Options::default(),
             nav_to_tasks_after_add: true,
             delete_torrent_after_complete: false,
+            cleanup_completed_on_close: false,
+            remove_task_if_files_missing: false,
             detect_clipboard_on_start: true,
             clipboard_types: ClipboardLinkTypes::default(),
             last_clipboard_hash: String::new(),
