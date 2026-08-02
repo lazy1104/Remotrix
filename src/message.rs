@@ -140,6 +140,7 @@ pub enum Message {
     PersistWindowGeometry,
     SelectDetailsTab(DetailsTab),
     OpenTaskFolder(String),
+    OpenTaskFile(String),
     CopyTaskLink(String),
     Noop,
 

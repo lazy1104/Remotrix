@@ -1,6 +1,6 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// 733a7dee9ebff4bb208b78eee881bfd1816f7ecc6a86a3754409e36f1c3e1cbe
+// 344038c204d91e8c9acbd1497e61fc14b2087fdaf2f05326671fae58481b7000
 use iced::widget::{text, Text};
 use iced::Font;
 
@@ -24,6 +24,7 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("download_arrow", "\u{E455}"),
     ("eraser", "\u{E28F}"),
     ("expand", "\u{E211}"),
+    ("external_link", "\u{E0B9}"),
     ("file", "\u{E0C0}"),
     ("folder", "\u{E0D7}"),
     ("folder_clock", "\u{E32F}"),
@@ -103,6 +104,10 @@ pub fn eraser<'a>() -> Text<'a> {
 
 pub fn expand<'a>() -> Text<'a> {
     icon("\u{E211}")
+}
+
+pub fn external_link<'a>() -> Text<'a> {
+    icon("\u{E0B9}")
 }
 
 pub fn file<'a>() -> Text<'a> {

@@ -1718,6 +1718,52 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 let _ = state.handle.cmd_tx.send(EngineCmd::FetchTaskDetails(gid));
             }
         }
+        Message::OpenTaskFile(gid) => {
+            let Some(t) = state.tasks.get(&gid).cloned() else {
+                return Task::none();
+            };
+            let has_hash = t
+                .info_hash
+                .as_deref()
+                .map(|h| !h.is_empty())
+                .unwrap_or(false);
+            let is_bt = has_hash
+                || crate::engine::is_magnet_url(&t.url)
+                || crate::engine::is_torrent_url(&t.url);
+            if is_bt {
+                state.add_dialog.save_picker.close_history();
+                state
+                    .add_dialog
+                    .open(state.settings.download_dir.clone(), state.settings.split);
+                let link = if !t.url.is_empty() {
+                    t.url.clone()
+                } else {
+                    format!(
+                        "magnet:?xt=urn:btih:{}",
+                        t.info_hash.as_deref().unwrap_or_default()
+                    )
+                };
+                state.add_dialog.set_urls(vec![link]);
+                return Task::none();
+            }
+            let path = t.save_dir.join(&t.name);
+            if path.exists() {
+                return Task::perform(
+                    async move {
+                        let _ = open::that(&path);
+                    },
+                    |_| Message::Noop,
+                );
+            }
+            let (_, task) = spawn_toast(
+                state,
+                ToastKind::Warning,
+                state.fluent.get(Tr::FileMissing),
+                Some(Duration::from_secs(4)),
+                false,
+            );
+            return task;
+        }
         Message::OpenTaskFolder(gid) => {
             let dir = state
                 .tasks

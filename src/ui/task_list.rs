@@ -1,6 +1,8 @@
 use crate::ui::components::drop_down;
-use iced::widget::{button, column, container, progress_bar, row, text, text_input, tooltip};
-use iced::{Alignment, Element, Length};
+use iced::widget::{
+    button, column, container, mouse_area, progress_bar, row, text, text_input, tooltip,
+};
+use iced::{mouse, Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{ConfirmAction, Message, SortField, SortOrder};
@@ -232,14 +234,16 @@ fn task_card<'a>(
 ) -> Element<'a, Message> {
     let text_secondary = theme::text_secondary(theme);
     let pct = t.progress_pct();
-    let name = tip::standard(
+    let name = mouse_area(tip::standard(
         truncated_text(t.name.clone())
             .size(FONT_ICON)
             .max_lines(2)
             .wrapping(text::Wrapping::Glyph),
         text(t.name.clone()).size(FONT_SMALL),
         tooltip::Position::Bottom,
-    );
+    ))
+    .on_double_click(Message::OpenTaskFile(t.gid.clone()))
+    .interaction(mouse::Interaction::Pointer);
 
     let toolbar_icon =
         |glyph: iced::widget::Text<'a>, msg: Option<Message>| -> Element<'a, Message> {
@@ -254,6 +258,18 @@ fn task_card<'a>(
             };
             btn.into()
         };
+
+    let open_btn: Element<'a, Message> = {
+        let glyph = icon::external_link().size(FONT_ICON).color(text_secondary);
+        tip::standard(
+            button(glyph)
+                .on_press(Message::OpenTaskFile(t.gid.clone()))
+                .padding(PADDING_ICON_BTN)
+                .style(theme::style::button::toolbar_icon(false)),
+            text(fluent.get(Tr::Open)).size(FONT_SMALL),
+            tooltip::Position::Bottom,
+        )
+    };
 
     let pause_resume_btn = match t.status {
         TaskStatus::Active | TaskStatus::Waiting => toolbar_icon(
@@ -331,6 +347,7 @@ fn task_card<'a>(
 
     let toolbar = container(
         row![]
+            .push(open_btn)
             .push(pause_resume_btn)
             .push(show_in_folder_btn)
             .push(copy_link_btn)

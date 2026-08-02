@@ -175,6 +175,8 @@ speed = Speed
 connections = Connections
 show-in-folder = Show in folder
 copy-link = Copy link
+open = Open
+file-missing = The downloaded file is missing
 loading = Loading…
 task-gone = This task no longer exists
 
