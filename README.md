@@ -15,7 +15,7 @@ sidecar engine driven over WebSocket JSON-RPC ([`aria2-ws`](https://crates.io/cr
 - **Embedded persistence** — task metadata and progress are stored in a local SQLite database and survive restarts
 - **Self-managing engine** — aria2-next is fetched at runtime from GitHub Releases (sha256-verified, cached, self-healing), with automatic update checks and staged background updates applied on the next restart
 - **Frameless window** — custom title bar with minimize / maximize / close controls and a close-confirmation dialog
-- **Theming** — pick an accent color (a row of swatches); iced auto-generates the full light / dark palette from it, and the app can follow the system appearance (`dark-light` detection)
+- **Theming** — pick an accent color (a wrapping row of swatches); iced auto-generates the full light / dark palette from it, including a M3-style surface background derived from the accent hue, and the app can follow the system appearance (`dark-light` detection)
 - **Internationalization** — auto-detects `zh_CN` / `en_US` from the system locale, switchable in Settings
 - **Task details** — summary / activity / files tabs with a BitTorrent piece-completion map
 - **Sorting & filters** — sort by added time, name, size, progress, or status; filter by All / Downloading / Completed

@@ -235,7 +235,14 @@ fn theme_color_swatches<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Eleme
             iced::widget::tooltip::Position::Bottom,
         ));
     }
-    setting_row(fluent.get(Tr::ThemeColor), swatch_row.into())
+    setting_row_auto(
+        fluent.get(Tr::ThemeColor),
+        swatch_row
+            .width(Length::Fill)
+            .wrap()
+            .vertical_spacing(SPACE_LG)
+            .into(),
+    )
 }
 
 fn download_view<'a>(
@@ -847,6 +854,14 @@ fn setting_row<'a>(label: String, control: Element<'a, Message>) -> Element<'a, 
         .push(text(label).size(FONT_MEDIUM).width(Length::Fixed(200.0)))
         .push(control)
         .height(Length::Fixed(36.0))
+        .align_y(Alignment::Center)
+        .into()
+}
+
+fn setting_row_auto<'a>(label: String, control: Element<'a, Message>) -> Element<'a, Message> {
+    row![]
+        .push(text(label).size(FONT_MEDIUM).width(Length::Fixed(200.0)))
+        .push(control)
         .align_y(Alignment::Center)
         .into()
 }

@@ -24,7 +24,7 @@ decides what to fix afterwards.
 1. **Dependencies** - every crate + version + feature in `Cargo.toml` is reflected; no stale/missing entries.
 2. **Channel protocol** - `EngineCmd`/`EngineEvent` variants and fields in `AGENTS.md` match `src/engine.rs` exactly.
 3. **Code layout** - every file under `src/` is listed with an accurate one-line description; no phantom/missing files.
-4. **Theming** - docs say a single accent color drives iced `Theme::custom` palette generation, NOT `opaline` builtin themes, a custom Motrix palette, or hardcoded `Color` constants.
+4. **Theming** - docs say a single accent color drives iced `Theme::custom` palette generation (primary + M3-style surface background derived from the accent), NOT `opaline` builtin themes, a custom Motrix palette, or hardcoded `Color` constants.
 5. **Config/data paths** - Linux/macOS/Windows paths match `directories` (`ProjectDirs::from("dev","remotrix","Remotrix")`).
 6. **Build behavior** - docs state build needs NO network; aria2-next is fetched at runtime.
 7. **Architecture** - sidecar + aria2-ws RPC + mpsc channels + 1Hz polling + SQLite flush.
