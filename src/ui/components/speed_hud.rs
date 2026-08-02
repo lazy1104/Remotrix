@@ -1,4 +1,4 @@
-use iced::widget::{column, container, row, text};
+use iced::widget::{button, column, container, row, text};
 use iced::{Element, Length};
 
 use crate::message::Message;
@@ -14,22 +14,26 @@ pub fn view<'a>(
     upload: u64,
 ) -> Element<'a, Message> {
     let palette = theme.extended_palette();
-    let strong = palette.background.strong.color;
+    let primary_weak = palette.primary.weak.color;
     let primary = palette.primary.base.color;
 
     if !active && download == 0 && upload == 0 {
-        container(icon::download().size(FONT_HERO).color(strong))
-            .center_x(Length::Fixed(44.0))
-            .center_y(Length::Fixed(44.0))
-            .style(theme::style::speed_hud_background)
+        button(icon::download().size(FONT_HERO).color(primary_weak))
+            .on_press(Message::Noop)
+            .padding(iced::Padding::ZERO)
+            .width(Length::Fixed(44.0))
+            .height(Length::Fixed(44.0))
+            .style(theme::style::button::speed_hud())
             .into()
     } else {
-        let icon_col =
-            container(icon::download().size(FONT_HERO).color(strong)).center_x(Length::Fixed(44.0));
+        let icon_col = container(icon::download().size(FONT_HERO).color(primary_weak))
+            .center_x(Length::Fixed(44.0));
 
         let up_row = row![
-            icon::arrow_up().size(FONT_SMALL).color(strong),
-            text(format_speed(upload)).size(FONT_SMALL).color(strong),
+            icon::arrow_up().size(FONT_SMALL).color(primary_weak),
+            text(format_speed(upload))
+                .size(FONT_SMALL)
+                .color(primary_weak),
         ]
         .spacing(SPACE_SM)
         .align_y(iced::alignment::Vertical::Center);
@@ -47,9 +51,10 @@ pub fn view<'a>(
             .spacing(SPACE_LG)
             .align_y(iced::alignment::Vertical::Center);
 
-        container(content)
+        button(content)
+            .on_press(Message::Noop)
             .padding(PADDING_HUD)
-            .style(theme::style::speed_hud_background)
+            .style(theme::style::button::speed_hud())
             .into()
     }
 }

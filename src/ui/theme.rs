@@ -354,10 +354,6 @@ pub mod style {
         }
     }
 
-    pub fn speed_hud_background(t: &iced::Theme) -> iced::widget::container::Style {
-        capsule_pill(t)
-    }
-
     pub fn toolbar_capsule(t: &iced::Theme) -> iced::widget::container::Style {
         capsule_pill(t)
     }
@@ -517,6 +513,27 @@ pub mod style {
                         shadow: Shadow::default(),
                         ..Default::default()
                     }
+                }
+            }
+        }
+
+        pub fn speed_hud<'a>() -> impl Fn(&iced::Theme, Status) -> Style + 'a {
+            move |t: &iced::Theme, status: Status| -> Style {
+                let p = t.extended_palette();
+                let border = match status {
+                    Status::Hovered => p.primary.weak.color,
+                    _ => p.background.strong.color,
+                };
+                Style {
+                    background: Some(p.background.base.color.into()),
+                    text_color: p.background.base.text,
+                    border: iced::Border {
+                        color: border,
+                        width: 1.0,
+                        radius: iced::border::rounded(super::super::RADIUS_PILL).radius,
+                    },
+                    shadow: Shadow::default(),
+                    ..Default::default()
                 }
             }
         }

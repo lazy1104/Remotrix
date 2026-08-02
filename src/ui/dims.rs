@@ -70,7 +70,7 @@ pub const PADDING_HUD: Padding = Padding {
     top: 8.0,
     right: 12.0,
     bottom: 8.0,
-    left: 12.0,
+    left: 0.0,
 };
 pub const PADDING_TOAST: Padding = Padding {
     // toast 卡片
