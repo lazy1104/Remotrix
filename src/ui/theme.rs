@@ -290,10 +290,8 @@ pub mod style {
         move |t| iced::widget::container::Style {
             background: Some(t.extended_palette().background.base.color.into()),
             border: iced::Border {
-                color: if focused {
+                color: if focused || hovered {
                     t.extended_palette().primary.base.color
-                } else if hovered {
-                    super::text_secondary(t)
                 } else {
                     super::border_color(t)
                 },
@@ -818,6 +816,9 @@ pub mod style {
         pub fn standard(t: &iced::Theme, status: text_input::Status) -> text_input::Style {
             let mut s = text_input::default(t, status);
             s.border.radius = super::super::RADIUS_BUTTON.into();
+            if matches!(status, text_input::Status::Hovered) {
+                s.border.color = t.extended_palette().primary.strong.color;
+            }
             s
         }
     }
