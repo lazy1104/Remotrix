@@ -7,6 +7,7 @@ pub mod path_picker;
 pub mod piece_map;
 pub mod slim_scrollable;
 pub mod speed_hud;
+pub mod time_picker;
 pub mod toast;
 pub mod tooltip;
 pub mod torrent_file_list;

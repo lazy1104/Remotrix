@@ -7,6 +7,7 @@ use serde_json::{Map, Value};
 
 use crate::clipboard_watch::ClipboardLinkTypes;
 use crate::i18n::Locale;
+use crate::scheduler::{in_speed_window, ScheduledTask};
 use crate::ui::theme::ThemeMode;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -163,6 +164,34 @@ impl Default for Aria2Options {
             ed2k_upload_slots: default_ed2k_upload_slots(),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpeedLimitSchedule {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_schedule_start")]
+    pub start: String,
+    #[serde(default = "default_schedule_end")]
+    pub end: String,
+}
+
+impl Default for SpeedLimitSchedule {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            start: default_schedule_start(),
+            end: default_schedule_end(),
+        }
+    }
+}
+
+fn default_schedule_start() -> String {
+    "23:00".into()
+}
+
+fn default_schedule_end() -> String {
+    "07:00".into()
 }
 
 pub fn all_proxy_url(server: &str, username: &str, password: &str) -> Option<String> {
@@ -378,6 +407,26 @@ impl Settings {
             ..Default::default()
         }
     }
+
+    pub fn effective_task_options(&self) -> TaskOptions {
+        let mut options = self.to_aria2_task_options();
+        if self.speed_limit_schedule.enabled
+            && !in_speed_window(
+                &self.speed_limit_schedule.start,
+                &self.speed_limit_schedule.end,
+                &chrono::Local::now(),
+            )
+        {
+            options.extra_options.insert(
+                "max-overall-download-limit".into(),
+                Value::String("0".into()),
+            );
+            options
+                .extra_options
+                .insert("max-overall-upload-limit".into(), Value::String("0".into()));
+        }
+        options
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -419,6 +468,10 @@ pub struct Settings {
     pub window_maximized: bool,
     #[serde(default)]
     pub path_history: std::collections::HashMap<String, Vec<String>>,
+    #[serde(default)]
+    pub speed_limit_schedule: SpeedLimitSchedule,
+    #[serde(default)]
+    pub schedules: Vec<ScheduledTask>,
 }
 
 impl Settings {
@@ -435,6 +488,7 @@ impl Settings {
             && self.detect_clipboard_on_start == other.detect_clipboard_on_start
             && self.clipboard_types == other.clipboard_types
             && self.aria2 == other.aria2
+            && self.speed_limit_schedule == other.speed_limit_schedule
     }
 
     pub fn record_path(&mut self, key: &str, path: &str) {
@@ -474,6 +528,8 @@ impl Default for Settings {
             window_height: default_window_height(),
             window_maximized: false,
             path_history: std::collections::HashMap::new(),
+            speed_limit_schedule: SpeedLimitSchedule::default(),
+            schedules: Vec::new(),
         }
     }
 }

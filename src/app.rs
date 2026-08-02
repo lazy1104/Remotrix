@@ -218,6 +218,7 @@ fn revert_apply_settings(state: &mut Remotrix) {
     state.settings.remove_task_if_files_missing =
         state.applied_settings.remove_task_if_files_missing;
     state.settings.aria2 = state.applied_settings.aria2.clone();
+    state.settings.speed_limit_schedule = state.applied_settings.speed_limit_schedule.clone();
     state
         .settings_ui
         .ed2k_server_list_picker
@@ -1025,10 +1026,23 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     state.settings.aria2.ed2k_upload_slots = n.max(1);
                 }
             }
+            SettingKey::SpeedLimitScheduleEnabled => {
+                state.settings.speed_limit_schedule.enabled = value == "true";
+            }
+            SettingKey::ScheduleStart => {
+                if crate::scheduler::parse_hhmm(&value).is_some() {
+                    state.settings.speed_limit_schedule.start = value;
+                }
+            }
+            SettingKey::ScheduleEnd => {
+                if crate::scheduler::parse_hhmm(&value).is_some() {
+                    state.settings.speed_limit_schedule.end = value;
+                }
+            }
         },
         Message::ApplySettings => {
             config::save(&state.settings);
-            let opts = state.settings.to_aria2_task_options();
+            let opts = state.settings.effective_task_options();
             tracing::info!("ui: apply settings");
             if state
                 .handle
@@ -1037,6 +1051,14 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 .is_err()
             {
                 tracing::warn!("ui: apply aria2 options cmd send failed");
+            }
+            if state
+                .handle
+                .cmd_tx
+                .send(EngineCmd::ReloadSchedules)
+                .is_err()
+            {
+                tracing::warn!("ui: reload schedules cmd send failed");
             }
             if !state
                 .settings
@@ -1720,6 +1742,14 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 tracing::warn!("check missing files cmd send failed");
             }
         }
+        Message::ToggleScheduleStartPicker => {
+            state.settings_ui.schedule_start_picker_open =
+                !state.settings_ui.schedule_start_picker_open;
+        }
+        Message::ToggleScheduleEndPicker => {
+            state.settings_ui.schedule_end_picker_open =
+                !state.settings_ui.schedule_end_picker_open;
+        }
         Message::OpenTaskDetails(gid) => {
             state.details_select_gen = 0;
             state.details_pending_select = None;
@@ -1933,11 +1963,12 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::ApplyAndLeaveSettings => {
             if let Some(ConfirmAction::LeaveSettings { target }) = state.confirm.take() {
                 config::save(&state.settings);
-                let opts = state.settings.to_aria2_task_options();
+                let opts = state.settings.effective_task_options();
                 let _ = state
                     .handle
                     .cmd_tx
                     .send(EngineCmd::ApplyAria2Options { options: opts });
+                let _ = state.handle.cmd_tx.send(EngineCmd::ReloadSchedules);
                 if !state
                     .settings
                     .aria2
@@ -2334,12 +2365,6 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
 
     let signals = Subscription::run_with((), |_| signal_stream());
 
-    let missing_check = if state.settings.remove_task_if_files_missing && state.sync_done {
-        iced::time::every(Duration::from_secs(30)).map(|_| Message::CheckMissingFiles)
-    } else {
-        Subscription::none()
-    };
-
     Subscription::batch(vec![
         engine,
         open,
@@ -2352,7 +2377,6 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         refresh,
         toast_tick,
         signals,
-        missing_check,
     ])
 }
 

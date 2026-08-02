@@ -131,6 +131,8 @@ pub enum Message {
     RestartEngine,
     SetAutoCheck(bool),
     CheckMissingFiles,
+    ToggleScheduleStartPicker,
+    ToggleScheduleEndPicker,
 
     OpenTaskDetails(String),
     CloseTaskDetails,
@@ -287,6 +289,9 @@ pub enum SettingKey {
     Ed2kListenPort,
     Ed2kUdpListenPort,
     Ed2kUploadSlots,
+    SpeedLimitScheduleEnabled,
+    ScheduleStart,
+    ScheduleEnd,
 }
 
 impl TaskStatus {

@@ -8,6 +8,7 @@ mod db;
 mod engine;
 mod i18n;
 mod message;
+mod scheduler;
 mod task;
 mod torrent_meta;
 mod ui;

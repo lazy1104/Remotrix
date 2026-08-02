@@ -13,6 +13,7 @@ use iced::Color;
 use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::path_picker::{PathPicker, PathPickerEvent};
 use crate::ui::components::slim_scrollable::slim_scrollable;
+use crate::ui::components::time_picker::time_picker;
 use crate::ui::components::tooltip;
 use crate::ui::dims::*;
 use crate::ui::icon;
@@ -24,6 +25,8 @@ pub struct SettingsUiState {
     pub ed2k_server_list_picker: PathPicker,
     pub ed2k_node_list_picker: PathPicker,
     pub speed_units: HashMap<SettingKey, SpeedUnit>,
+    pub schedule_start_picker_open: bool,
+    pub schedule_end_picker_open: bool,
 }
 
 impl SettingsUiState {
@@ -46,6 +49,8 @@ impl SettingsUiState {
             ed2k_server_list_picker: PathPicker::file(settings.aria2.ed2k_server_list.clone()),
             ed2k_node_list_picker: PathPicker::file(settings.aria2.ed2k_node_list.clone()),
             speed_units,
+            schedule_start_picker_open: false,
+            schedule_end_picker_open: false,
         }
     }
 }
@@ -426,6 +431,45 @@ fn download_view<'a>(
                 },
                 move |u| Message::SpeedUnitChanged(SettingKey::LowestSpeedLimit, u),
             )
+        })
+        .push(labeled_toggle(
+            fluent.get(Tr::EnableScheduledSpeedLimit),
+            settings.speed_limit_schedule.enabled,
+            SettingKey::SpeedLimitScheduleEnabled,
+        ))
+        .push({
+            let el: Element<'_, Message> = if settings.speed_limit_schedule.enabled {
+                column![
+                    setting_row(
+                        fluent.get(Tr::ScheduleStartTime),
+                        time_picker(
+                            &settings.speed_limit_schedule.start,
+                            settings_ui.schedule_start_picker_open,
+                            Message::ToggleScheduleStartPicker,
+                            move |s| Message::SettingChanged(SettingKey::ScheduleStart, s),
+                            Length::Fixed(160.0),
+                        ),
+                    ),
+                    setting_row(
+                        fluent.get(Tr::ScheduleEndTime),
+                        time_picker(
+                            &settings.speed_limit_schedule.end,
+                            settings_ui.schedule_end_picker_open,
+                            Message::ToggleScheduleEndPicker,
+                            move |s| Message::SettingChanged(SettingKey::ScheduleEnd, s),
+                            Length::Fixed(160.0),
+                        ),
+                    ),
+                    text(fluent.get(Tr::ScheduleHint))
+                        .size(FONT_SMALL)
+                        .style(theme::style::text::secondary),
+                ]
+                .spacing(SPACE_SM)
+                .into()
+            } else {
+                iced::widget::Space::new().height(Length::Fixed(0.0)).into()
+            };
+            el
         })
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::Confirm, accent))

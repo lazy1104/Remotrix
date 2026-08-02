@@ -133,6 +133,7 @@ pub enum EngineCmd {
     RetryAria2Fetch,
     RestartEngine,
     CheckMissingFiles,
+    ReloadSchedules,
 }
 
 #[derive(Debug, Clone)]
@@ -826,20 +827,7 @@ async fn handle_client_cmd(
             }
         }
         EngineCmd::CheckMissingFiles => {
-            if MISSING_CHECK_IN_FLIGHT.swap(true, Ordering::AcqRel) {
-                return Ok(());
-            }
-            let client = client.clone();
-            let tx = event_tx.clone();
-            tokio::spawn(async move {
-                let gids = timeout(Duration::from_secs(30), check_missing_files(&client))
-                    .await
-                    .unwrap_or_default();
-                MISSING_CHECK_IN_FLIGHT.store(false, Ordering::Release);
-                if !gids.is_empty() {
-                    let _ = tx.send(EngineEvent::FilesMissing { gids });
-                }
-            });
+            trigger_missing_files_check(client.clone(), event_tx.clone());
         }
         EngineCmd::AddTorrent {
             path,
@@ -1065,6 +1053,120 @@ async fn apply_global_options(client: &Client, options: TaskOptions) -> Result<(
         .map_err(|e| format!("change_global_option: {e}"))
 }
 
+pub(crate) fn trigger_missing_files_check(client: Client, event_tx: EventTx) {
+    if MISSING_CHECK_IN_FLIGHT.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    tokio::spawn(async move {
+        let gids = timeout(Duration::from_secs(30), check_missing_files(&client))
+            .await
+            .unwrap_or_default();
+        MISSING_CHECK_IN_FLIGHT.store(false, Ordering::Release);
+        if !gids.is_empty() {
+            let _ = event_tx.send(EngineEvent::FilesMissing { gids });
+        }
+    });
+}
+
+async fn apply_speed_limits(client: &Client, settings: &crate::config::Settings, inside: bool) {
+    let (dl, ul) = if inside {
+        (
+            (settings.download_limit_kb * 1024).to_string(),
+            (settings.upload_limit_kb * 1024).to_string(),
+        )
+    } else {
+        ("0".to_string(), "0".to_string())
+    };
+    let mut extra = serde_json::Map::new();
+    extra.insert(
+        "max-overall-download-limit".into(),
+        serde_json::Value::String(dl),
+    );
+    extra.insert(
+        "max-overall-upload-limit".into(),
+        serde_json::Value::String(ul),
+    );
+    let options = TaskOptions {
+        extra_options: extra,
+        ..Default::default()
+    };
+    if let Err(e) = apply_global_options(client, options).await {
+        tracing::warn!("apply scheduled speed limits failed: {e}");
+    } else {
+        tracing::info!(inside, "scheduled speed limit window transition");
+    }
+}
+
+fn run_scheduler(client: Client, event_tx: EventTx) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let settings = crate::config::load();
+        let schedule = settings.speed_limit_schedule.clone();
+        let mut jobs: Vec<(
+            croner::Cron,
+            chrono::DateTime<chrono::Local>,
+            crate::scheduler::ScheduledAction,
+        )> = Vec::new();
+        for task in &settings.schedules {
+            if !task.enabled {
+                continue;
+            }
+            match crate::scheduler::parse_cron(&task.cron) {
+                Ok(cron) => {
+                    let catch_up = chrono::Local::now() - Duration::from_secs(60);
+                    jobs.push((cron, catch_up, task.action.clone()));
+                    tracing::info!(id = %task.id, cron = %task.cron, "schedule loaded");
+                }
+                Err(e) => {
+                    tracing::warn!(id = %task.id, cron = %task.cron, error = %e, "skipping invalid schedule cron");
+                }
+            }
+        }
+
+        let mut inside = schedule.enabled
+            && crate::scheduler::in_speed_window(
+                &schedule.start,
+                &schedule.end,
+                &chrono::Local::now(),
+            );
+
+        let mut ticker = interval(Duration::from_secs(1));
+        loop {
+            ticker.tick().await;
+            let now = chrono::Local::now();
+
+            if schedule.enabled {
+                let cur = crate::scheduler::in_speed_window(&schedule.start, &schedule.end, &now);
+                if cur && !inside {
+                    inside = true;
+                    apply_speed_limits(&client, &settings, true).await;
+                } else if !cur && inside {
+                    inside = false;
+                    apply_speed_limits(&client, &settings, false).await;
+                }
+            }
+
+            for (cron, last_run, action) in &mut jobs {
+                let fire = match cron.find_next_occurrence(last_run, false) {
+                    Ok(next) => next <= now,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "schedule next occurrence failed");
+                        false
+                    }
+                };
+                if !fire {
+                    continue;
+                }
+                *last_run = now;
+                match action {
+                    crate::scheduler::ScheduledAction::CheckMissingFiles => {
+                        trigger_missing_files_check(client.clone(), event_tx.clone());
+                    }
+                }
+            }
+        }
+    })
+}
+
 fn installed_version() -> String {
     aria2_fetcher::installed_version().unwrap_or_default()
 }
@@ -1187,7 +1289,7 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
 
     let boot_client = sidecar.client.clone();
     tokio::spawn(async move {
-        let opts = crate::config::load().to_aria2_task_options();
+        let opts = crate::config::load().effective_task_options();
         if let Err(e) = apply_global_options(&boot_client, opts).await {
             tracing::warn!("boot apply global options: {e}");
         }
@@ -1332,6 +1434,10 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
     handles
 }
 
+fn start_scheduler(sidecar: &Sidecar, event_tx: &EventTx) -> JoinHandle<()> {
+    run_scheduler(sidecar.client.clone(), event_tx.clone())
+}
+
 async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
     let session_path = crate::config::session_dir().unwrap_or_else(|| PathBuf::from("."));
     let download_dir = crate::config::load().download_dir;
@@ -1344,12 +1450,14 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
 
     let mut sidecar: Option<Sidecar> = None;
     let mut poll_handles: Vec<JoinHandle<()>> = Vec::new();
+    let mut scheduler_handle: Option<JoinHandle<()>> = None;
     let mut retry_count = 0;
     const MAX_RETRIES: u32 = 3;
 
     match boot(&config, &restart_tx, &event_tx).await {
         Ok((s, applied)) => {
             poll_handles = on_sidecar_ready(&s, &event_tx);
+            scheduler_handle = Some(start_scheduler(&s, &event_tx));
             sidecar = Some(s);
             retry_count = 0;
             if let Some(v) = applied {
@@ -1375,6 +1483,7 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                             if let Err(e) = s.client.pause_all().await {
                                 tracing::warn!("pause_all failed before shutdown: {e}");
                             }
+
                             let mut paused = false;
                             for _ in 0..10 {
                                 match s.client.tell_active().await {
@@ -1396,6 +1505,9 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                             let _ = s.client.shutdown().await;
                         }
                         let _ = event_tx.send(EngineEvent::EngineStopped);
+                        if let Some(h) = scheduler_handle.take() {
+                            h.abort();
+                        }
                         break;
                     }
                     EngineCmd::CheckAria2Update => {
@@ -1404,12 +1516,23 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                             handle_check_update(&tx).await;
                         });
                     }
+                    EngineCmd::ReloadSchedules => {
+                        if let Some(ref s) = sidecar {
+                            if let Some(h) = scheduler_handle.take() {
+                                h.abort();
+                            }
+                            scheduler_handle = Some(start_scheduler(s, &event_tx));
+                            tracing::info!("scheduler reloaded from config");
+                        }
+                    }
                     EngineCmd::RetryAria2Fetch => {
                         for h in poll_handles.drain(..) { h.abort(); }
+                        if let Some(h) = scheduler_handle.take() { h.abort(); }
                         sidecar = None;
                         match boot(&config, &restart_tx, &event_tx).await {
                             Ok((s, applied)) => {
                                 poll_handles = on_sidecar_ready(&s, &event_tx);
+                                scheduler_handle = Some(start_scheduler(&s, &event_tx));
                                 sidecar = Some(s);
                                 retry_count = 0;
                                 if let Some(v) = applied {
@@ -1424,14 +1547,17 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                     EngineCmd::RestartEngine => {
                         if let Some(ref s) = sidecar {
                             for h in poll_handles.drain(..) { h.abort(); }
+                            if let Some(h) = scheduler_handle.take() { h.abort(); }
                             let _ = s.client.save_session().await;
                             let _ = s.client.shutdown().await;
                             sidecar = None;
                         } else {
                             for h in poll_handles.drain(..) { h.abort(); }
+                            if let Some(h) = scheduler_handle.take() { h.abort(); }
                             match boot(&config, &restart_tx, &event_tx).await {
                                 Ok((s, applied)) => {
                                     poll_handles = on_sidecar_ready(&s, &event_tx);
+                                    scheduler_handle = Some(start_scheduler(&s, &event_tx));
                                     sidecar = Some(s);
                                     retry_count = 0;
                                     if let Some(v) = applied {
@@ -1460,6 +1586,7 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
             _ = restart_rx.recv() => {
                 tracing::warn!("aria2-next exited, restarting...");
                 for h in poll_handles.drain(..) { h.abort(); }
+                if let Some(h) = scheduler_handle.take() { h.abort(); }
                 sidecar = None;
                 retry_count += 1;
                 if retry_count > MAX_RETRIES {
@@ -1472,6 +1599,7 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                 match boot(&config, &restart_tx, &event_tx).await {
                     Ok((s, applied)) => {
                         poll_handles = on_sidecar_ready(&s, &event_tx);
+                        scheduler_handle = Some(start_scheduler(&s, &event_tx));
                         sidecar = Some(s);
                         retry_count = 0;
                         if let Some(v) = applied {
@@ -1488,6 +1616,9 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
         }
     }
 
+    if let Some(h) = scheduler_handle.take() {
+        h.abort();
+    }
     for h in poll_handles {
         h.abort();
     }
