@@ -35,6 +35,8 @@ enum EngineCmd {
     PauseAll, ResumeAll, RemoveAll, Snapshot,
     ApplyAria2Options { options: TaskOptions },
     FetchTaskDetails(String),
+    ReaddTask { gid: String, url: String, save_dir: PathBuf, split: u16, paused: bool, bt_metadata_only: bool },
+    Redownload { gid: String, url: String, save_dir: PathBuf, split: u16, bt_metadata_only: bool },
     Shutdown,
     CheckAria2Update,
     RetryAria2Fetch,

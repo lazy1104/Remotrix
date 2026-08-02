@@ -119,12 +119,14 @@ pub enum EngineCmd {
         save_dir: PathBuf,
         split: u16,
         paused: bool,
+        bt_metadata_only: bool,
     },
     Redownload {
         gid: String,
         url: String,
         save_dir: PathBuf,
         split: u16,
+        bt_metadata_only: bool,
     },
     Shutdown,
     CheckAria2Update,
@@ -380,6 +382,17 @@ pub(crate) fn is_torrent_url(url: &str) -> bool {
 
 pub(crate) fn is_magnet_url(url: &str) -> bool {
     url.trim_start().to_ascii_lowercase().starts_with("magnet:")
+}
+
+fn apply_bt_url_options(opts: &mut TaskOptions, url: &str, bt_metadata_only: bool) {
+    if is_torrent_url(url) {
+        opts.extra_options
+            .insert("follow-torrent".to_string(), "false".into());
+    }
+    if bt_metadata_only && is_magnet_url(url) {
+        opts.extra_options
+            .insert("bt-metadata-only".to_string(), "true".into());
+    }
 }
 
 fn collect_file_paths(s: &aria2_ws::response::Status) -> Vec<String> {
@@ -672,18 +685,7 @@ async fn handle_client_cmd(
             let mut added = 0;
             for url in urls {
                 let mut opts = options.clone();
-                if is_torrent_url(&url) {
-                    opts.extra_options.insert(
-                        "follow-torrent".to_string(),
-                        serde_json::Value::String("false".into()),
-                    );
-                }
-                if bt_metadata_only && is_magnet_url(&url) {
-                    opts.extra_options.insert(
-                        "bt-metadata-only".to_string(),
-                        serde_json::Value::String("true".into()),
-                    );
-                }
+                apply_bt_url_options(&mut opts, &url, bt_metadata_only);
                 match client
                     .add_uri(vec![url.clone()], Some(opts), None, None)
                     .await
@@ -935,9 +937,10 @@ async fn handle_client_cmd(
             save_dir,
             split,
             paused,
+            bt_metadata_only,
         } => {
             tracing::info!(?gid, ?url, ?save_dir, split, paused, "re-add ghost task");
-            let options = TaskOptions {
+            let mut options = TaskOptions {
                 gid: Some(gid.clone()),
                 dir: Some(save_dir.to_string_lossy().to_string()),
                 split: Some(split as i32),
@@ -946,6 +949,7 @@ async fn handle_client_cmd(
                 auto_file_renaming: Some(true),
                 ..Default::default()
             };
+            apply_bt_url_options(&mut options, &url, bt_metadata_only);
             match client
                 .add_uri(vec![url.clone()], Some(options), None, None)
                 .await
@@ -978,10 +982,11 @@ async fn handle_client_cmd(
             url,
             save_dir,
             split,
+            bt_metadata_only,
         } => {
             tracing::info!(?gid, ?url, ?save_dir, split, "re-download task");
             let _ = client.remove_download_result(&gid).await;
-            let options = TaskOptions {
+            let mut options = TaskOptions {
                 gid: Some(gid.clone()),
                 dir: Some(save_dir.to_string_lossy().to_string()),
                 split: Some(split as i32),
@@ -990,6 +995,7 @@ async fn handle_client_cmd(
                 auto_file_renaming: Some(true),
                 ..Default::default()
             };
+            apply_bt_url_options(&mut options, &url, bt_metadata_only);
             match client
                 .add_uri(vec![url.clone()], Some(options), None, None)
                 .await

@@ -98,9 +98,35 @@ pub fn view<'a>(
             .into()
     };
 
-    let sort_dropdown = drop_down::DropDown::new(sort_underlay, sort_overlay, sort_menu_open)
-        .on_dismiss(Message::CloseSortMenu)
-        .width(Length::Fixed(170.0));
+    let sort_field_label = match sort_field {
+        SortField::AddedTime => Tr::SortByAdded,
+        SortField::Name => Tr::SortByName,
+        SortField::Size => Tr::SortBySize,
+        SortField::Progress => Tr::SortByProgress,
+        SortField::Status => Tr::SortByStatus,
+    };
+    let sort_order_label = match sort_order {
+        SortOrder::Asc => Tr::SortAsc,
+        SortOrder::Desc => Tr::SortDesc,
+    };
+    let sort_tip = format!(
+        "{}: {} · {}",
+        fluent.get(Tr::Sort),
+        fluent.get(sort_field_label),
+        fluent.get(sort_order_label)
+    );
+
+    let sort_dropdown = drop_down::DropDown::new(
+        tip::standard(
+            sort_underlay,
+            text(sort_tip).size(FONT_SMALL),
+            tooltip::Position::Bottom,
+        ),
+        sort_overlay,
+        sort_menu_open,
+    )
+    .on_dismiss(Message::CloseSortMenu)
+    .width(Length::Fixed(170.0));
 
     let new_btn: Element<'a, Message> = {
         let glyph = text('\u{E13D}'.to_string())
@@ -396,6 +422,7 @@ fn task_card<'a>(
     let bar_color = match t.status {
         TaskStatus::Paused => theme::primary_weak(theme),
         TaskStatus::Error => theme::danger(theme),
+        TaskStatus::Completed => theme::success(theme),
         _ => theme::primary(theme),
     };
     let bar = progress_bar(0.0..=100.0, pct)
@@ -457,10 +484,24 @@ fn task_card<'a>(
         .align_y(Alignment::Center)
         .width(Length::Fill);
 
+    let name_marker: Element<'a, Message> = if t.status == TaskStatus::Completed {
+        row![
+            icon::circle_check()
+                .size(FONT_ICON)
+                .color(theme::success(theme)),
+            name,
+        ]
+        .spacing(SPACE_SM)
+        .align_y(Alignment::Center)
+        .into()
+    } else {
+        name.into()
+    };
+
     let content = column![]
         .spacing(SPACE_LG)
         .push(
-            row![name, toolbar]
+            row![name_marker, toolbar]
                 .align_y(iced::alignment::Vertical::Top)
                 .spacing(SPACE_2XL),
         )

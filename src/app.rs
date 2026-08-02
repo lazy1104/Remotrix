@@ -693,6 +693,8 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         }
         Message::RedownloadTask(gid) => {
             state.paused_gids.remove(&gid);
+            state.torrent_followed.remove(&gid);
+            let bt_metadata_only = !state.settings.aria2.bt_auto_download;
             let (url, save_dir, split) = match state.tasks.get(&gid) {
                 Some(t) => {
                     let url = if !t.url.is_empty() {
@@ -717,6 +719,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     url,
                     save_dir,
                     split,
+                    bt_metadata_only,
                 })
                 .is_err()
             {
@@ -1114,7 +1117,8 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     tracing::info!(?gid, "ui: purged non-terminal ghost task");
                 }
                 let split = state.settings.split;
-                let ghost: Vec<(String, String, PathBuf, bool)> = state
+                let bt_metadata_only = !state.settings.aria2.bt_auto_download;
+                let ghost: Vec<(String, String, PathBuf, bool, bool)> = state
                     .tasks
                     .iter()
                     .filter(|(gid, t)| {
@@ -1137,10 +1141,11 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             url,
                             t.save_dir.clone(),
                             t.status == TaskStatus::Paused,
+                            bt_metadata_only,
                         )
                     })
                     .collect();
-                for (gid, url, save_dir, paused) in ghost {
+                for (gid, url, save_dir, paused, bt_metadata_only) in ghost {
                     if paused {
                         state.paused_gids.insert(gid.clone());
                     }
@@ -1153,6 +1158,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             save_dir,
                             split,
                             paused,
+                            bt_metadata_only,
                         })
                         .is_err()
                     {
