@@ -17,7 +17,7 @@ pub fn view<'a, M>(
     _theme: &'a iced::Theme,
     title: String,
     subtitle: Option<String>,
-    height: Length,
+    max_height: Length,
     nodes: &'a [FileTreeNode],
     expanded: &'a HashSet<String>,
     is_selected: &impl Fn(u64) -> bool,
@@ -121,9 +121,14 @@ where
             .width(Length::Fill)
     };
 
-    container(content)
+    let mut outer = container(content)
         .width(Length::Fill)
-        .height(if collapsed { Length::Shrink } else { height })
+        .height(Length::Shrink);
+    if let Length::Fixed(n) = max_height {
+        outer = outer.max_height(n);
+    }
+
+    outer
         .padding(iced::Padding {
             top: SPACE_LG,
             right: SPACE_MD,
