@@ -70,6 +70,8 @@ pub struct Remotrix {
     closing: bool,
     confirm: Option<ConfirmAction>,
     applied_settings: Settings,
+    applied_font_family: String,
+    restart_pending: bool,
     settings_ui: SettingsUiState,
     global_speed: Option<(u64, u64)>,
     paused_gids: HashSet<String>,
@@ -88,6 +90,9 @@ pub struct Remotrix {
 pub fn init() -> (Remotrix, Task<Message>) {
     config::announce();
     let settings = config::load();
+    std::thread::spawn(|| {
+        crate::ui::theme::system_font_families();
+    });
 
     let ua_editor = text_editor::Content::with_text(&settings.aria2.user_agent);
 
@@ -131,6 +136,8 @@ pub fn init() -> (Remotrix, Task<Message>) {
         add_dialog,
         about_dialog_visible: false,
         applied_settings: settings.clone(),
+        applied_font_family: settings.font_family.clone(),
+        restart_pending: false,
         settings,
         fluent,
         theme,
@@ -437,10 +444,34 @@ fn finalize_close(state: &mut Remotrix) -> Task<Message> {
     }
     sync_geometry_to_settings(state);
     config::save(&state.settings);
+    spawn_restart_if_pending(state);
     if let Some(id) = state.window_id {
         iced::window::close::<Message>(id)
     } else {
         Task::none()
+    }
+}
+
+fn spawn_restart_if_pending(state: &mut Remotrix) {
+    if state.restart_pending {
+        state.restart_pending = false;
+        spawn_detached_self();
+    }
+}
+
+fn spawn_detached_self() {
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Err(err) = std::process::Command::new(exe)
+        .args(&args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    {
+        tracing::warn!(error = %err, "ui: failed to spawn restart process");
     }
 }
 
@@ -1650,6 +1681,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::ShutdownTimeout => {
             if state.closing {
                 tracing::warn!("engine did not stop in time, closing anyway");
+                if state.handle.cmd_tx.send(EngineCmd::ForceKill).is_err() {
+                    tracing::warn!("force-kill cmd send failed");
+                }
             }
             return finalize_close(state);
         }
@@ -1674,6 +1708,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.geometry_dirty = false;
             if state.pending_close {
                 state.pending_close = false;
+                spawn_restart_if_pending(state);
                 if let Some(id) = state.window_id {
                     return iced::window::close::<Message>(id);
                 }
@@ -1693,6 +1728,14 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.settings.locale = locale;
             state.fluent = Fluent::new(locale);
             config::save(&state.settings);
+        }
+        Message::FontFamilyChanged(family) => {
+            state.settings.font_family = family;
+            config::save(&state.settings);
+        }
+        Message::RestartApp => {
+            state.restart_pending = true;
+            return begin_close(state);
         }
         Message::SpeedUnitChanged(key, unit) => {
             state.settings_ui.speed_units.insert(key, unit);
@@ -2110,6 +2153,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             state.update_pending.as_deref(),
             &state.ua_editor,
             &state.settings.path_history,
+            state.settings.font_family != state.applied_font_family,
         ),
     };
 

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 use iced::widget::{
     button, checkbox, column, container, pick_list, row, text, text_editor, text_input, toggler,
@@ -91,11 +92,12 @@ pub fn view<'a>(
     update_pending: Option<&'a str>,
     ua_editor: &'a text_editor::Content,
     path_history: &'a HashMap<String, Vec<String>>,
+    font_restart_required: bool,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
     let dirty = !settings.apply_fields_equal(applied_settings);
     let content = match category {
-        SettingsCategory::General => general_view(fluent, theme, settings),
+        SettingsCategory::General => general_view(fluent, theme, settings, font_restart_required),
         SettingsCategory::Download => {
             download_view(fluent, theme, settings, settings_ui, path_history)
         }
@@ -163,6 +165,7 @@ fn general_view<'a>(
     fluent: &'a Fluent,
     theme: &iced::Theme,
     settings: &'a Settings,
+    font_restart_required: bool,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
     let mode_opts = vec![
@@ -191,6 +194,7 @@ fn general_view<'a>(
             Some(settings.theme_mode),
             |opt| Message::ThemeModeChanged(opt.value),
         ))
+        .push(font_family_row(fluent, settings, font_restart_required))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::Locale, accent))
         .push(labeled_pick(
@@ -242,6 +246,89 @@ fn theme_color_swatches<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Eleme
             .vertical_spacing(SPACE_LG)
             .into(),
     )
+}
+
+fn font_family_row<'a>(
+    fluent: &'a Fluent,
+    settings: &'a Settings,
+    restart_required: bool,
+) -> Element<'a, Message> {
+    let options = font_family_options(fluent);
+    let placeholder = fluent.get(Tr::SelectPlaceholder);
+    let selected = options
+        .iter()
+        .find(|o| o.value == settings.font_family)
+        .cloned();
+    let pick: Element<'a, Message> =
+        pick_list(options, selected, |o| Message::FontFamilyChanged(o.value))
+            .placeholder(&placeholder)
+            .width(Length::Fixed(240.0))
+            .style(theme::style::pick_list::standard)
+            .menu_style(theme::style::pick_list::menu)
+            .into();
+
+    let mut controls = column![
+        pick,
+        text("AaBb 你好 0123 字体预览")
+            .size(FONT_BODY)
+            .font(theme::font_from_family(&settings.font_family)),
+        text(fluent.get(Tr::FontRestartHint))
+            .size(FONT_SMALL)
+            .style(theme::style::text::secondary),
+    ]
+    .spacing(SPACE_SM);
+    if restart_required {
+        controls = controls.push(
+            button(text(fluent.get(Tr::SaveAndRestartApp)).size(FONT_SMALL))
+                .on_press(Message::RestartApp)
+                .padding(PADDING_BUTTON_SM)
+                .style(theme::style::button::primary()),
+        );
+    }
+
+    row![
+        container(text(fluent.get(Tr::FontFamily)).size(FONT_MEDIUM))
+            .width(Length::Fixed(200.0))
+            .center_y(Length::Fixed(36.0)),
+        controls,
+    ]
+    .align_y(Alignment::Start)
+    .into()
+}
+
+type FontOptions = &'static [Labeled<String>];
+
+static FONT_OPTIONS: Mutex<Option<(Locale, FontOptions)>> = Mutex::new(None);
+
+fn font_family_options(fluent: &Fluent) -> FontOptions {
+    let mut cache = FONT_OPTIONS.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((locale, options)) = cache.as_ref() {
+        if *locale == fluent.locale {
+            return options;
+        }
+    }
+    let mut options = Vec::new();
+    options.push(Labeled {
+        value: String::new(),
+        label: fluent.get(Tr::SystemDefault),
+    });
+    options.push(Labeled {
+        value: theme::BUNDLED_FONT_NAME.to_string(),
+        label: theme::BUNDLED_FONT_NAME.to_string(),
+    });
+    for family in theme::system_font_families() {
+        let family = family.clone();
+        if family.eq_ignore_ascii_case(theme::BUNDLED_FONT_NAME) {
+            continue;
+        }
+        options.push(Labeled {
+            value: family.clone(),
+            label: family,
+        });
+    }
+    let leaked: FontOptions = Box::leak(options.into_boxed_slice());
+    *cache = Some((fluent.locale, leaked));
+    leaked
 }
 
 fn download_view<'a>(

@@ -1,7 +1,10 @@
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex, OnceLock};
+
 use serde::{Deserialize, Serialize};
 
 use iced::theme::Palette;
-use iced::{Color, Theme};
+use iced::{Color, Font, Theme};
 
 use crate::ui::dims;
 
@@ -23,6 +26,45 @@ pub fn resolve_mode(mode: ThemeMode, system_dark: Option<bool>) -> bool {
         ThemeMode::Light => false,
         ThemeMode::System => system_dark.unwrap_or_else(detect_dark),
     }
+}
+
+pub const BUNDLED_FONT_NAME: &str = "HarmonyOS Sans SC";
+
+static FONT_CACHE: LazyLock<Mutex<HashMap<String, Font>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub fn font_from_family(family: &str) -> Font {
+    let trimmed = family.trim();
+    if trimmed.is_empty() {
+        return Font::DEFAULT;
+    }
+    if let Some(font) = FONT_CACHE.lock().ok().and_then(|c| c.get(trimmed).copied()) {
+        return font;
+    }
+    let leaked: &'static str = Box::leak(trimmed.to_string().into_boxed_str());
+    let font = Font::with_name(leaked);
+    if let Ok(mut cache) = FONT_CACHE.lock() {
+        cache.insert(trimmed.to_string(), font);
+    }
+    font
+}
+
+static FONT_FAMILIES: OnceLock<Vec<String>> = OnceLock::new();
+
+pub fn system_font_families() -> &'static [String] {
+    FONT_FAMILIES
+        .get_or_init(|| {
+            let mut db = fontdb::Database::new();
+            db.load_system_fonts();
+            let mut names: Vec<String> = db
+                .faces()
+                .filter_map(|f| f.families.first().map(|(n, _)| n.clone()))
+                .collect();
+            names.sort_by_key(|n| n.to_lowercase());
+            names.dedup_by_key(|n| n.to_lowercase());
+            names
+        })
+        .as_slice()
 }
 
 pub const OVERLAY: Color = Color {

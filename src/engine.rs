@@ -129,6 +129,7 @@ pub enum EngineCmd {
         bt_metadata_only: bool,
     },
     Shutdown,
+    ForceKill,
     CheckAria2Update,
     RetryAria2Fetch,
     RestartEngine,
@@ -1214,6 +1215,21 @@ async fn handle_check_update(event_tx: &EventTx) {
 #[cfg(not(unix))]
 async fn cleanup_stale_aria2(_bin_path: &Path, _pid_path: &Path) {}
 
+#[cfg(not(unix))]
+fn kill_sidecar_by_pid(_pid_path: &Path) {}
+
+#[cfg(unix)]
+fn kill_sidecar_by_pid(pid_path: &Path) {
+    let Ok(content) = std::fs::read_to_string(pid_path) else {
+        return;
+    };
+    let Ok(pid) = content.trim().parse::<i32>() else {
+        return;
+    };
+    tracing::warn!(%pid, "SIGKILL aria2-next by pid file");
+    unsafe { libc::kill(pid, libc::SIGKILL) };
+}
+
 #[cfg(unix)]
 async fn cleanup_stale_aria2(bin_path: &Path, pid_path: &Path) {
     let Ok(content) = std::fs::read_to_string(pid_path) else {
@@ -1508,6 +1524,25 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                         if let Some(h) = scheduler_handle.take() {
                             h.abort();
                         }
+                        break;
+                    }
+                    EngineCmd::ForceKill => {
+                        tracing::warn!("force-killing sidecar");
+                        for h in poll_handles.drain(..) {
+                            h.abort();
+                        }
+                        if let Some(h) = scheduler_handle.take() {
+                            h.abort();
+                        }
+                        if let Some(ref s) = sidecar {
+                            if let Ok(Ok(())) =
+                                tokio::time::timeout(Duration::from_secs(1), s.client.force_shutdown()).await
+                            {
+                                tracing::info!("sidecar force-shutdown accepted");
+                            }
+                        }
+                        kill_sidecar_by_pid(&config.session_path.join("aria2.pid"));
+                        let _ = event_tx.send(EngineEvent::EngineStopped);
                         break;
                     }
                     EngineCmd::CheckAria2Update => {

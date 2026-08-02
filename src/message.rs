@@ -125,6 +125,8 @@ pub enum Message {
     ThemeModeChanged(ThemeMode),
     ThemeColorChanged(iced::Color),
     LocaleChanged(Locale),
+    FontFamilyChanged(String),
+    RestartApp,
 
     CheckAria2Update,
     RetryAria2Fetch,

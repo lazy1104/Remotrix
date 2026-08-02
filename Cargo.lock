@@ -4408,6 +4408,7 @@ dependencies = [
  "dark-light",
  "directories",
  "fluent-templates",
+ "fontdb",
  "futures",
  "hex",
  "iced",

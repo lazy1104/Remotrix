@@ -119,6 +119,9 @@ fn default_ed2k_upload_slots() -> u16 {
 fn default_theme_color() -> String {
     crate::ui::theme::color_to_hex(crate::ui::theme::DEFAULT_THEME_COLOR)
 }
+fn default_font_family() -> String {
+    crate::ui::theme::BUNDLED_FONT_NAME.into()
+}
 fn default_window_width() -> f32 {
     1040.0
 }
@@ -442,6 +445,8 @@ pub struct Settings {
     pub theme_mode: ThemeMode,
     #[serde(default)]
     pub locale: Locale,
+    #[serde(default = "default_font_family")]
+    pub font_family: String,
     #[serde(default)]
     pub update: UpdatePrefs,
     #[serde(default)]
@@ -515,6 +520,7 @@ impl Default for Settings {
             theme_color: default_theme_color(),
             theme_mode: ThemeMode::System,
             locale: Locale::default(),
+            font_family: default_font_family(),
             update: UpdatePrefs::default(),
             aria2: Aria2Options::default(),
             nav_to_tasks_after_add: true,
