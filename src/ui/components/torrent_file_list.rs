@@ -127,7 +127,11 @@ where
         .padding(iced::Padding {
             top: SPACE_LG,
             right: SPACE_MD,
-            bottom: PADDING_XS as f32,
+            bottom: if collapsed {
+                SPACE_LG
+            } else {
+                PADDING_XS as f32
+            },
             left: SPACE_MD,
         })
         .style(theme::style::tree_frame)
