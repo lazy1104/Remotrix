@@ -1,27 +1,19 @@
-use iced::widget::{button, column, container, image, text, Text};
+use iced::widget::{button, column, container, text, Text};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, Page};
+use crate::ui::components::logo;
 use crate::ui::components::tooltip;
 use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
-pub fn view<'a>(
-    fluent: &'a Fluent,
-    _theme: &iced::Theme,
-    page: Page,
-    logo_handle: &'a iced::widget::image::Handle,
-) -> Element<'a, Message> {
-    let logo = container(
-        image(logo_handle.clone())
-            .width(Length::Fixed(28.0))
-            .height(Length::Fixed(28.0)),
-    )
-    .center_x(Length::Fill)
-    .width(Length::Fill)
-    .padding(PADDING_SIDEBAR_LOGO);
+pub fn view<'a>(fluent: &'a Fluent, theme: &'a iced::Theme, page: Page) -> Element<'a, Message> {
+    let logo = container(logo::view(theme, SIDEBAR_LOGO_W, SIDEBAR_LOGO_H))
+        .center_x(Length::Fill)
+        .width(Length::Fill)
+        .padding(PADDING_SIDEBAR_LOGO);
 
     let icon_btn =
         |glyph: Text<'a>, tip: String, msg: Message, active: bool| -> Element<'a, Message> {

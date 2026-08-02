@@ -1,6 +1,7 @@
 pub mod dialog;
 pub mod drop_down;
 pub mod file_tree;
+pub mod logo;
 pub mod number_stepper;
 pub mod path_picker;
 pub mod piece_map;

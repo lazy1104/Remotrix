@@ -55,7 +55,6 @@ pub struct Remotrix {
     update_pending: Option<String>,
     aria2_status: Option<(String, String)>,
     aria2_fetch_error: Option<String>,
-    logo_handle: iced::widget::image::Handle,
     ua_editor: text_editor::Content,
     torrent_files: HashMap<String, PathBuf>,
     torrent_followed: HashSet<String>,
@@ -106,9 +105,6 @@ pub fn init() -> (Remotrix, Task<Message>) {
         settings_accent(&settings),
         theme::resolve_mode(settings.theme_mode, None),
     );
-    let logo_handle =
-        iced::widget::image::Handle::from_bytes(&include_bytes!("../assets/icon.png")[..]);
-
     let db = crate::config::db_path().and_then(|p| Db::open(&p).ok());
     let (tasks, task_order) = if let Some(ref db) = db {
         let loaded = db.load_all();
@@ -150,7 +146,6 @@ pub fn init() -> (Remotrix, Task<Message>) {
         update_pending: None,
         aria2_status: None,
         aria2_fetch_error: None,
-        logo_handle,
         ua_editor,
         torrent_files: HashMap::new(),
         torrent_followed: HashSet::new(),
@@ -2023,7 +2018,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
 
     let t = &state.theme;
     let titlebar = crate::ui::title_bar::view(t, state.maximized);
-    let left_col = crate::ui::sidebar::view(&state.fluent, t, state.page, &state.logo_handle);
+    let left_col = crate::ui::sidebar::view(&state.fluent, t, state.page);
 
     let mid_col = crate::ui::category_bar::view(
         &state.fluent,

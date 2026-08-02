@@ -26,6 +26,8 @@ pub const SPACE_3XL: f32 = 14.0; // 对话框正文
 pub const SPACE_4XL: f32 = 16.0; // 区块间距
 
 pub const SWATCH_SIZE: f32 = 28.0; // 主题色圆点尺寸
+pub const SIDEBAR_LOGO_W: f32 = 40.0; // 侧栏 logo 宽
+pub const SIDEBAR_LOGO_H: f32 = 24.0; // 侧栏 logo 高
 
 // ---- 内边距 ----
 pub const PADDING_NONE: u16 = 0; // 铺满按钮（标题栏、侧栏导航）
@@ -46,7 +48,7 @@ pub const PADDING_TRAY: [u16; 2] = [8, 22]; // 关闭对话框托盘按钮
 pub const PADDING_FILTER: [u16; 2] = [10, 14]; // 分类栏筛选/设置项
 pub const PADDING_BUTTON_LG: [u16; 2] = [10, 22]; // 对话框操作按钮
 pub const PADDING_BUTTON_XL: [u16; 2] = [10, 24]; // 设置主操作按钮
-pub const PADDING_SIDEBAR_LOGO: [u16; 2] = [8, 0]; // 侧栏 logo
+pub const PADDING_SIDEBAR_LOGO: [u16; 2] = [2, 0]; // 侧栏 logo
 pub const PADDING_SIDEBAR: [u16; 2] = [12, 0]; // 侧栏容器
 pub const PADDING_CATEGORY_BAR: [u16; 2] = [20, 14]; // 分类栏容器
 pub const PADDING_PAGE: [u16; 2] = [24, 28]; // 页面容器
