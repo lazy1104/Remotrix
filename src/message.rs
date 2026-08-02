@@ -266,6 +266,7 @@ pub enum SettingKey {
     BtRequireCrypto,
     BtEnableLpd,
     EnablePeerExchange,
+    BtAutoDownload,
     FileAllocation,
     DiskCache,
     EnableProxy,

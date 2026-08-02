@@ -29,7 +29,7 @@ Rust-native desktop download manager inspired by Motrix.app. Built with `iced` G
 ```rust
 // --- Channel Protocol (must match between engine.rs and message.rs) ---
 enum EngineCmd {
-    AddDownload { urls: Vec<String>, save_dir: PathBuf, split: u16 },
+    AddDownload { urls: Vec<String>, save_dir: PathBuf, split: u16, bt_metadata_only: bool },
     AddTorrent { path: PathBuf, save_dir: PathBuf, split: u16 },
     Pause(String), Resume(String), Remove(String),
     PauseAll, ResumeAll, RemoveAll, Snapshot,

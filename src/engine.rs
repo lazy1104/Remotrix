@@ -75,6 +75,7 @@ pub enum EngineCmd {
         save_dir: PathBuf,
         split: u16,
         advanced: TaskAdvancedOptions,
+        bt_metadata_only: bool,
     },
     Pause(String),
     Resume(String),
@@ -371,6 +372,10 @@ pub(crate) fn is_torrent_url(url: &str) -> bool {
         .unwrap_or(false)
 }
 
+pub(crate) fn is_magnet_url(url: &str) -> bool {
+    url.trim_start().to_ascii_lowercase().starts_with("magnet:")
+}
+
 fn collect_file_paths(s: &aria2_ws::response::Status) -> Vec<String> {
     let mut paths = Vec::new();
     for f in &s.files {
@@ -622,6 +627,7 @@ async fn handle_client_cmd(
             save_dir,
             split,
             advanced,
+            bt_metadata_only,
         } => {
             tracing::info!(?urls, ?save_dir, split, "add download");
             if urls.is_empty() {
@@ -642,6 +648,12 @@ async fn handle_client_cmd(
                     opts.extra_options.insert(
                         "follow-torrent".to_string(),
                         serde_json::Value::String("false".into()),
+                    );
+                }
+                if bt_metadata_only && is_magnet_url(&url) {
+                    opts.extra_options.insert(
+                        "bt-metadata-only".to_string(),
+                        serde_json::Value::String("true".into()),
                     );
                 }
                 match client

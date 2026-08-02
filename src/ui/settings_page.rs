@@ -463,10 +463,27 @@ fn bittorrent_view<'a>(
         .spacing(SPACE_SM)
         .push(group_title(fluent, Tr::BtSettings, accent))
         .push(labeled_toggle(
+            fluent.get(Tr::BtAutoDownload),
+            settings.aria2.bt_auto_download,
+            SettingKey::BtAutoDownload,
+        ))
+        .push(labeled_toggle(
             fluent.get(Tr::BtRequireCrypto),
             settings.aria2.bt_require_crypto,
             SettingKey::BtRequireCrypto,
         ))
+        .push({
+            let placeholder = fluent.get(Tr::BtTrackerPlaceholder);
+            labeled_text_input(
+                fluent.get(Tr::BtTracker),
+                &settings.aria2.bt_tracker,
+                SettingKey::BtTracker,
+                false,
+                &placeholder,
+            )
+        })
+        .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
+        .push(group_title(fluent, Tr::NodeExchange, accent))
         .push(labeled_toggle(
             fluent.get(Tr::EnableDht),
             settings.aria2.enable_dht,
@@ -482,16 +499,8 @@ fn bittorrent_view<'a>(
             settings.aria2.enable_peer_exchange,
             SettingKey::EnablePeerExchange,
         ))
-        .push({
-            let placeholder = fluent.get(Tr::BtTrackerPlaceholder);
-            labeled_text_input(
-                fluent.get(Tr::BtTracker),
-                &settings.aria2.bt_tracker,
-                SettingKey::BtTracker,
-                false,
-                &placeholder,
-            )
-        })
+        .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
+        .push(group_title(fluent, Tr::Seeding, accent))
         .push(labeled_number(
             fluent.get(Tr::SeedRatio),
             &settings.aria2.seed_ratio,

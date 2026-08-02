@@ -587,6 +587,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     .collect();
                 if !urls.is_empty() {
                     let save_dir = PathBuf::from(state.add_dialog.save_picker.value());
+                    let bt_metadata_only = !state.settings.aria2.bt_auto_download;
                     if state
                         .handle
                         .cmd_tx
@@ -595,6 +596,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             save_dir,
                             split: state.add_dialog.split,
                             advanced,
+                            bt_metadata_only,
                         })
                         .is_err()
                     {
@@ -849,6 +851,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             SettingKey::EnablePeerExchange => {
                 state.settings.aria2.enable_peer_exchange = value == "true";
+            }
+            SettingKey::BtAutoDownload => {
+                state.settings.aria2.bt_auto_download = value == "true";
             }
             SettingKey::FileAllocation => {
                 state.settings.aria2.file_allocation = value;
@@ -1240,7 +1245,10 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 }
                 if status == "complete" && state.sync_done {
                     if let Some(t) = state.tasks.get(&gid) {
-                        if !t.url.is_empty() && crate::engine::is_torrent_url(&t.url) {
+                        if !t.url.is_empty()
+                            && crate::engine::is_torrent_url(&t.url)
+                            && state.settings.aria2.bt_auto_download
+                        {
                             if state.torrent_followed.insert(gid.clone()) {
                                 let path = t.save_dir.join(&t.name);
                                 let save_dir = t.save_dir.clone();

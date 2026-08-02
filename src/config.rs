@@ -57,6 +57,8 @@ pub struct Aria2Options {
     pub bt_enable_lpd: bool,
     #[serde(default = "default_true")]
     pub enable_peer_exchange: bool,
+    #[serde(default = "default_true")]
+    pub bt_auto_download: bool,
     #[serde(default = "default_file_allocation")]
     pub file_allocation: String,
     #[serde(default = "default_disk_cache_mb")]
@@ -149,6 +151,7 @@ impl Default for Aria2Options {
             bt_require_crypto: false,
             bt_enable_lpd: true,
             enable_peer_exchange: true,
+            bt_auto_download: true,
             file_allocation: default_file_allocation(),
             disk_cache_mb: default_disk_cache_mb(),
             proxy_enabled: false,
