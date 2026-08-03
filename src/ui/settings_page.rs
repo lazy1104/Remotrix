@@ -732,12 +732,26 @@ fn bittorrent_view<'a>(
     ));
     for url in &settings.tracker.custom_urls {
         tracker_rows.push(setting_row_auto(
-            url.clone(),
-            button(icon::x().size(FONT_BODY))
-                .on_press(Message::TrackerCustomRemove(url.clone()))
-                .padding(PADDING_BUTTON_SM)
-                .style(theme::style::button::text())
-                .into(),
+            String::new(),
+            container(
+                row![
+                    text(url.clone())
+                        .size(FONT_SMALL)
+                        .width(Length::Fill)
+                        .wrapping(text::Wrapping::Glyph),
+                    button(icon::x().size(FONT_BODY))
+                        .on_press(Message::TrackerCustomRemove(url.clone()))
+                        .padding(PADDING_BUTTON_SM)
+                        .style(theme::style::button::text()),
+                ]
+                .spacing(SPACE_SM)
+                .align_y(Alignment::Center)
+                .width(Length::Fill),
+            )
+            .padding([6, 10])
+            .width(Length::Fill)
+            .style(theme::style::card)
+            .into(),
         ));
     }
     tracker_rows.push(setting_row_auto(
@@ -759,12 +773,13 @@ fn bittorrent_view<'a>(
         .style(theme::style::button::secondary())
         .into(),
     ));
-    tracker_rows.push(
+    tracker_rows.push(setting_row_auto(
+        String::new(),
         text(format!("{count_str} · {last_sync_str}"))
             .size(FONT_SMALL)
             .style(theme::style::text::secondary)
             .into(),
-    );
+    ));
     tracker_rows.push(labeled_editor(
         fluent.get(Tr::BtTracker),
         bt_tracker_editor,
