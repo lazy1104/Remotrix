@@ -23,7 +23,7 @@ use crate::ui::add_dialog::AddDialogState;
 use crate::ui::category_bar::Counts;
 use crate::ui::components::file_tree::FileTreeNode;
 use crate::ui::components::path_picker::PathPickerAction;
-use crate::ui::components::toast::{Toast, ToastKind, ToastPosition};
+use crate::ui::components::toast::{Toast, ToastGroup, ToastKind};
 use crate::ui::components::torrent_upload::{self, TorrentUploadAction};
 use crate::ui::details_dialog::DetailsDialogState;
 use crate::ui::icons::{CATEGORY_W, SIDEBAR_W};
@@ -621,6 +621,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             let Some(payload) = payload else {
                 let (_, task) = spawn_toast(
                     state,
+                    ToastGroup::Task,
                     ToastKind::Warning,
                     state.fluent.get(Tr::NoDownloadableContent),
                     Some(Duration::from_secs(4)),
@@ -632,6 +633,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 if !torrent_upload::is_valid_torrent_file(path) {
                     let (_, task) = spawn_toast(
                         state,
+                        ToastGroup::Task,
                         ToastKind::Warning,
                         state.fluent.get(Tr::InvalidTorrent),
                         Some(Duration::from_secs(4)),
@@ -651,6 +653,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             );
             let (_, task) = spawn_toast(
                 state,
+                ToastGroup::Task,
                 ToastKind::Normal,
                 state.fluent.get(Tr::DropDetected),
                 Some(Duration::from_secs(3)),
@@ -1225,6 +1228,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             Ok(count) => {
                 tracing::info!(count, "ui: cleared log files");
                 let mut toast = Toast::new(ToastKind::Success, state.fluent.get(Tr::LogsCleared))
+                    .group(ToastGroup::Logs)
                     .close_after(Some(Duration::from_secs(3)));
                 toast.id = state.next_toast_id;
                 state.next_toast_id += 1;
@@ -1233,6 +1237,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             Err(e) => {
                 tracing::warn!(?e, "ui: clear log files failed");
                 let mut toast = Toast::new(ToastKind::Error, state.fluent.get(Tr::LogsClearFailed))
+                    .group(ToastGroup::Logs)
                     .close_after(Some(Duration::from_secs(5)));
                 toast.id = state.next_toast_id;
                 state.next_toast_id += 1;
@@ -1267,6 +1272,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 }
                 let (_, toast_task) = spawn_toast(
                     state,
+                    ToastGroup::Engine,
                     ToastKind::Success,
                     state.fluent.get(Tr::EngineStarted),
                     Some(Duration::from_secs(3)),
@@ -1397,6 +1403,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     }
                     let (_, task) = spawn_toast(
                         state,
+                        ToastGroup::Task,
                         ToastKind::Normal,
                         state.fluent.get(Tr::FilesMissingRemoved),
                         Some(Duration::from_secs(3)),
@@ -1620,6 +1627,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 tracing::warn!(?gid, "change file selection failed");
                 let (_, task) = spawn_toast(
                     state,
+                    ToastGroup::Task,
                     ToastKind::Warning,
                     state.fluent.get(crate::i18n::Tr::SelectFilesFailed),
                     Some(Duration::from_secs(4)),
@@ -1676,7 +1684,8 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 if let Some(id) = state.startup_error_toast_id.take() {
                     dismiss_toast(state, id);
                 }
-                let (id, task) = spawn_toast(state, ToastKind::Error, msg, None, true);
+                let (id, task) =
+                    spawn_toast(state, ToastGroup::Engine, ToastKind::Error, msg, None, true);
                 state.startup_error_toast_id = Some(id);
                 return task;
             }
@@ -1703,6 +1712,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 if stage == "downloading" && state.downloading_toast_id.is_none() {
                     let (id, task) = spawn_toast(
                         state,
+                        ToastGroup::Engine,
                         ToastKind::Normal,
                         state.fluent.get(Tr::DownloadingAria2),
                         None,
@@ -1715,6 +1725,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     state.startup_starting_toast_shown = true;
                     let (_, task) = spawn_toast(
                         state,
+                        ToastGroup::Engine,
                         ToastKind::Normal,
                         state.fluent.get(Tr::EngineStarting),
                         Some(Duration::from_secs(3)),
@@ -1779,6 +1790,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             );
             let (_, task) = spawn_toast(
                 state,
+                ToastGroup::Task,
                 ToastKind::Normal,
                 state.fluent.get(Tr::ClipboardDetected),
                 Some(Duration::from_secs(3)),
@@ -1919,7 +1931,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     ToastKind::Warning,
                     state.fluent.get(Tr::BtTrackerSourceInvalidUrl),
                 )
-                .position(ToastPosition::Top)
+                .group(ToastGroup::Tracker)
                 .close_after(Some(Duration::from_secs(4)));
                 toast.id = state.next_toast_id;
                 state.next_toast_id += 1;
@@ -1948,7 +1960,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     ToastKind::Warning,
                     state.fluent.get(Tr::BtTrackerSelectSource),
                 )
-                .position(ToastPosition::Top)
+                .group(ToastGroup::Tracker)
                 .close_after(Some(Duration::from_secs(4)));
                 toast.id = state.next_toast_id;
                 state.next_toast_id += 1;
@@ -1974,7 +1986,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             if lines.is_empty() && !failures.is_empty() {
                 let mut toast =
                     Toast::new(ToastKind::Error, state.fluent.get(Tr::BtTrackerSyncFailed))
-                        .position(ToastPosition::Top)
+                        .group(ToastGroup::Tracker)
                         .close_after(Some(Duration::from_secs(5)));
                 toast.id = state.next_toast_id;
                 state.next_toast_id += 1;
@@ -2018,7 +2030,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 },
                 msg,
             )
-            .position(ToastPosition::Top)
+            .group(ToastGroup::Tracker)
             .close_after(Some(Duration::from_secs(4)));
             toast.id = state.next_toast_id;
             state.next_toast_id += 1;
@@ -2289,6 +2301,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             let (_, task) = spawn_toast(
                 state,
+                ToastGroup::Task,
                 ToastKind::Warning,
                 state.fluent.get(Tr::FileMissing),
                 Some(Duration::from_secs(4)),
@@ -2827,7 +2840,7 @@ fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
             } else {
                 let mut toast =
                     Toast::new(ToastKind::Warning, state.fluent.get(Tr::InvalidTorrent))
-                        .position(ToastPosition::Top)
+                        .group(ToastGroup::Task)
                         .close_after(Some(Duration::from_secs(4)));
                 toast.id = state.next_toast_id;
                 state.next_toast_id += 1;
@@ -2920,14 +2933,15 @@ fn schedule_details_select_flush(state: &mut Remotrix) -> Task<Message> {
 fn push_toast(state: &mut Remotrix, toast: Toast) {
     const CAP: usize = 6;
     let pos = toast.position;
+    let group = toast.group;
     let removed_hovered = matches!(
         state.hovered_toast_id,
         Some(h)
-            if state.toasts.iter().any(|t| t.id == h && t.position == pos && t.close_after.is_some())
+            if state.toasts.iter().any(|t| t.id == h && t.position == pos && t.group == group && t.close_after.is_some())
     );
     state
         .toasts
-        .retain(|t| !(t.position == pos && t.close_after.is_some()));
+        .retain(|t| !(t.position == pos && t.group == group && t.close_after.is_some()));
     if removed_hovered {
         state.hovered_toast_id = None;
     }
@@ -2944,6 +2958,7 @@ fn push_toast(state: &mut Remotrix, toast: Toast) {
 
 fn spawn_toast(
     state: &mut Remotrix,
+    group: ToastGroup,
     kind: ToastKind,
     message: String,
     close_after: Option<Duration>,
@@ -2952,7 +2967,7 @@ fn spawn_toast(
     let id = state.next_toast_id;
     state.next_toast_id += 1;
     let mut toast = Toast::new(kind, message)
-        .position(ToastPosition::Top)
+        .group(group)
         .close_after(close_after);
     if show_close {
         toast = toast.show_close();

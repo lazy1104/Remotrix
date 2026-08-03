@@ -22,6 +22,16 @@ pub enum ToastKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ToastGroup {
+    #[default]
+    General,
+    Engine,
+    Tracker,
+    Task,
+    Logs,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ToastPosition {
     TopLeft,
     #[default]
@@ -65,6 +75,7 @@ pub struct Toast {
     pub id: u64,
     pub kind: ToastKind,
     pub message: String,
+    pub group: ToastGroup,
     pub position: ToastPosition,
     pub show_close: bool,
     pub close_after: Option<Duration>,
@@ -77,6 +88,7 @@ impl Toast {
             id: 0,
             kind,
             message: message.into(),
+            group: ToastGroup::General,
             position: ToastPosition::Top,
             show_close: false,
             close_after: Some(Duration::from_secs(3)),
@@ -86,6 +98,11 @@ impl Toast {
 
     pub fn position(mut self, position: ToastPosition) -> Self {
         self.position = position;
+        self
+    }
+
+    pub fn group(mut self, group: ToastGroup) -> Self {
+        self.group = group;
         self
     }
 
