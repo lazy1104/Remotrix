@@ -19,6 +19,16 @@ pub fn view<'a>(
         ConfirmAction::LeaveSettings { .. } => {
             (Tr::ConfirmUnappliedTitle, Tr::ConfirmUnappliedBody)
         }
+        ConfirmAction::RestartEngine { has_active } => {
+            if *has_active {
+                (
+                    Tr::ConfirmRestartEngineActiveTitle,
+                    Tr::ConfirmRestartEngineActiveBody,
+                )
+            } else {
+                (Tr::ConfirmRestartEngineTitle, Tr::ConfirmRestartEngineBody)
+            }
+        }
     };
 
     let body = text(fluent.get(body_key))
@@ -84,6 +94,17 @@ pub fn view<'a>(
                 .style(theme::style::button::primary());
 
             row![cancel_btn, discard_btn, apply_btn]
+                .spacing(SPACE_XL)
+                .align_y(Alignment::Center)
+                .into()
+        }
+        ConfirmAction::RestartEngine { .. } => {
+            let confirm_btn = button(text(fluent.get(Tr::Confirm)).size(FONT_BODY))
+                .on_press(Message::ConfirmRestartEngine)
+                .padding(PADDING_BUTTON_LG)
+                .style(theme::style::button::primary());
+
+            row![cancel_btn, confirm_btn]
                 .spacing(SPACE_XL)
                 .align_y(Alignment::Center)
                 .into()

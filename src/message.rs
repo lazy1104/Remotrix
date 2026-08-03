@@ -54,6 +54,7 @@ pub enum ConfirmAction {
     ClearCompleted,
     DeleteTask(String),
     LeaveSettings { target: Page },
+    RestartEngine { has_active: bool },
 }
 
 #[derive(Debug, Clone)]
@@ -157,6 +158,9 @@ pub enum Message {
     ConfirmCancel,
     ApplyAndLeaveSettings,
     DiscardAndLeaveSettings,
+    ConfirmRestartEngine,
+    EngineRestartCooldownFinished,
+    EngineRestartSafetyTimeout,
     SpeedUnitChanged(SettingKey, SpeedUnit),
     ShowToast(Toast),
     DismissToast(u64),

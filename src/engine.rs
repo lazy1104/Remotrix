@@ -133,6 +133,7 @@ pub enum EngineCmd {
     CheckAria2Update,
     RetryAria2Fetch,
     RestartEngine,
+    ResumeGids(Vec<String>),
     CheckMissingFiles,
     ReloadSchedules,
 }
@@ -807,6 +808,52 @@ async fn handle_client_cmd(
                 });
             }
         }
+        EngineCmd::ResumeGids(gids) => {
+            if gids.is_empty() {
+                return Ok(());
+            }
+            tracing::info!(count = gids.len(), "resume gids (staggered by host)");
+            let gids: HashSet<String> = gids.into_iter().collect();
+            let tasks = fetch_all_tasks(client).await;
+            let mut groups: Vec<(Option<String>, Vec<aria2_ws::response::Status>)> = Vec::new();
+            for s in tasks {
+                if !gids.contains(&s.gid) || s.status != Aria2TaskStatus::Paused {
+                    continue;
+                }
+                let url = s
+                    .files
+                    .first()
+                    .and_then(|f| f.uris.first())
+                    .map(|u| u.uri.clone())
+                    .unwrap_or_default();
+                let host = url_host(&url);
+                match groups.iter_mut().find(|(h, _)| *h == host) {
+                    Some((_, v)) => v.push(s),
+                    None => groups.push((host, vec![s])),
+                }
+            }
+            if groups.is_empty() {
+                return Ok(());
+            }
+            const RESUME_GROUP_INTERVAL: Duration = Duration::from_millis(500);
+            tracing::info!(groups = groups.len(), "resume gids staggered groups");
+            for (host, group) in groups {
+                tracing::info!(?host, count = group.len(), "resuming group");
+                let client = client.clone();
+                let tx = event_tx.clone();
+                tokio::spawn(async move {
+                    for (i, s) in group.iter().enumerate() {
+                        if i > 0 {
+                            tokio::time::sleep(RESUME_GROUP_INTERVAL).await;
+                        }
+                        let _ = client.unpause(&s.gid).await;
+                        if let Ok(st) = client.tell_status(&s.gid).await {
+                            emit_progress(&tx, &st).await;
+                        }
+                    }
+                });
+            }
+        }
         EngineCmd::RemoveAll { delete_files } => {
             tracing::info!(delete_files, "remove all");
             let tasks = fetch_all_tasks(client).await;
@@ -1271,7 +1318,8 @@ async fn cleanup_stale_aria2(bin_path: &Path, pid_path: &Path) {
 
 async fn boot(
     config: &SidecarConfig,
-    restart_tx: &mpsc::UnboundedSender<()>,
+    restart_tx: &mpsc::UnboundedSender<u64>,
+    generation: u64,
     event_tx: &EventTx,
 ) -> Result<(Sidecar, Option<String>), String> {
     let (bin_path, applied) = crate::aria2_fetcher::ensure_aria2_next(event_tx).await?;
@@ -1285,10 +1333,11 @@ async fn boot(
 
     if let Some(mut child) = sidecar.child.take() {
         let tx = restart_tx.clone();
+        let gen = generation;
         tokio::spawn(async move {
             let _ = child.wait().await;
             tracing::warn!("aria2-next process exited");
-            let _ = tx.send(());
+            let _ = tx.send(gen);
         });
     }
 
@@ -1468,15 +1517,16 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
         download_dir,
     };
 
-    let (restart_tx, mut restart_rx) = mpsc::unbounded_channel::<()>();
+    let (restart_tx, mut restart_rx) = mpsc::unbounded_channel::<u64>();
 
     let mut sidecar: Option<Sidecar> = None;
     let mut poll_handles: Vec<JoinHandle<()>> = Vec::new();
     let mut scheduler_handle: Option<JoinHandle<()>> = None;
     let mut retry_count = 0;
+    let mut generation: u64 = 0;
     const MAX_RETRIES: u32 = 3;
 
-    match boot(&config, &restart_tx, &event_tx).await {
+    match boot(&config, &restart_tx, generation, &event_tx).await {
         Ok((s, applied)) => {
             poll_handles = on_sidecar_ready(&s, &event_tx);
             scheduler_handle = Some(start_scheduler(&s, &event_tx));
@@ -1570,7 +1620,8 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                         for h in poll_handles.drain(..) { h.abort(); }
                         if let Some(h) = scheduler_handle.take() { h.abort(); }
                         sidecar = None;
-                        match boot(&config, &restart_tx, &event_tx).await {
+                        generation += 1;
+                        match boot(&config, &restart_tx, generation, &event_tx).await {
                             Ok((s, applied)) => {
                                 poll_handles = on_sidecar_ready(&s, &event_tx);
                                 scheduler_handle = Some(start_scheduler(&s, &event_tx));
@@ -1587,27 +1638,42 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                     }
                     EngineCmd::RestartEngine => {
                         if let Some(ref s) = sidecar {
-                            for h in poll_handles.drain(..) { h.abort(); }
-                            if let Some(h) = scheduler_handle.take() { h.abort(); }
+                            let _ = s.client.pause_all().await;
+                            let mut paused = false;
+                            for _ in 0..10 {
+                                match s.client.tell_active().await {
+                                    Ok(list) if list.is_empty() => {
+                                        paused = true;
+                                        break;
+                                    }
+                                    _ => tokio::time::sleep(Duration::from_millis(200)).await,
+                                }
+                            }
+                            if !paused {
+                                tracing::warn!("tasks did not fully pause before engine restart");
+                            }
+                            for status in fetch_all_tasks(&s.client).await {
+                                emit_progress(&event_tx, &status).await;
+                            }
                             let _ = s.client.save_session().await;
                             let _ = s.client.shutdown().await;
                             sidecar = None;
-                        } else {
-                            for h in poll_handles.drain(..) { h.abort(); }
-                            if let Some(h) = scheduler_handle.take() { h.abort(); }
-                            match boot(&config, &restart_tx, &event_tx).await {
-                                Ok((s, applied)) => {
-                                    poll_handles = on_sidecar_ready(&s, &event_tx);
-                                    scheduler_handle = Some(start_scheduler(&s, &event_tx));
-                                    sidecar = Some(s);
-                                    retry_count = 0;
-                                    if let Some(v) = applied {
-                                        let _ = event_tx.send(EngineEvent::Aria2UpdateApplied { version: v });
-                                    }
+                        }
+                        for h in poll_handles.drain(..) { h.abort(); }
+                        if let Some(h) = scheduler_handle.take() { h.abort(); }
+                        generation += 1;
+                        match boot(&config, &restart_tx, generation, &event_tx).await {
+                            Ok((s, applied)) => {
+                                poll_handles = on_sidecar_ready(&s, &event_tx);
+                                scheduler_handle = Some(start_scheduler(&s, &event_tx));
+                                sidecar = Some(s);
+                                retry_count = 0;
+                                if let Some(v) = applied {
+                                    let _ = event_tx.send(EngineEvent::Aria2UpdateApplied { version: v });
                                 }
-                                Err(e) => {
-                                    let _ = event_tx.send(EngineEvent::Aria2FetchFailed { error: e });
-                                }
+                            }
+                            Err(e) => {
+                                let _ = event_tx.send(EngineEvent::EngineDegraded { reason: e });
                             }
                         }
                     }
@@ -1624,7 +1690,15 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                     }
                 }
             }
-            _ = restart_rx.recv() => {
+            gen = restart_rx.recv() => {
+                let Some(gen) = gen else {
+                    tracing::info!("restart channel closed");
+                    continue;
+                };
+                if gen != generation {
+                    tracing::debug!(?gen, current = generation, "ignoring stale sidecar exit notification");
+                    continue;
+                }
                 tracing::warn!("aria2-next exited, restarting...");
                 for h in poll_handles.drain(..) { h.abort(); }
                 if let Some(h) = scheduler_handle.take() { h.abort(); }
@@ -1637,7 +1711,7 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                     });
                     continue;
                 }
-                match boot(&config, &restart_tx, &event_tx).await {
+                match boot(&config, &restart_tx, generation, &event_tx).await {
                     Ok((s, applied)) => {
                         poll_handles = on_sidecar_ready(&s, &event_tx);
                         scheduler_handle = Some(start_scheduler(&s, &event_tx));

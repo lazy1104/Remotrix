@@ -86,6 +86,7 @@ pub fn view<'a>(
     category: SettingsCategory,
     applied_settings: &'a Settings,
     engine_restart_pending: bool,
+    engine_restart_in_progress: bool,
     aria2_version: Option<&'a str>,
     aria2_check_msg: Option<&'a str>,
     aria2_status: Option<(&'a str, &'a str)>,
@@ -135,14 +136,34 @@ pub fn view<'a>(
             .padding(PADDING_BUTTON_XL)
             .style(theme::style::button::primary()),
     );
-    if dirty {
-        actions = actions.push(
-            button(text(fluent.get(Tr::Reset)).size(FONT_BODY))
-                .on_press(Message::ResetSettings)
-                .padding(PADDING_BUTTON_XL)
-                .style(theme::style::button::secondary()),
-        );
-    }
+    actions = actions.push(
+        button(text(fluent.get(Tr::Reset)).size(FONT_BODY))
+            .on_press_maybe(if dirty {
+                Some(Message::ResetSettings)
+            } else {
+                None
+            })
+            .padding(PADDING_BUTTON_XL)
+            .style(theme::style::button::secondary()),
+    );
+    actions = actions.push(
+        button(
+            row![
+                icon::refresh().size(FONT_ICON),
+                text(fluent.get(Tr::RestartEngine)).size(FONT_BODY),
+            ]
+            .spacing(SPACE_SM)
+            .align_y(Alignment::Center),
+        )
+        .on_press_maybe(if engine_restart_in_progress {
+            None
+        } else {
+            Some(Message::RestartEngine)
+        })
+        .padding(PADDING_BUTTON_XL)
+        .style(theme::style::button::secondary()),
+    );
+    actions = actions.push(iced::widget::Space::new().width(Length::Fill));
     body = body.push(actions);
 
     container(body)

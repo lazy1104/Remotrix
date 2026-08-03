@@ -509,6 +509,7 @@ pub struct Settings {
 impl Settings {
     pub fn apply_fields_equal(&self, other: &Settings) -> bool {
         self.download_dir == other.download_dir
+            && self.font_family == other.font_family
             && self.max_concurrent == other.max_concurrent
             && self.download_limit_kb == other.download_limit_kb
             && self.upload_limit_kb == other.upload_limit_kb

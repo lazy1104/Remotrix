@@ -72,6 +72,8 @@ pub struct Remotrix {
     applied_font_family: String,
     restart_pending: bool,
     engine_restart_pending: bool,
+    engine_restart_in_progress: bool,
+    restart_resume_gids: HashSet<String>,
     settings_ui: SettingsUiState,
     global_speed: Option<(u64, u64)>,
     paused_gids: HashSet<String>,
@@ -139,6 +141,8 @@ pub fn init() -> (Remotrix, Task<Message>) {
         applied_font_family: settings.font_family.clone(),
         restart_pending: false,
         engine_restart_pending: false,
+        engine_restart_in_progress: false,
+        restart_resume_gids: HashSet::new(),
         settings,
         fluent,
         theme,
@@ -211,6 +215,7 @@ fn sync_geometry_to_settings(state: &mut Remotrix) {
 
 fn revert_apply_settings(state: &mut Remotrix) {
     state.settings.download_dir = state.applied_settings.download_dir.clone();
+    state.settings.font_family = state.applied_settings.font_family.clone();
     state
         .settings_ui
         .download_picker
@@ -432,6 +437,24 @@ fn shutdown_timeout_task() -> Task<Message> {
     )
 }
 
+fn engine_restart_safety_timeout_task() -> Task<Message> {
+    Task::perform(
+        async move {
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        },
+        |_| Message::EngineRestartSafetyTimeout,
+    )
+}
+
+fn engine_restart_cooldown_task() -> Task<Message> {
+    Task::perform(
+        async move {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        },
+        |_| Message::EngineRestartCooldownFinished,
+    )
+}
+
 fn finalize_close(state: &mut Remotrix) -> Task<Message> {
     if !state.closing {
         return Task::none();
@@ -446,7 +469,14 @@ fn finalize_close(state: &mut Remotrix) -> Task<Message> {
         }
     }
     sync_geometry_to_settings(state);
-    config::save(&state.settings);
+    let mut save = state.applied_settings.clone();
+    save.window_width = state.settings.window_width;
+    save.window_height = state.settings.window_height;
+    save.window_maximized = state.settings.window_maximized;
+    save.path_history = state.settings.path_history.clone();
+    save.last_clipboard_hash = state.settings.last_clipboard_hash.clone();
+    save.update = state.settings.update.clone();
+    config::save(&save);
     spawn_restart_if_pending(state);
     if let Some(id) = state.window_id {
         iced::window::close::<Message>(id)
@@ -1163,14 +1193,28 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 state.startup_starting_toast_shown = false;
                 state.engine_restart_pending = false;
                 state.aria2_status = Some(("ready".to_string(), state.fluent.get(Tr::Aria2Ready)));
-                let (_, task) = spawn_toast(
+                if !state.restart_resume_gids.is_empty() {
+                    let gids: Vec<String> = state.restart_resume_gids.iter().cloned().collect();
+                    if state
+                        .handle
+                        .cmd_tx
+                        .send(EngineCmd::ResumeGids(gids))
+                        .is_err()
+                    {
+                        tracing::warn!("resume gids cmd send failed");
+                    }
+                }
+                let (_, toast_task) = spawn_toast(
                     state,
                     ToastKind::Success,
                     state.fluent.get(Tr::EngineStarted),
                     Some(Duration::from_secs(3)),
                     false,
                 );
-                return task;
+                if state.engine_restart_in_progress {
+                    return toast_task.chain(engine_restart_cooldown_task());
+                }
+                return toast_task;
             }
             EngineEvent::EngineStopped => {
                 tracing::info!("engine stopped");
@@ -1561,6 +1605,10 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 let msg = format!("{}: {error}", state.fluent.get(Tr::EngineStartFailed));
                 state.aria2_fetch_error = Some(error);
                 state.startup_starting_toast_shown = false;
+                if state.engine_restart_in_progress {
+                    state.engine_restart_in_progress = false;
+                    state.restart_resume_gids.clear();
+                }
                 if let Some(id) = state.downloading_toast_id.take() {
                     dismiss_toast(state, id);
                 }
@@ -1573,6 +1621,10 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             EngineEvent::EngineDegraded { reason } => {
                 state.aria2_fetch_error = Some(reason);
+                if state.engine_restart_in_progress {
+                    state.engine_restart_in_progress = false;
+                    state.restart_resume_gids.clear();
+                }
             }
             EngineEvent::GlobalSpeed { download, upload } => {
                 state.global_speed = Some((download, upload));
@@ -1751,20 +1803,22 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.settings.theme_mode = mode;
             rebuild_theme(state);
             config::save(&state.settings);
+            state.applied_settings.theme_mode = mode;
         }
         Message::ThemeColorChanged(color) => {
             state.settings.theme_color = theme::color_to_hex(color);
             rebuild_theme(state);
             config::save(&state.settings);
+            state.applied_settings.theme_color = state.settings.theme_color.clone();
         }
         Message::LocaleChanged(locale) => {
             state.settings.locale = locale;
             state.fluent = Fluent::new(locale);
             config::save(&state.settings);
+            state.applied_settings.locale = locale;
         }
         Message::FontFamilyChanged(family) => {
             state.settings.font_family = family;
-            config::save(&state.settings);
         }
         Message::RestartApp => {
             state.restart_pending = true;
@@ -1800,8 +1854,34 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
         }
         Message::RestartEngine => {
+            if state.engine_restart_in_progress {
+                return Task::none();
+            }
+            let has_active = state.tasks.values().any(|t| t.status == TaskStatus::Active);
+            state.confirm = Some(ConfirmAction::RestartEngine { has_active });
+        }
+        Message::ConfirmRestartEngine => {
+            state.confirm = None;
+            state.engine_restart_in_progress = true;
+            state.restart_resume_gids = state
+                .tasks
+                .values()
+                .filter(|t| t.status == TaskStatus::Active)
+                .map(|t| t.gid.clone())
+                .collect();
             if state.handle.cmd_tx.send(EngineCmd::RestartEngine).is_err() {
                 tracing::warn!("restart engine cmd send failed");
+            }
+            return engine_restart_safety_timeout_task();
+        }
+        Message::EngineRestartCooldownFinished => {
+            state.engine_restart_in_progress = false;
+            state.restart_resume_gids.clear();
+        }
+        Message::EngineRestartSafetyTimeout => {
+            if state.engine_restart_in_progress {
+                state.engine_restart_in_progress = false;
+                state.restart_resume_gids.clear();
             }
         }
         Message::SetAutoCheck(enabled) => {
@@ -2190,6 +2270,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             state.settings_cat,
             &state.applied_settings,
             state.engine_restart_pending,
+            state.engine_restart_in_progress,
             state.aria2_version.as_deref(),
             state.aria2_check_msg.as_deref(),
             state
