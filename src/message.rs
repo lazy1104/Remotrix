@@ -53,6 +53,7 @@ pub enum ConfirmAction {
     DeleteAll,
     ClearCompleted,
     DeleteTask(String),
+    RemoveMissingFileTask(String),
     LeaveSettings { target: Page },
     RestartEngine { has_active: bool },
 }

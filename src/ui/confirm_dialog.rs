@@ -14,6 +14,9 @@ pub fn view<'a>(
 ) -> Element<'a, Message> {
     let (title_key, body_key) = match action {
         ConfirmAction::DeleteTask(_) => (Tr::ConfirmDeleteTitle, Tr::ConfirmDeleteBody),
+        ConfirmAction::RemoveMissingFileTask(_) => {
+            (Tr::ConfirmMissingFileTitle, Tr::ConfirmMissingFileBody)
+        }
         ConfirmAction::DeleteAll => (Tr::ConfirmDeleteAllTitle, Tr::ConfirmDeleteAllBody),
         ConfirmAction::ClearCompleted => (Tr::ConfirmClearTitle, Tr::ConfirmClearBody),
         ConfirmAction::LeaveSettings { .. } => {
@@ -52,6 +55,17 @@ pub fn view<'a>(
                 .style(theme::style::button::danger());
 
             row![cancel_btn, remove_record_btn, delete_files_btn]
+                .spacing(SPACE_XL)
+                .align_y(Alignment::Center)
+                .into()
+        }
+        ConfirmAction::RemoveMissingFileTask(gid) => {
+            let remove_btn = button(text(fluent.get(Tr::RemoveRecord)).size(FONT_BODY))
+                .on_press(Message::RemoveTask(gid.clone()))
+                .padding(PADDING_BUTTON_LG)
+                .style(theme::style::button::danger());
+
+            row![cancel_btn, remove_btn]
                 .spacing(SPACE_XL)
                 .align_y(Alignment::Center)
                 .into()

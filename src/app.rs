@@ -61,6 +61,7 @@ pub struct Remotrix {
     tracker_sync_toast_id: Option<u64>,
     torrent_files: HashMap<String, PathBuf>,
     torrent_followed: HashSet<String>,
+    completion_toasted: HashSet<String>,
     db: Option<Db>,
     dirty: HashSet<String>,
     details: DetailsDialogState,
@@ -171,6 +172,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         tracker_sync_toast_id: None,
         torrent_files: HashMap::new(),
         torrent_followed: HashSet::new(),
+        completion_toasted: HashSet::new(),
         db,
         dirty: HashSet::new(),
         details: DetailsDialogState::new(),
@@ -285,6 +287,7 @@ fn remove_task_local(state: &mut Remotrix, gid: &str) {
     state.removed_gids.insert(gid.to_string(), Instant::now());
     let _ = state.torrent_files.remove(gid);
     state.torrent_followed.remove(gid);
+    state.completion_toasted.remove(gid);
     state.paused_gids.remove(gid);
     state.tasks.remove(gid);
     state.task_order.retain(|g| g != gid);
@@ -872,6 +875,14 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 tracing::warn!("ui: remove cmd send failed");
             }
             state.confirm = None;
+            let _ = spawn_toast(
+                state,
+                ToastGroup::Task,
+                ToastKind::Normal,
+                state.fluent.get(Tr::TaskRemoved),
+                Some(Duration::from_secs(3)),
+                false,
+            );
         }
         Message::DeleteTask(gid) => {
             state.paused_gids.remove(&gid);
@@ -887,6 +898,14 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 tracing::warn!("ui: delete cmd send failed");
             }
             state.confirm = None;
+            let _ = spawn_toast(
+                state,
+                ToastGroup::Task,
+                ToastKind::Normal,
+                state.fluent.get(Tr::TaskDeleted),
+                Some(Duration::from_secs(3)),
+                false,
+            );
         }
         Message::StartAll => {
             state.paused_gids.clear();
@@ -917,6 +936,14 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             clear_all_local(state);
             state.confirm = None;
+            let _ = spawn_toast(
+                state,
+                ToastGroup::Task,
+                ToastKind::Normal,
+                state.fluent.get(Tr::TasksDeleted),
+                Some(Duration::from_secs(3)),
+                false,
+            );
         }
         Message::RemoveAllRecords => {
             if state
@@ -931,6 +958,14 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             clear_all_local(state);
             state.confirm = None;
+            let _ = spawn_toast(
+                state,
+                ToastGroup::Task,
+                ToastKind::Normal,
+                state.fluent.get(Tr::TasksRemoved),
+                Some(Duration::from_secs(3)),
+                false,
+            );
         }
         Message::ClearCompleted => {
             let completed: Vec<String> = state
@@ -1482,6 +1517,11 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 info_hash,
             } => {
                 state.synced_gids.insert(gid.clone());
+                let was_completed = state
+                    .tasks
+                    .get(&gid)
+                    .map(|t| t.status == TaskStatus::Completed)
+                    .unwrap_or(false);
                 if status == "complete"
                     && state.settings.delete_torrent_after_complete
                     && state.torrent_files.contains_key(&gid)
@@ -1592,6 +1632,30 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             } else {
                                 state.torrent_followed.remove(&gid);
                             }
+                        }
+                    }
+                }
+                if was_completed && status != "complete" {
+                    state.completion_toasted.remove(&gid);
+                }
+                if status == "complete" && !was_completed {
+                    if let Some(t) = state.tasks.get(&gid) {
+                        let name = t.name.clone();
+                        if state.completion_toasted.insert(gid.clone()) {
+                            let mut args = std::collections::HashMap::new();
+                            args.insert(
+                                std::borrow::Cow::from("name"),
+                                std::borrow::Cow::from(name).into(),
+                            );
+                            let (_, task) = spawn_toast(
+                                state,
+                                ToastGroup::Task,
+                                ToastKind::Success,
+                                state.fluent.get_args(Tr::DownloadComplete, &args),
+                                Some(Duration::from_secs(4)),
+                                false,
+                            );
+                            return task;
                         }
                     }
                 }
@@ -2329,6 +2393,26 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     },
                     |_| Message::Noop,
                 );
+            }
+            if t.status == TaskStatus::Completed {
+                if state.settings.remove_task_if_files_missing {
+                    state.paused_gids.remove(&gid);
+                    let _ = state.handle.cmd_tx.send(EngineCmd::Remove {
+                        gid: gid.clone(),
+                        delete_files: false,
+                    });
+                    let (_, task) = spawn_toast(
+                        state,
+                        ToastGroup::Task,
+                        ToastKind::Normal,
+                        state.fluent.get(Tr::FilesMissingRemoved),
+                        Some(Duration::from_secs(3)),
+                        false,
+                    );
+                    return task;
+                }
+                state.confirm = Some(ConfirmAction::RemoveMissingFileTask(gid));
+                return Task::none();
             }
             let (_, task) = spawn_toast(
                 state,
