@@ -120,8 +120,15 @@ impl AddDialogState {
     ) {
         self.save_picker.close_history();
         self.open(default_dir, default_split);
+        self.apply_payload(payload);
+    }
+
+    pub fn apply_payload(&mut self, payload: crate::clipboard_watch::ClipboardPayload) {
         match payload {
-            crate::clipboard_watch::ClipboardPayload::Urls(urls) => self.set_urls(urls),
+            crate::clipboard_watch::ClipboardPayload::Urls(urls) => {
+                self.set_urls(urls);
+                self.active_tab = AddTab::Url;
+            }
             crate::clipboard_watch::ClipboardPayload::Torrent(path) => {
                 self.set_torrent_path(path.to_string_lossy().to_string());
                 self.active_tab = AddTab::Torrent;

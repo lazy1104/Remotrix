@@ -351,6 +351,13 @@ pub mod style {
         }
     }
 
+    pub fn drop_overlay(_t: &iced::Theme) -> iced::widget::container::Style {
+        iced::widget::container::Style {
+            background: Some(super::OVERLAY.into()),
+            ..Default::default()
+        }
+    }
+
     pub fn drop_zone(active: bool) -> impl Fn(&iced::Theme) -> iced::widget::container::Style {
         move |t| {
             let accent = t.extended_palette().primary.base.color;

@@ -115,6 +115,7 @@ pub enum Message {
     WindowFocused(iced::window::Id),
     ClipboardRead(Option<String>),
     ClipboardParsed(Option<ClipboardPayload>, String),
+    DroppedFileParsed(Option<ClipboardPayload>),
     DragWindow,
     ResizeWindow(iced::window::Direction),
     WindowAction(WindowCmd),

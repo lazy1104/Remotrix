@@ -38,6 +38,7 @@ pub struct Remotrix {
     handle: EngineHandle,
     event_rx_slot: Arc<Mutex<Option<EventRx>>>,
     add_dialog: AddDialogState,
+    drop_hover: bool,
     about_dialog_visible: bool,
     settings: Settings,
     fluent: Fluent,
@@ -136,6 +137,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         handle,
         event_rx_slot: Arc::new(Mutex::new(Some(event_rx))),
         add_dialog,
+        drop_hover: false,
         about_dialog_visible: false,
         applied_settings: settings.clone(),
         applied_font_family: settings.font_family.clone(),
@@ -573,24 +575,48 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.add_dialog.toggle_torrent_panel();
         }
         Message::FileHovered(_) => {
+            state.drop_hover = true;
             if state.add_dialog.is_visible() && state.add_dialog.active_tab == AddTab::Torrent {
                 state.add_dialog.torrent_upload.set_dragging(true);
             }
         }
         Message::FilesHoveredLeft => {
+            state.drop_hover = false;
             if state.add_dialog.is_visible() {
                 state.add_dialog.torrent_upload.set_dragging(false);
             }
         }
         Message::FileDropped(path) => {
+            state.drop_hover = false;
             if state.add_dialog.is_visible() {
                 state.add_dialog.torrent_upload.set_dragging(false);
-                if torrent_upload::is_valid_torrent_file(&path) {
-                    state
-                        .add_dialog
-                        .set_torrent_path(path.to_string_lossy().to_string());
-                    state.add_dialog.active_tab = AddTab::Torrent;
-                } else {
+            }
+            if state.show_close_dialog || state.about_dialog_visible || state.confirm.is_some() {
+                return Task::none();
+            }
+            let prefs = state.settings.clipboard_types;
+            let path_str = path.to_string_lossy().to_string();
+            return Task::perform(
+                async move { crate::clipboard_watch::parse_clipboard(&path_str, prefs) },
+                Message::DroppedFileParsed,
+            );
+        }
+        Message::DroppedFileParsed(payload) => {
+            if state.show_close_dialog || state.about_dialog_visible || state.confirm.is_some() {
+                return Task::none();
+            }
+            let Some(payload) = payload else {
+                let (_, task) = spawn_toast(
+                    state,
+                    ToastKind::Warning,
+                    state.fluent.get(Tr::NoDownloadableContent),
+                    Some(Duration::from_secs(4)),
+                    false,
+                );
+                return task;
+            };
+            if let crate::clipboard_watch::ClipboardPayload::Torrent(ref path) = payload {
+                if !torrent_upload::is_valid_torrent_file(path) {
                     let (_, task) = spawn_toast(
                         state,
                         ToastKind::Warning,
@@ -601,6 +627,23 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     return task;
                 }
             }
+            if state.add_dialog.is_visible() {
+                state.add_dialog.apply_payload(payload);
+                return Task::none();
+            }
+            state.add_dialog.open_with(
+                state.settings.download_dir.clone(),
+                state.settings.split,
+                payload,
+            );
+            let (_, task) = spawn_toast(
+                state,
+                ToastKind::Normal,
+                state.fluent.get(Tr::DropDetected),
+                Some(Duration::from_secs(3)),
+                false,
+            );
+            return task;
         }
         Message::UrlEditor(action) => {
             state.add_dialog.url_editor.perform(action);
@@ -2392,6 +2435,14 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         iced::widget::Space::new().into()
     };
 
+    let drop_overlay_layer: iced::Element<'_, Message> = if state.drop_hover
+        && !(state.show_close_dialog || state.about_dialog_visible || state.confirm.is_some())
+    {
+        crate::ui::components::drop_overlay::view(&state.fluent, t)
+    } else {
+        iced::widget::Space::new().into()
+    };
+
     let toast_layer: iced::Element<'_, Message> = if !state.toasts.is_empty() {
         crate::ui::components::toast::view(t, &state.toasts)
     } else {
@@ -2405,6 +2456,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         close_layer,
         details_layer,
         confirm_layer,
+        drop_overlay_layer,
         toast_layer,
     ]
     .width(Length::Fill)
