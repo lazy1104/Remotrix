@@ -24,10 +24,10 @@ pub enum ToastKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ToastPosition {
     TopLeft,
+    #[default]
     Top,
     TopRight,
     Right,
-    #[default]
     BottomRight,
     Bottom,
     BottomLeft,
@@ -77,7 +77,7 @@ impl Toast {
             id: 0,
             kind,
             message: message.into(),
-            position: ToastPosition::BottomRight,
+            position: ToastPosition::Top,
             show_close: false,
             close_after: Some(Duration::from_secs(3)),
             remaining: None,
