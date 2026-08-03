@@ -7,7 +7,7 @@ use serde_json::{Map, Value};
 
 use crate::clipboard_watch::ClipboardLinkTypes;
 use crate::i18n::Locale;
-use crate::scheduler::{in_speed_window, ScheduledTask};
+use crate::scheduler::{in_speed_window, weekday_active};
 use crate::ui::theme::ThemeMode;
 
 pub const TRACKER_SOURCE_OPTIONS: &[(&str, &str, &str)] = &[
@@ -199,6 +199,8 @@ pub struct SpeedLimitSchedule {
     pub start: String,
     #[serde(default = "default_schedule_end")]
     pub end: String,
+    #[serde(default = "default_schedule_weekdays")]
+    pub weekdays: Vec<u8>,
 }
 
 impl Default for SpeedLimitSchedule {
@@ -207,6 +209,7 @@ impl Default for SpeedLimitSchedule {
             enabled: false,
             start: default_schedule_start(),
             end: default_schedule_end(),
+            weekdays: default_schedule_weekdays(),
         }
     }
 }
@@ -217,6 +220,18 @@ fn default_schedule_start() -> String {
 
 fn default_schedule_end() -> String {
     "07:00".into()
+}
+
+fn default_schedule_weekdays() -> Vec<u8> {
+    vec![1, 2, 3, 4, 5, 6, 7]
+}
+
+impl SpeedLimitSchedule {
+    pub fn active_at(&self, now: &chrono::DateTime<chrono::Local>) -> bool {
+        self.enabled
+            && in_speed_window(&self.start, &self.end, now)
+            && weekday_active(&self.weekdays, now)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -488,11 +503,7 @@ impl Settings {
     pub fn effective_task_options(&self) -> TaskOptions {
         let mut options = self.to_aria2_task_options();
         if self.speed_limit_schedule.enabled
-            && !in_speed_window(
-                &self.speed_limit_schedule.start,
-                &self.speed_limit_schedule.end,
-                &chrono::Local::now(),
-            )
+            && !self.speed_limit_schedule.active_at(&chrono::Local::now())
         {
             options.extra_options.insert(
                 "max-overall-download-limit".into(),
@@ -551,8 +562,6 @@ pub struct Settings {
     pub speed_limit_schedule: SpeedLimitSchedule,
     #[serde(default)]
     pub log: LogPrefs,
-    #[serde(default)]
-    pub schedules: Vec<ScheduledTask>,
     #[serde(default)]
     pub tracker: TrackerPrefs,
 }
@@ -617,7 +626,6 @@ impl Default for Settings {
             path_history: std::collections::HashMap::new(),
             speed_limit_schedule: SpeedLimitSchedule::default(),
             log: LogPrefs::default(),
-            schedules: Vec::new(),
             tracker: TrackerPrefs::default(),
         }
     }

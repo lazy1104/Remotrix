@@ -13,7 +13,7 @@ use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
-fn picker_button<'a>() -> impl Fn(&iced::Theme, button::Status) -> button::Style + 'a {
+pub(crate) fn picker_button<'a>() -> impl Fn(&iced::Theme, button::Status) -> button::Style + 'a {
     move |t: &iced::Theme, status: button::Status| button::Style {
         background: Some(t.extended_palette().background.base.color.into()),
         text_color: t.extended_palette().background.base.text,

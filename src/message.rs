@@ -135,9 +135,13 @@ pub enum Message {
     RestartEngine,
     SetAutoCheck(bool),
     ClearLogs,
-    CheckMissingFiles,
     ToggleScheduleStartPicker,
     ToggleScheduleEndPicker,
+    ToggleScheduleDaysMenu,
+    ScheduleDayToggled {
+        day: u8,
+        enabled: bool,
+    },
 
     OpenTaskDetails(String),
     CloseTaskDetails,

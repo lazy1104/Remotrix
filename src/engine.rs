@@ -503,8 +503,13 @@ async fn fetch_all_tasks_strict(
 }
 
 async fn check_missing_files(client: &Client) -> Vec<String> {
+    let probe = client.tell_stopped(0, 1).await.unwrap_or_default();
+    if probe.is_empty() {
+        return vec![];
+    }
+    let stopped = client.tell_stopped(-1, 1000).await.unwrap_or_default();
     let mut missing = Vec::new();
-    for s in fetch_all_tasks(client).await {
+    for s in stopped {
         if s.status != Aria2TaskStatus::Complete {
             continue;
         }
@@ -1155,67 +1160,31 @@ fn run_scheduler(client: Client, event_tx: EventTx) -> JoinHandle<()> {
     tokio::spawn(async move {
         let settings = crate::config::load();
         let schedule = settings.speed_limit_schedule.clone();
-        let mut jobs: Vec<(
-            croner::Cron,
-            chrono::DateTime<chrono::Local>,
-            crate::scheduler::ScheduledAction,
-        )> = Vec::new();
-        for task in &settings.schedules {
-            if !task.enabled {
-                continue;
-            }
-            match crate::scheduler::parse_cron(&task.cron) {
-                Ok(cron) => {
-                    let catch_up = chrono::Local::now() - Duration::from_secs(60);
-                    jobs.push((cron, catch_up, task.action.clone()));
-                    tracing::info!(id = %task.id, cron = %task.cron, "schedule loaded");
-                }
-                Err(e) => {
-                    tracing::warn!(id = %task.id, cron = %task.cron, error = %e, "skipping invalid schedule cron");
-                }
-            }
-        }
 
-        let mut inside = schedule.enabled
-            && crate::scheduler::in_speed_window(
-                &schedule.start,
-                &schedule.end,
-                &chrono::Local::now(),
-            );
+        let now = chrono::Local::now();
+        let mut inside = schedule.active_at(&now);
+
+        let missing_enabled = settings.remove_task_if_files_missing;
+        const MISSING_CHECK_INTERVAL: Duration = Duration::from_secs(600);
+        let mut last_missing_check = tokio::time::Instant::now();
 
         let mut ticker = interval(Duration::from_secs(1));
         loop {
             ticker.tick().await;
             let now = chrono::Local::now();
 
-            if schedule.enabled {
-                let cur = crate::scheduler::in_speed_window(&schedule.start, &schedule.end, &now);
-                if cur && !inside {
-                    inside = true;
-                    apply_speed_limits(&client, &settings, true).await;
-                } else if !cur && inside {
-                    inside = false;
-                    apply_speed_limits(&client, &settings, false).await;
-                }
+            let cur = schedule.active_at(&now);
+            if cur && !inside {
+                inside = true;
+                apply_speed_limits(&client, &settings, true).await;
+            } else if !cur && inside {
+                inside = false;
+                apply_speed_limits(&client, &settings, false).await;
             }
 
-            for (cron, last_run, action) in &mut jobs {
-                let fire = match cron.find_next_occurrence(last_run, false) {
-                    Ok(next) => next <= now,
-                    Err(e) => {
-                        tracing::warn!(error = %e, "schedule next occurrence failed");
-                        false
-                    }
-                };
-                if !fire {
-                    continue;
-                }
-                *last_run = now;
-                match action {
-                    crate::scheduler::ScheduledAction::CheckMissingFiles => {
-                        trigger_missing_files_check(client.clone(), event_tx.clone());
-                    }
-                }
+            if missing_enabled && last_missing_check.elapsed() >= MISSING_CHECK_INTERVAL {
+                last_missing_check = tokio::time::Instant::now();
+                trigger_missing_files_check(client.clone(), event_tx.clone());
             }
         }
     })

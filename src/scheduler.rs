@@ -1,34 +1,4 @@
-use chrono::Timelike;
-use serde::{Deserialize, Serialize};
-
-fn default_true() -> bool {
-    true
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ScheduledTask {
-    pub id: String,
-    pub name: String,
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-    pub cron: String,
-    #[serde(default)]
-    pub action: ScheduledAction,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ScheduledAction {
-    #[default]
-    CheckMissingFiles,
-}
-
-pub fn parse_cron(expr: &str) -> Result<croner::Cron, croner::errors::CronError> {
-    croner::parser::CronParser::builder()
-        .seconds(croner::parser::Seconds::Optional)
-        .build()
-        .parse(expr)
-}
+use chrono::{Datelike, Timelike};
 
 pub fn parse_hhmm(s: &str) -> Option<(u8, u8)> {
     let (h, m) = s.split_once(':')?;
@@ -55,6 +25,10 @@ pub fn in_speed_window(start: &str, end: &str, now: &chrono::DateTime<chrono::Lo
     } else {
         t >= start_min || t < end_min
     }
+}
+
+pub fn weekday_active(weekdays: &[u8], now: &chrono::DateTime<chrono::Local>) -> bool {
+    weekdays.is_empty() || weekdays.contains(&(now.weekday().number_from_monday() as u8))
 }
 
 #[cfg(test)]
@@ -101,10 +75,30 @@ mod tests {
         assert!(!in_speed_window("23:00", "07:00", &at(12, 0)));
     }
 
+    fn weekday_at(y: i32, m: u32, d: u32) -> DateTime<Local> {
+        Local.with_ymd_and_hms(y, m, d, 12, 0, 0).single().unwrap()
+    }
+
     #[test]
-    fn parse_cron_seconds_optional() {
-        assert!(parse_cron("0/30 * * * * *").is_ok());
-        assert!(parse_cron("0 18 * * *").is_ok());
-        assert!(parse_cron("not a cron").is_err());
+    fn weekday_empty_means_every_day() {
+        assert!(weekday_active(&[], &weekday_at(2026, 1, 5)));
+        assert!(weekday_active(&[], &weekday_at(2026, 1, 11)));
+    }
+
+    #[test]
+    fn weekday_matches_selected() {
+        assert!(weekday_active(&[1], &weekday_at(2026, 1, 5)));
+        assert!(weekday_active(&[2, 3], &weekday_at(2026, 1, 6)));
+        assert!(weekday_active(&[7], &weekday_at(2026, 1, 11)));
+    }
+
+    #[test]
+    fn weekday_misses_unselected() {
+        assert!(!weekday_active(&[1], &weekday_at(2026, 1, 6)));
+        assert!(!weekday_active(&[2, 3], &weekday_at(2026, 1, 5)));
+        assert!(!weekday_active(
+            &[1, 2, 3, 4, 5, 6],
+            &weekday_at(2026, 1, 11)
+        ));
     }
 }

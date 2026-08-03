@@ -17,6 +17,7 @@ use crate::ui::components::path_picker::{PathPicker, PathPickerEvent};
 use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::components::time_picker::time_picker;
 use crate::ui::components::tooltip;
+use crate::ui::components::weekday_select::weekday_select;
 use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
@@ -29,6 +30,7 @@ pub struct SettingsUiState {
     pub speed_units: HashMap<SettingKey, SpeedUnit>,
     pub schedule_start_picker_open: bool,
     pub schedule_end_picker_open: bool,
+    pub schedule_days_menu_open: bool,
     pub custom_tracker_input: String,
 }
 
@@ -54,6 +56,7 @@ impl SettingsUiState {
             speed_units,
             schedule_start_picker_open: false,
             schedule_end_picker_open: false,
+            schedule_days_menu_open: false,
             custom_tracker_input: String::new(),
         }
     }
@@ -587,6 +590,39 @@ fn download_view<'a>(
                             move |s| Message::SettingChanged(SettingKey::ScheduleEnd, s),
                         ),
                     ),
+                    {
+                        let day_labels = [
+                            fluent.get(Tr::WeekdayMon),
+                            fluent.get(Tr::WeekdayTue),
+                            fluent.get(Tr::WeekdayWed),
+                            fluent.get(Tr::WeekdayThu),
+                            fluent.get(Tr::WeekdayFri),
+                            fluent.get(Tr::WeekdaySat),
+                            fluent.get(Tr::WeekdaySun),
+                        ];
+                        let weekdays = &settings.speed_limit_schedule.weekdays;
+                        let summary = if weekdays.is_empty() || weekdays.len() == 7 {
+                            fluent.get(Tr::EveryDay)
+                        } else {
+                            weekdays
+                                .iter()
+                                .filter(|d| (1..=7).contains(*d))
+                                .map(|d| day_labels[*d as usize - 1].clone())
+                                .collect::<Vec<_>>()
+                                .join(" / ")
+                        };
+                        setting_row(
+                            fluent.get(Tr::ScheduleDays),
+                            weekday_select(
+                                summary,
+                                weekdays,
+                                day_labels,
+                                settings_ui.schedule_days_menu_open,
+                                move |day, enabled| Message::ScheduleDayToggled { day, enabled },
+                                Message::ToggleScheduleDaysMenu,
+                            ),
+                        )
+                    },
                     text(fluent.get(Tr::ScheduleHint))
                         .size(FONT_SMALL)
                         .style(theme::style::text::secondary),

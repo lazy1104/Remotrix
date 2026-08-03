@@ -2116,16 +2116,6 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.settings.update.set_ignored("aria2-next", !enabled);
             config::save(&state.settings);
         }
-        Message::CheckMissingFiles => {
-            if state
-                .handle
-                .cmd_tx
-                .send(EngineCmd::CheckMissingFiles)
-                .is_err()
-            {
-                tracing::warn!("check missing files cmd send failed");
-            }
-        }
         Message::ToggleScheduleStartPicker => {
             state.settings_ui.schedule_start_picker_open =
                 !state.settings_ui.schedule_start_picker_open;
@@ -2133,6 +2123,20 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::ToggleScheduleEndPicker => {
             state.settings_ui.schedule_end_picker_open =
                 !state.settings_ui.schedule_end_picker_open;
+        }
+        Message::ToggleScheduleDaysMenu => {
+            state.settings_ui.schedule_days_menu_open = !state.settings_ui.schedule_days_menu_open;
+        }
+        Message::ScheduleDayToggled { day, enabled } => {
+            let weekdays = &mut state.settings.speed_limit_schedule.weekdays;
+            if enabled {
+                if !weekdays.contains(&day) {
+                    weekdays.push(day);
+                    weekdays.sort_unstable();
+                }
+            } else {
+                weekdays.retain(|d| *d != day);
+            }
         }
         Message::OpenTaskDetails(gid) => {
             state.details_select_gen = 0;

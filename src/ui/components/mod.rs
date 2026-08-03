@@ -15,5 +15,6 @@ pub mod torrent_file_list;
 pub mod torrent_upload;
 pub mod tri_checkbox;
 pub mod truncated_text;
+pub mod weekday_select;
 
 pub const CONTROL_HEIGHT: f32 = 33.0;
