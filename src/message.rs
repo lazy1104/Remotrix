@@ -164,6 +164,7 @@ pub enum Message {
         fetched: Vec<String>,
         failures: Vec<(String, String)>,
     },
+    TrackerSyncTimedOut,
     TrackerSourceToggled {
         source: String,
         enabled: bool,

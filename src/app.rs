@@ -58,6 +58,7 @@ pub struct Remotrix {
     ua_editor: text_editor::Content,
     bt_tracker_editor: text_editor::Content,
     syncing_trackers: bool,
+    tracker_sync_toast_id: Option<u64>,
     torrent_files: HashMap<String, PathBuf>,
     torrent_followed: HashSet<String>,
     db: Option<Db>,
@@ -167,6 +168,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         ua_editor,
         bt_tracker_editor,
         syncing_trackers: false,
+        tracker_sync_toast_id: None,
         torrent_files: HashMap::new(),
         torrent_followed: HashSet::new(),
         db,
@@ -1970,7 +1972,16 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             return start_tracker_fetch(state, urls);
         }
         Message::TrackersSynced { fetched, failures } => {
+            if !state.syncing_trackers {
+                if let Some(id) = state.tracker_sync_toast_id.take() {
+                    dismiss_toast(state, id);
+                }
+                return Task::none();
+            }
             state.syncing_trackers = false;
+            if let Some(id) = state.tracker_sync_toast_id.take() {
+                dismiss_toast(state, id);
+            }
             let ok = fetched.len();
             let failed = failures.len();
             let total = ok + failed;
@@ -2032,6 +2043,22 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             )
             .group(ToastGroup::Tracker)
             .close_after(Some(Duration::from_secs(4)));
+            toast.id = state.next_toast_id;
+            state.next_toast_id += 1;
+            push_toast(state, toast);
+        }
+        Message::TrackerSyncTimedOut => {
+            if !state.syncing_trackers {
+                return Task::none();
+            }
+            state.syncing_trackers = false;
+            if let Some(id) = state.tracker_sync_toast_id.take() {
+                dismiss_toast(state, id);
+            }
+            let mut toast =
+                Toast::new(ToastKind::Error, state.fluent.get(Tr::BtTrackerSyncTimeout))
+                    .group(ToastGroup::Tracker)
+                    .close_after(Some(Duration::from_secs(5)));
             toast.id = state.next_toast_id;
             state.next_toast_id += 1;
             push_toast(state, toast);
@@ -2990,10 +3017,27 @@ fn dismiss_toast(state: &mut Remotrix, id: u64) {
 
 fn start_tracker_fetch(state: &mut Remotrix, urls: Vec<String>) -> Task<Message> {
     state.syncing_trackers = true;
-    Task::perform(
+    let (id, _) = spawn_toast(
+        state,
+        ToastGroup::Tracker,
+        ToastKind::Normal,
+        state.fluent.get(Tr::BtTrackerSyncing),
+        None,
+        true,
+    );
+    state.tracker_sync_toast_id = Some(id);
+    let fetch = Task::perform(
         async move { crate::trackers::fetch_sources(&urls).await },
         |(fetched, failures)| Message::TrackersSynced { fetched, failures },
-    )
+    );
+    const SYNC_TIMEOUT: Duration = Duration::from_secs(30);
+    let timeout = Task::perform(
+        async move {
+            tokio::time::sleep(SYNC_TIMEOUT).await;
+        },
+        |_| Message::TrackerSyncTimedOut,
+    );
+    Task::batch([fetch, timeout])
 }
 
 fn pick_path(id: PathPickerId) -> Task<Message> {
