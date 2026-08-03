@@ -114,6 +114,7 @@ pub fn view<'a>(
         SettingsCategory::BitTorrent => bittorrent_view(
             fluent,
             settings,
+            applied_settings,
             settings_ui,
             bt_tracker_editor,
             syncing_trackers,
@@ -664,6 +665,7 @@ fn download_view<'a>(
 fn bittorrent_view<'a>(
     fluent: &'a Fluent,
     settings: &'a Settings,
+    applied_settings: &'a Settings,
     settings_ui: &'a SettingsUiState,
     bt_tracker_editor: &'a text_editor::Content,
     syncing_trackers: bool,
@@ -764,11 +766,13 @@ fn bittorrent_view<'a>(
             .spacing(SPACE_SM)
             .align_y(Alignment::Center),
         )
-        .on_press_maybe(if syncing_trackers {
-            None
-        } else {
-            Some(Message::SyncTrackers)
-        })
+        .on_press_maybe(
+            if syncing_trackers || settings.tracker.sources != applied_settings.tracker.sources {
+                None
+            } else {
+                Some(Message::SyncTrackers)
+            },
+        )
         .padding(PADDING_BUTTON_SM)
         .style(theme::style::button::secondary())
         .into(),

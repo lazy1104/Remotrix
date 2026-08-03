@@ -2011,8 +2011,8 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.applied_settings.aria2.bt_tracker = state.settings.aria2.bt_tracker.clone();
             let now_ms = chrono::Local::now().timestamp_millis();
             state.settings.tracker.last_sync_time = Some(now_ms);
-            state.applied_settings.tracker = state.settings.tracker.clone();
-            config::save(&state.settings);
+            state.applied_settings.tracker.last_sync_time = Some(now_ms);
+            config::save(&state.applied_settings);
             let opts = state.settings.effective_task_options();
             if state
                 .handle
