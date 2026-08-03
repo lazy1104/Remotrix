@@ -135,6 +135,26 @@ pub enum Tr {
     RetryWait,
     ConnectTimeout,
     BtTracker,
+    BtTrackers,
+    BtTrackerSourcePreset,
+    BtTrackerSourceCustom,
+    BtTrackerSourceCustomPlaceholder,
+    BtTrackerSync,
+    BtTrackerCount,
+    LastSyncTime,
+    BtTrackerInputTips,
+    BtTrackerSyncSucceed,
+    BtTrackerSyncPartial,
+    BtTrackerSyncFailed,
+    BtTrackerSelectSource,
+    BtTrackerSourceInvalidUrl,
+    AutoSync,
+    SyncFrequency,
+    IntervalEveryStartup,
+    Interval6Hours,
+    Interval12Hours,
+    IntervalDaily,
+    IntervalWeekly,
     SeedRatio,
     SeedTime,
     EnableDht,
@@ -389,6 +409,26 @@ impl Tr {
             Tr::RetryWait => "retry-wait",
             Tr::ConnectTimeout => "connect-timeout",
             Tr::BtTracker => "bt-tracker",
+            Tr::BtTrackers => "bt-trackers",
+            Tr::BtTrackerSourcePreset => "bt-tracker-source-preset",
+            Tr::BtTrackerSourceCustom => "bt-tracker-source-custom",
+            Tr::BtTrackerSourceCustomPlaceholder => "bt-tracker-source-custom-placeholder",
+            Tr::BtTrackerSync => "bt-tracker-sync",
+            Tr::BtTrackerCount => "bt-tracker-count",
+            Tr::LastSyncTime => "last-sync-time",
+            Tr::BtTrackerInputTips => "bt-tracker-input-tips",
+            Tr::BtTrackerSyncSucceed => "bt-tracker-sync-succeed",
+            Tr::BtTrackerSyncPartial => "bt-tracker-sync-partial",
+            Tr::BtTrackerSyncFailed => "bt-tracker-sync-failed",
+            Tr::BtTrackerSelectSource => "bt-tracker-select-source",
+            Tr::BtTrackerSourceInvalidUrl => "bt-tracker-source-invalid-url",
+            Tr::AutoSync => "auto-sync",
+            Tr::SyncFrequency => "sync-frequency",
+            Tr::IntervalEveryStartup => "interval-every-startup",
+            Tr::Interval6Hours => "interval-6-hours",
+            Tr::Interval12Hours => "interval-12-hours",
+            Tr::IntervalDaily => "interval-daily",
+            Tr::IntervalWeekly => "interval-weekly",
             Tr::SeedRatio => "seed-ratio",
             Tr::SeedTime => "seed-time",
             Tr::EnableDht => "enable-dht",
@@ -572,5 +612,16 @@ impl Fluent {
 
     pub fn get(&self, key: Tr) -> String {
         LOCALES.lookup(self.locale.langid(), key.key())
+    }
+
+    pub fn get_args<'a>(
+        &self,
+        key: Tr,
+        args: &std::collections::HashMap<
+            std::borrow::Cow<'static, str>,
+            fluent_templates::fluent_bundle::FluentValue<'a>,
+        >,
+    ) -> String {
+        LOCALES.lookup_with_args(self.locale.langid(), key.key(), args)
     }
 }

@@ -10,6 +10,19 @@ use crate::i18n::Locale;
 use crate::scheduler::{in_speed_window, ScheduledTask};
 use crate::ui::theme::ThemeMode;
 
+pub const TRACKER_SOURCE_OPTIONS: &[(&str, &str, &str)] = &[
+    (
+        "ngosang",
+        "trackerslist",
+        "https://ngosang.github.io/trackerslist/trackers_best.txt",
+    ),
+    (
+        "XIU2",
+        "TrackersListCollection",
+        "https://cf.trackerslist.com/best.txt",
+    ),
+];
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Aria2Options {
     #[serde(default = "default_max_connection_per_server")]
@@ -116,6 +129,15 @@ fn default_ed2k_udp_listen_port() -> u16 {
 fn default_ed2k_upload_slots() -> u16 {
     3
 }
+fn default_tracker_sources() -> Vec<String> {
+    TRACKER_SOURCE_OPTIONS
+        .iter()
+        .map(|(_, _, url)| url.to_string())
+        .collect()
+}
+fn default_tracker_sync_interval() -> u32 {
+    24
+}
 fn default_theme_color() -> String {
     crate::ui::theme::color_to_hex(crate::ui::theme::DEFAULT_THEME_COLOR)
 }
@@ -220,6 +242,32 @@ fn default_app_log_level() -> String {
 
 fn default_engine_log_level() -> String {
     crate::logging::DEFAULT_ENGINE_LEVEL.into()
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TrackerPrefs {
+    #[serde(default = "default_tracker_sources")]
+    pub sources: Vec<String>,
+    #[serde(default)]
+    pub custom_urls: Vec<String>,
+    #[serde(default = "default_true")]
+    pub auto_sync: bool,
+    #[serde(default = "default_tracker_sync_interval")]
+    pub sync_interval_hours: u32,
+    #[serde(default)]
+    pub last_sync_time: Option<i64>,
+}
+
+impl Default for TrackerPrefs {
+    fn default() -> Self {
+        Self {
+            sources: default_tracker_sources(),
+            custom_urls: Vec::new(),
+            auto_sync: true,
+            sync_interval_hours: default_tracker_sync_interval(),
+            last_sync_time: None,
+        }
+    }
 }
 
 pub fn all_proxy_url(server: &str, username: &str, password: &str) -> Option<String> {
@@ -342,10 +390,11 @@ impl Settings {
             Value::String(self.aria2.connect_timeout.to_string()),
         );
 
-        if !self.aria2.bt_tracker.is_empty() {
+        let bt_tracker = crate::trackers::to_comma(&self.aria2.bt_tracker);
+        if !bt_tracker.is_empty() {
             extra.insert(
                 "bt-tracker".into(),
-                Value::String(self.aria2.bt_tracker.clone()),
+                Value::String(crate::trackers::reduce(bt_tracker)),
             );
         }
 
@@ -504,6 +553,8 @@ pub struct Settings {
     pub log: LogPrefs,
     #[serde(default)]
     pub schedules: Vec<ScheduledTask>,
+    #[serde(default)]
+    pub tracker: TrackerPrefs,
 }
 
 impl Settings {
@@ -523,6 +574,7 @@ impl Settings {
             && self.aria2 == other.aria2
             && self.speed_limit_schedule == other.speed_limit_schedule
             && self.log == other.log
+            && self.tracker == other.tracker
     }
 
     pub fn record_path(&mut self, key: &str, path: &str) {
@@ -566,6 +618,7 @@ impl Default for Settings {
             speed_limit_schedule: SpeedLimitSchedule::default(),
             log: LogPrefs::default(),
             schedules: Vec::new(),
+            tracker: TrackerPrefs::default(),
         }
     }
 }

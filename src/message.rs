@@ -154,6 +154,22 @@ pub enum Message {
 
     UrlEditor(iced::widget::text_editor::Action),
     UaEditor(iced::widget::text_editor::Action),
+    BtTrackerEditor(iced::widget::text_editor::Action),
+    SyncTrackers,
+    TrackersSynced {
+        fetched: Vec<String>,
+        failures: Vec<(String, String)>,
+    },
+    TrackerSourceToggled {
+        source: String,
+        enabled: bool,
+    },
+    TrackerCustomInputChanged(String),
+    TrackerCustomAdd,
+    TrackerCustomRemove(String),
+    CheckTrackerAutoSync {
+        startup: bool,
+    },
 
     RequestConfirm(ConfirmAction),
     ConfirmCancel,
@@ -271,7 +287,8 @@ pub enum SettingKey {
     MaxTries,
     RetryWait,
     ConnectTimeout,
-    BtTracker,
+    TrackerAutoSync,
+    TrackerSyncInterval,
     SeedRatio,
     SeedTime,
     EnableDht,

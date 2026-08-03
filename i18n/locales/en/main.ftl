@@ -227,7 +227,33 @@ collapse-list = Collapse
 expand-list = Expand
 torrent-parse-failed = Could not read the torrent contents
 select-files-failed = Failed to change file selection
-bt-tracker-placeholder = udp://tracker.opentrackr.org:1337/announce, udp://open.demonii.com:1337/announce
+bt-trackers = Trackers
+bt-tracker-source-preset = Preset sources
+bt-tracker-source-custom = Custom source
+bt-tracker-source-custom-placeholder = https://example.com/trackers.txt
+bt-tracker-sync = Sync Trackers
+bt-tracker-count = { $count ->
+    [one] { $count } tracker
+   *[other] { $count } trackers
+}
+last-sync-time = Last sync: { $time }
+bt-tracker-input-tips = One tracker URL per line
+bt-tracker-sync-succeed = { $count ->
+    [one] Synced { $count } tracker
+   *[other] Synced { $count } trackers
+}
+bt-tracker-sync-partial = Synced { $ok }/{ $total } sources ({ $failed } failed)
+bt-tracker-sync-failed = Could not fetch any tracker sources
+bt-tracker-select-source = Select at least one tracker source
+bt-tracker-source-invalid-url = Invalid source URL
+auto-sync = Auto sync
+sync-frequency = Sync frequency
+interval-every-startup = Every startup
+interval-6-hours = Every 6 hours
+interval-12-hours = Every 12 hours
+interval-daily = Daily
+interval-weekly = Weekly
+bt-tracker-placeholder = udp://tracker.opentrackr.org:1337/announce
 ed2k-server-placeholder = ed2k://|server|host|port|/ (comma-separated)
 proxy-address-placeholder = http://127.0.0.1:7890 or socks5://127.0.0.1:1080
 proxy-username-placeholder = Username (optional)

@@ -227,7 +227,33 @@ collapse-list = 折叠
 expand-list = 展开
 torrent-parse-failed = 无法读取种子文件内容
 select-files-failed = 修改文件选择失败
-bt-tracker-placeholder = udp://tracker.opentrackr.org:1337/announce, udp://open.demonii.com:1337/announce
+bt-trackers = 追踪器
+bt-tracker-source-preset = 预设源
+bt-tracker-source-custom = 自定义源
+bt-tracker-source-custom-placeholder = https://example.com/trackers.txt
+bt-tracker-sync = 同步追踪器
+bt-tracker-count = { $count ->
+    [one] { $count } 个追踪器
+   *[other] { $count } 个追踪器
+}
+last-sync-time = 上次同步：{ $time }
+bt-tracker-input-tips = 每行一个追踪器地址
+bt-tracker-sync-succeed = { $count ->
+    [one] 已同步 { $count } 个追踪器
+   *[other] 已同步 { $count } 个追踪器
+}
+bt-tracker-sync-partial = 已同步 { $ok }/{ $total } 个源（{ $failed } 个失败）
+bt-tracker-sync-failed = 无法获取任何追踪器源
+bt-tracker-select-source = 请至少选择一个追踪器源
+bt-tracker-source-invalid-url = 无效的源地址
+auto-sync = 自动同步
+sync-frequency = 同步频率
+interval-every-startup = 每次启动
+interval-6-hours = 每 6 小时
+interval-12-hours = 每 12 小时
+interval-daily = 每天
+interval-weekly = 每周
+bt-tracker-placeholder = udp://tracker.opentrackr.org:1337/announce
 ed2k-server-placeholder = ed2k://|server|主机|端口|/（逗号分隔）
 proxy-address-placeholder = http://127.0.0.1:7890 或 socks5://127.0.0.1:1080
 proxy-username-placeholder = 账号（可选）

@@ -9,6 +9,7 @@ use iced::{Alignment, Element, Length};
 use crate::config::Settings;
 use crate::i18n::{Fluent, Locale, Tr};
 use crate::message::{Message, PathPickerId, SettingKey, SettingsCategory, SpeedUnit};
+use chrono::TimeZone;
 use iced::Color;
 
 use crate::ui::components::number_stepper::number_stepper;
@@ -28,6 +29,7 @@ pub struct SettingsUiState {
     pub speed_units: HashMap<SettingKey, SpeedUnit>,
     pub schedule_start_picker_open: bool,
     pub schedule_end_picker_open: bool,
+    pub custom_tracker_input: String,
 }
 
 impl SettingsUiState {
@@ -52,6 +54,7 @@ impl SettingsUiState {
             speed_units,
             schedule_start_picker_open: false,
             schedule_end_picker_open: false,
+            custom_tracker_input: String::new(),
         }
     }
 }
@@ -93,6 +96,8 @@ pub fn view<'a>(
     aria2_fetch_error: Option<&'a str>,
     update_pending: Option<&'a str>,
     ua_editor: &'a text_editor::Content,
+    bt_tracker_editor: &'a text_editor::Content,
+    syncing_trackers: bool,
     path_history: &'a HashMap<String, Vec<String>>,
     font_restart_required: bool,
 ) -> Element<'a, Message> {
@@ -103,7 +108,14 @@ pub fn view<'a>(
         SettingsCategory::Download => {
             download_view(fluent, theme, settings, settings_ui, path_history)
         }
-        SettingsCategory::BitTorrent => bittorrent_view(fluent, settings, accent),
+        SettingsCategory::BitTorrent => bittorrent_view(
+            fluent,
+            settings,
+            settings_ui,
+            bt_tracker_editor,
+            syncing_trackers,
+            accent,
+        ),
         SettingsCategory::Ed2k => ed2k_view(fluent, theme, settings, settings_ui),
         SettingsCategory::Network => network_view(fluent, settings, ua_editor, accent),
         SettingsCategory::Advanced => advanced_view(
@@ -616,9 +628,152 @@ fn download_view<'a>(
 fn bittorrent_view<'a>(
     fluent: &'a Fluent,
     settings: &'a Settings,
+    settings_ui: &'a SettingsUiState,
+    bt_tracker_editor: &'a text_editor::Content,
+    syncing_trackers: bool,
     accent: Color,
 ) -> Element<'a, Message> {
-    column![]
+    let tracker_count = crate::trackers::count(&settings.aria2.bt_tracker);
+    let last_sync = match settings.tracker.last_sync_time {
+        Some(ms) => match chrono::Local.timestamp_millis_opt(ms) {
+            chrono::LocalResult::Single(t) => t.format("%Y-%m-%d %H:%M").to_string(),
+            _ => "—".to_string(),
+        },
+        None => "—".to_string(),
+    };
+    let count_str = fluent.get_args(Tr::BtTrackerCount, &{
+        let mut a = std::collections::HashMap::new();
+        a.insert(
+            std::borrow::Cow::from("count"),
+            (tracker_count as i64).into(),
+        );
+        a
+    });
+    let last_sync_str = fluent.get_args(Tr::LastSyncTime, &{
+        let mut a = std::collections::HashMap::new();
+        a.insert(std::borrow::Cow::from("time"), last_sync.into());
+        a
+    });
+
+    let mut tracker_rows: Vec<Element<'a, Message>> = Vec::new();
+    tracker_rows.push(
+        text(fluent.get(Tr::BtTrackerSourcePreset))
+            .size(FONT_SMALL)
+            .style(theme::style::text::secondary)
+            .into(),
+    );
+    for (owner, repo, url) in crate::config::TRACKER_SOURCE_OPTIONS {
+        let url_str = url.to_string();
+        let checked = settings.tracker.sources.contains(&url_str);
+        tracker_rows.push(setting_row(
+            format!("{owner}/{repo}"),
+            checkbox(checked)
+                .on_toggle(move |enabled| Message::TrackerSourceToggled {
+                    source: url_str.clone(),
+                    enabled,
+                })
+                .into(),
+        ));
+    }
+    let custom_placeholder = fluent.get(Tr::BtTrackerSourceCustomPlaceholder);
+    tracker_rows.push(setting_row_auto(
+        fluent.get(Tr::BtTrackerSourceCustom),
+        row![
+            text_input(&custom_placeholder, &settings_ui.custom_tracker_input)
+                .on_input(Message::TrackerCustomInputChanged)
+                .on_submit(Message::TrackerCustomAdd)
+                .width(Length::Fill)
+                .style(theme::style::input::standard),
+            button(icon::plus().size(FONT_BODY))
+                .on_press(Message::TrackerCustomAdd)
+                .padding(PADDING_BUTTON_SM)
+                .style(theme::style::button::secondary()),
+        ]
+        .spacing(SPACE_SM)
+        .align_y(Alignment::Center)
+        .width(Length::Fill)
+        .into(),
+    ));
+    for url in &settings.tracker.custom_urls {
+        tracker_rows.push(setting_row_auto(
+            url.clone(),
+            button(icon::x().size(FONT_BODY))
+                .on_press(Message::TrackerCustomRemove(url.clone()))
+                .padding(PADDING_BUTTON_SM)
+                .style(theme::style::button::text())
+                .into(),
+        ));
+    }
+    tracker_rows.push(setting_row_auto(
+        fluent.get(Tr::BtTrackerSync),
+        button(
+            row![
+                icon::refresh().size(FONT_ICON),
+                text(fluent.get(Tr::BtTrackerSync)).size(FONT_BODY),
+            ]
+            .spacing(SPACE_SM)
+            .align_y(Alignment::Center),
+        )
+        .on_press_maybe(if syncing_trackers {
+            None
+        } else {
+            Some(Message::SyncTrackers)
+        })
+        .padding(PADDING_BUTTON_SM)
+        .style(theme::style::button::secondary())
+        .into(),
+    ));
+    tracker_rows.push(
+        text(format!("{count_str} · {last_sync_str}"))
+            .size(FONT_SMALL)
+            .style(theme::style::text::secondary)
+            .into(),
+    );
+    tracker_rows.push(labeled_editor(
+        fluent.get(Tr::BtTracker),
+        bt_tracker_editor,
+        Message::BtTrackerEditor,
+        fluent.get(Tr::BtTrackerInputTips),
+        140.0,
+    ));
+    tracker_rows.push(labeled_toggle(
+        fluent.get(Tr::AutoSync),
+        settings.tracker.auto_sync,
+        SettingKey::TrackerAutoSync,
+    ));
+    if settings.tracker.auto_sync {
+        let freq_opts = vec![
+            Labeled {
+                value: 0,
+                label: fluent.get(Tr::IntervalEveryStartup),
+            },
+            Labeled {
+                value: 6,
+                label: fluent.get(Tr::Interval6Hours),
+            },
+            Labeled {
+                value: 12,
+                label: fluent.get(Tr::Interval12Hours),
+            },
+            Labeled {
+                value: 24,
+                label: fluent.get(Tr::IntervalDaily),
+            },
+            Labeled {
+                value: 168,
+                label: fluent.get(Tr::IntervalWeekly),
+            },
+        ];
+        tracker_rows.push(labeled_pick(
+            fluent,
+            fluent.get(Tr::SyncFrequency),
+            freq_opts,
+            Some(settings.tracker.sync_interval_hours),
+            |opt| Message::SettingChanged(SettingKey::TrackerSyncInterval, opt.value.to_string()),
+        ));
+    }
+
+    let mut bt_col = column![]
         .spacing(SPACE_SM)
         .push(group_title(fluent, Tr::BtSettings, accent))
         .push(labeled_toggle(
@@ -631,16 +786,13 @@ fn bittorrent_view<'a>(
             settings.aria2.bt_require_crypto,
             SettingKey::BtRequireCrypto,
         ))
-        .push({
-            let placeholder = fluent.get(Tr::BtTrackerPlaceholder);
-            labeled_text_input(
-                fluent.get(Tr::BtTracker),
-                &settings.aria2.bt_tracker,
-                SettingKey::BtTracker,
-                false,
-                &placeholder,
-            )
-        })
+        .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
+        .push(group_title(fluent, Tr::BtTrackers, accent))
+        .push(iced::widget::Space::new().height(Length::Fixed(8.0)));
+    for row in tracker_rows {
+        bt_col = bt_col.push(row);
+    }
+    let bt_col = bt_col
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::NodeExchange, accent))
         .push(labeled_toggle(
@@ -673,8 +825,8 @@ fn bittorrent_view<'a>(
             0..=u32::MAX,
             1,
             SettingKey::SeedTime,
-        ))
-        .into()
+        ));
+    bt_col.into()
 }
 
 fn ed2k_view<'a>(
@@ -787,6 +939,7 @@ fn network_view<'a>(
                 ua_editor,
                 Message::UaEditor,
                 placeholder,
+                80.0,
             )
         })
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
@@ -1265,6 +1418,7 @@ fn labeled_editor<'a>(
     content: &'a text_editor::Content,
     on_edit: fn(text_editor::Action) -> Message,
     placeholder: String,
+    height: f32,
 ) -> Element<'a, Message> {
     row![]
         .push(text(label).size(FONT_MEDIUM).width(Length::Fixed(200.0)))
@@ -1272,7 +1426,7 @@ fn labeled_editor<'a>(
             text_editor(content)
                 .placeholder(placeholder)
                 .on_action(on_edit)
-                .height(Length::Fixed(80.0))
+                .height(Length::Fixed(height))
                 .style(theme::style::text_editor::standard),
         ))
         .align_y(Alignment::Start)

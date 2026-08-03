@@ -56,6 +56,8 @@ pub struct Remotrix {
     aria2_status: Option<(String, String)>,
     aria2_fetch_error: Option<String>,
     ua_editor: text_editor::Content,
+    bt_tracker_editor: text_editor::Content,
+    syncing_trackers: bool,
     torrent_files: HashMap<String, PathBuf>,
     torrent_followed: HashSet<String>,
     db: Option<Db>,
@@ -98,6 +100,8 @@ pub fn init() -> (Remotrix, Task<Message>) {
     });
 
     let ua_editor = text_editor::Content::with_text(&settings.aria2.user_agent);
+    let bt_tracker_editor =
+        text_editor::Content::with_text(&crate::trackers::to_lines(&settings.aria2.bt_tracker));
 
     let window_w = settings.window_width;
     let window_h = settings.window_height;
@@ -161,6 +165,8 @@ pub fn init() -> (Remotrix, Task<Message>) {
         aria2_status: None,
         aria2_fetch_error: None,
         ua_editor,
+        bt_tracker_editor,
+        syncing_trackers: false,
         torrent_files: HashMap::new(),
         torrent_followed: HashSet::new(),
         db,
@@ -189,7 +195,10 @@ pub fn init() -> (Remotrix, Task<Message>) {
         startup_starting_toast_shown: false,
     };
 
-    (state, Task::none())
+    (
+        state,
+        Task::done(Message::CheckTrackerAutoSync { startup: true }),
+    )
 }
 
 pub fn app_title(_state: &Remotrix) -> String {
@@ -243,6 +252,10 @@ fn revert_apply_settings(state: &mut Remotrix) {
         .ed2k_node_list_picker
         .set_value(state.settings.aria2.ed2k_node_list.clone());
     state.ua_editor = text_editor::Content::with_text(&state.settings.aria2.user_agent);
+    state.bt_tracker_editor = text_editor::Content::with_text(&crate::trackers::to_lines(
+        &state.settings.aria2.bt_tracker,
+    ));
+    state.settings.tracker = state.applied_settings.tracker.clone();
     state.settings.log = state.applied_settings.log.clone();
     crate::logging::set_app_level(&state.settings.log.app_level);
 }
@@ -1044,8 +1057,13 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     state.settings.aria2.connect_timeout = n;
                 }
             }
-            SettingKey::BtTracker => {
-                state.settings.aria2.bt_tracker = value;
+            SettingKey::TrackerAutoSync => {
+                state.settings.tracker.auto_sync = value == "true";
+            }
+            SettingKey::TrackerSyncInterval => {
+                if let Ok(n) = value.parse::<u32>() {
+                    state.settings.tracker.sync_interval_hours = n;
+                }
             }
             SettingKey::SeedRatio => {
                 if let Ok(n) = value.parse::<f64>() {
@@ -1874,6 +1892,161 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.ua_editor.perform(action);
             state.settings.aria2.user_agent = state.ua_editor.text();
         }
+        Message::BtTrackerEditor(action) => {
+            state.bt_tracker_editor.perform(action);
+            state.settings.aria2.bt_tracker = state.bt_tracker_editor.text();
+        }
+        Message::TrackerSourceToggled { source, enabled } => {
+            if enabled {
+                if !state.settings.tracker.sources.contains(&source) {
+                    state.settings.tracker.sources.push(source);
+                }
+            } else {
+                state.settings.tracker.sources.retain(|s| s != &source);
+            }
+        }
+        Message::TrackerCustomInputChanged(v) => {
+            state.settings_ui.custom_tracker_input = v;
+        }
+        Message::TrackerCustomAdd => {
+            let input = state.settings_ui.custom_tracker_input.trim().to_string();
+            if input.is_empty() {
+                return Task::none();
+            }
+            let is_http = input.starts_with("http://") || input.starts_with("https://");
+            if !is_http || reqwest::Url::parse(&input).is_err() {
+                let mut toast = Toast::new(
+                    ToastKind::Warning,
+                    state.fluent.get(Tr::BtTrackerSourceInvalidUrl),
+                )
+                .position(ToastPosition::Top)
+                .close_after(Some(Duration::from_secs(4)));
+                toast.id = state.next_toast_id;
+                state.next_toast_id += 1;
+                push_toast(state, toast);
+                return Task::none();
+            }
+            if !state.settings.tracker.custom_urls.contains(&input) {
+                state.settings.tracker.custom_urls.push(input.clone());
+            }
+            if !state.settings.tracker.sources.contains(&input) {
+                state.settings.tracker.sources.push(input);
+            }
+            state.settings_ui.custom_tracker_input.clear();
+        }
+        Message::TrackerCustomRemove(url) => {
+            state.settings.tracker.custom_urls.retain(|u| u != &url);
+            state.settings.tracker.sources.retain(|u| u != &url);
+        }
+        Message::SyncTrackers => {
+            if state.syncing_trackers {
+                return Task::none();
+            }
+            let urls = state.settings.tracker.sources.clone();
+            if urls.is_empty() {
+                let mut toast = Toast::new(
+                    ToastKind::Warning,
+                    state.fluent.get(Tr::BtTrackerSelectSource),
+                )
+                .position(ToastPosition::Top)
+                .close_after(Some(Duration::from_secs(4)));
+                toast.id = state.next_toast_id;
+                state.next_toast_id += 1;
+                push_toast(state, toast);
+                return Task::none();
+            }
+            return start_tracker_fetch(state, urls);
+        }
+        Message::TrackersSynced { fetched, failures } => {
+            state.syncing_trackers = false;
+            let ok = fetched.len();
+            let failed = failures.len();
+            let total = ok + failed;
+            let mut lines: Vec<String> = Vec::new();
+            let mut seen = HashSet::new();
+            for body in &fetched {
+                for line in crate::trackers::parse_lines(body) {
+                    if seen.insert(line.clone()) {
+                        lines.push(line);
+                    }
+                }
+            }
+            if lines.is_empty() && !failures.is_empty() {
+                let mut toast =
+                    Toast::new(ToastKind::Error, state.fluent.get(Tr::BtTrackerSyncFailed))
+                        .position(ToastPosition::Top)
+                        .close_after(Some(Duration::from_secs(5)));
+                toast.id = state.next_toast_id;
+                state.next_toast_id += 1;
+                push_toast(state, toast);
+                return Task::none();
+            }
+            let text = crate::trackers::to_lines(&lines.join("\n"));
+            let count = crate::trackers::count(&text);
+            state.bt_tracker_editor = text_editor::Content::with_text(&text);
+            state.settings.aria2.bt_tracker = text;
+            state.applied_settings.aria2.bt_tracker = state.settings.aria2.bt_tracker.clone();
+            let now_ms = chrono::Local::now().timestamp_millis();
+            state.settings.tracker.last_sync_time = Some(now_ms);
+            state.applied_settings.tracker = state.settings.tracker.clone();
+            config::save(&state.settings);
+            let opts = state.settings.effective_task_options();
+            if state
+                .handle
+                .cmd_tx
+                .send(EngineCmd::ApplyAria2Options { options: opts })
+                .is_err()
+            {
+                tracing::warn!("ui: apply aria2 options cmd send failed");
+            }
+            let msg = if failures.is_empty() {
+                let mut args = std::collections::HashMap::new();
+                args.insert(std::borrow::Cow::from("count"), (count as i64).into());
+                state.fluent.get_args(Tr::BtTrackerSyncSucceed, &args)
+            } else {
+                let mut args = std::collections::HashMap::new();
+                args.insert(std::borrow::Cow::from("ok"), (ok as i64).into());
+                args.insert(std::borrow::Cow::from("total"), (total as i64).into());
+                args.insert(std::borrow::Cow::from("failed"), (failed as i64).into());
+                state.fluent.get_args(Tr::BtTrackerSyncPartial, &args)
+            };
+            let mut toast = Toast::new(
+                if failures.is_empty() {
+                    ToastKind::Success
+                } else {
+                    ToastKind::Warning
+                },
+                msg,
+            )
+            .position(ToastPosition::Top)
+            .close_after(Some(Duration::from_secs(4)));
+            toast.id = state.next_toast_id;
+            state.next_toast_id += 1;
+            push_toast(state, toast);
+        }
+        Message::CheckTrackerAutoSync { startup } => {
+            if state.syncing_trackers {
+                return Task::none();
+            }
+            if state.settings.aria2.bt_tracker != state.applied_settings.aria2.bt_tracker {
+                return Task::none();
+            }
+            let now_ms = chrono::Local::now().timestamp_millis();
+            if !crate::trackers::sync_due(
+                state.settings.tracker.auto_sync,
+                state.settings.tracker.sync_interval_hours,
+                state.settings.tracker.last_sync_time,
+                startup,
+                now_ms,
+            ) {
+                return Task::none();
+            }
+            let urls = state.settings.tracker.sources.clone();
+            if urls.is_empty() {
+                return Task::none();
+            }
+            return start_tracker_fetch(state, urls);
+        }
         Message::CheckAria2Update => {
             state.aria2_check_msg = None;
             if state
@@ -2323,6 +2496,8 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             state.aria2_fetch_error.as_deref(),
             state.update_pending.as_deref(),
             &state.ua_editor,
+            &state.bt_tracker_editor,
+            state.syncing_trackers,
             &state.settings.path_history,
             state.settings.font_family != state.applied_font_family,
         ),
@@ -2589,6 +2764,13 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
 
     let signals = Subscription::run_with((), |_| signal_stream());
 
+    let tracker_auto_sync = if state.settings.tracker.auto_sync {
+        iced::time::every(Duration::from_secs(3600))
+            .map(|_| Message::CheckTrackerAutoSync { startup: false })
+    } else {
+        Subscription::none()
+    };
+
     Subscription::batch(vec![
         engine,
         open,
@@ -2601,6 +2783,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         refresh,
         toast_tick,
         signals,
+        tracker_auto_sync,
     ])
 }
 
@@ -2784,6 +2967,14 @@ fn dismiss_toast(state: &mut Remotrix, id: u64) {
     if state.hovered_toast_id == Some(id) {
         state.hovered_toast_id = None;
     }
+}
+
+fn start_tracker_fetch(state: &mut Remotrix, urls: Vec<String>) -> Task<Message> {
+    state.syncing_trackers = true;
+    Task::perform(
+        async move { crate::trackers::fetch_sources(&urls).await },
+        |(fetched, failures)| Message::TrackersSynced { fetched, failures },
+    )
 }
 
 fn pick_path(id: PathPickerId) -> Task<Message> {
