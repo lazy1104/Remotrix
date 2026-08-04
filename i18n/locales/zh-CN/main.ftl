@@ -233,6 +233,7 @@ delete-all-files = 删除全部文件
 remove-all-records = 移除全部记录
 download-history = 下载历史
 copy = 复制
+copied = 已复制
 bt-enable-lpd = 启用本地对等发现 (LPD)
 enable-peer-exchange = 启用对等交换 (PEX)
 file-allocation = 文件分配方式

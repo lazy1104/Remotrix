@@ -887,9 +887,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
         }
         Message::Task(TaskMsg::CopyPath(s)) => {
-            if !s.is_empty() {
-                return iced::clipboard::write::<Message>(s);
-            }
+            return copy_to_clipboard(state, s);
         }
         Message::Task(TaskMsg::OpenFolder(p)) => {
             return open_path_in_manager(p);
@@ -2640,16 +2638,17 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             let Some(t) = state.tasks.get(&gid) else {
                 return Task::none();
             };
-            if !t.url.is_empty() {
-                return iced::clipboard::write::<Message>(t.url.clone());
-            }
-            if let Some(hash) = t.info_hash.as_deref() {
-                if !hash.is_empty() {
-                    return iced::clipboard::write::<Message>(format!(
-                        "magnet:?xt=urn:btih:{hash}"
-                    ));
+            let content = if !t.url.is_empty() {
+                t.url.clone()
+            } else if let Some(hash) = t.info_hash.as_deref() {
+                if hash.is_empty() {
+                    return Task::none();
                 }
-            }
+                format!("magnet:?xt=urn:btih:{hash}")
+            } else {
+                return Task::none();
+            };
+            return copy_to_clipboard(state, content);
         }
         Message::Dialog(DialogMsg::RequestConfirm(action)) => {
             state.confirm = Some(action);
@@ -2682,7 +2681,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::Toast(ToastMsg::ToastTick) => {
             state.toasts.tick();
         }
-        Message::CopyText(s) => return iced::clipboard::write::<Message>(s),
+        Message::CopyText(s) => return copy_to_clipboard(state, s),
         Message::Noop => {}
     }
     Task::none()
@@ -3211,6 +3210,21 @@ fn spawn_toast(
     state
         .toasts
         .spawn(group, kind, message, close_after, show_close)
+}
+
+fn copy_to_clipboard(state: &mut Remotrix, content: String) -> Task<Message> {
+    if content.is_empty() {
+        return Task::none();
+    }
+    spawn_toast(
+        state,
+        ToastGroup::General,
+        ToastKind::Success,
+        state.fluent.get(Tr::Copied),
+        Some(Duration::from_secs(2)),
+        false,
+    );
+    iced::clipboard::write::<Message>(content)
 }
 
 fn dismiss_toast(state: &mut Remotrix, id: u64) {

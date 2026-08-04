@@ -9,7 +9,7 @@ use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
-const CARD_WIDTH: f32 = 320.0;
+const CARD_MAX_WIDTH: f32 = 320.0;
 const OVERLAY_PADDING: u16 = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -120,7 +120,7 @@ pub fn view<'a>(theme: &'a iced::Theme, toasts: &'a [Toast]) -> Element<'a, Mess
             continue;
         }
         let (h, v) = pos.alignment();
-        let mut column_ = column![].spacing(SPACE_LG);
+        let mut column_ = column![].spacing(SPACE_LG).align_x(Horizontal::Center);
         for t in pos_toasts {
             column_ = column_.push(card(theme, t));
         }
@@ -167,7 +167,8 @@ fn card<'a>(theme: &'a iced::Theme, toast: &'a Toast) -> Element<'a, Message> {
 
     mouse_area(
         container(content)
-            .width(Length::Fixed(CARD_WIDTH))
+            .width(Length::Shrink)
+            .max_width(CARD_MAX_WIDTH)
             .padding(PADDING_TOAST)
             .style(theme::style::toast),
     )
