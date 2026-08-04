@@ -441,7 +441,7 @@ fn download_view<'a>(
         .push(labeled_number(
             fluent.get(Tr::MaxConcurrent),
             settings.max_concurrent,
-            1..=u32::MAX,
+            1..=crate::config::MAX_CONCURRENT_DOWNLOADS,
             1,
             SettingKey::MaxConcurrent,
         ))

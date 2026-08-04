@@ -2,6 +2,7 @@ module = "ui::icon"
 
 [icons]
 list = "list"
+hourglass = "hourglass"
 folder_clock = "folder-clock"
 plus = "plus"
 info = "info"

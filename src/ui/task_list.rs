@@ -487,8 +487,8 @@ fn task_card<'a>(
         .align_y(Alignment::Center)
         .width(Length::Fill);
 
-    let name_marker: Element<'a, Message> = if t.status == TaskStatus::Completed {
-        row![
+    let name_marker: Element<'a, Message> = match t.status {
+        TaskStatus::Completed => row![
             icon::circle_check()
                 .size(FONT_ICON)
                 .color(theme::success(theme)),
@@ -496,9 +496,19 @@ fn task_card<'a>(
         ]
         .spacing(SPACE_SM)
         .align_y(Alignment::Center)
-        .into()
-    } else {
-        name.into()
+        .into(),
+        TaskStatus::Waiting => row![
+            tip::standard(
+                icon::hourglass().size(FONT_ICON).color(text_secondary),
+                text(fluent.get(Tr::Waiting)).size(FONT_SMALL),
+                tooltip::Position::Bottom,
+            ),
+            name,
+        ]
+        .spacing(SPACE_SM)
+        .align_y(Alignment::Center)
+        .into(),
+        _ => name.into(),
     };
 
     let content = column![]

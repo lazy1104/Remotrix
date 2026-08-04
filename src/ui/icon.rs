@@ -1,8 +1,8 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// ab7d664fcc80cd49fd827dd5585eb9e7f8792e8c2ac52ccb210dfc2e9a65a4ac
+// adaad7aaee071a090cab171e49b2cb2311e18cd1c908f5c617121ff8b9ab5f53
+use iced::widget::{text, Text};
 use iced::Font;
-use iced::widget::{Text, text};
 
 pub const FONT: &[u8] = include_bytes!("../../fonts/lucide.ttf");
 
@@ -29,6 +29,7 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("folder_clock", "\u{E32F}"),
     ("folder_open", "\u{E247}"),
     ("globe", "\u{E0E8}"),
+    ("hourglass", "\u{E296}"),
     ("info", "\u{E0F9}"),
     ("layers", "\u{E529}"),
     ("link", "\u{E103}"),
@@ -123,6 +124,10 @@ pub fn folder_open<'a>() -> Text<'a> {
 
 pub fn globe<'a>() -> Text<'a> {
     icon("\u{E0E8}")
+}
+
+pub fn hourglass<'a>() -> Text<'a> {
+    icon("\u{E296}")
 }
 
 pub fn info<'a>() -> Text<'a> {

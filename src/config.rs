@@ -10,6 +10,8 @@ use crate::i18n::Locale;
 use crate::scheduler::{in_speed_window, weekday_active};
 use crate::ui::theme::ThemeMode;
 
+pub const MAX_CONCURRENT_DOWNLOADS: u32 = 32;
+
 pub const TRACKER_SOURCE_OPTIONS: &[(&str, &str, &str)] = &[
     (
         "ngosang",
@@ -354,7 +356,11 @@ impl Settings {
 
         extra.insert(
             "max-concurrent-downloads".into(),
-            Value::String(self.max_concurrent.to_string()),
+            Value::String(
+                self.max_concurrent
+                    .min(MAX_CONCURRENT_DOWNLOADS)
+                    .to_string(),
+            ),
         );
 
         extra.insert(
