@@ -50,12 +50,13 @@ pub fn view<'a>(
         )
         .push(copyable_text(gui_text.clone(), Message::CopyText(gui_text)).width(Length::Fill))
         .push(
-            copyable_text(engine_text.clone(), Message::CopyText(engine_text)).width(Length::Fill),
-        )
-        .push(
-            text(iced_text)
+            text(fluent.get(Tr::CoreDependencies))
                 .size(FONT_SMALL)
                 .style(theme::style::text::secondary),
+        )
+        .push(copyable_text(iced_text.clone(), Message::CopyText(iced_text)).width(Length::Fill))
+        .push(
+            copyable_text(engine_text.clone(), Message::CopyText(engine_text)).width(Length::Fill),
         )
         .push(
             text(fluent.get(Tr::LicenseNotice))

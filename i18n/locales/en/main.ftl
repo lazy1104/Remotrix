@@ -173,6 +173,7 @@ close-about = Close
 license-notice = Licensed under GPL-2.0-or-later
 about-tagline = A fast, simple download manager
 about-built-with = Built with iced { $version }
+core-dependencies = Core Dependencies
 engine = Engine
 aria2-version = aria2-next version
 check-update = Check for Updates
