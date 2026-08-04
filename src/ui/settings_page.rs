@@ -292,11 +292,17 @@ fn theme_color_swatches<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Eleme
     let mut swatch_row = row![].spacing(SPACE_XL).align_y(Alignment::Center);
     for (color, name) in theme::candidate_colors() {
         let selected = *color == current;
-        let swatch = button(if selected {
-            icon::circle_check().size(FONT_ICON)
-        } else {
-            text("").size(FONT_ICON)
-        })
+        let swatch = button(
+            container(if selected {
+                icon::circle_check().size(FONT_ICON)
+            } else {
+                text("").size(FONT_ICON)
+            })
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill),
+        )
         .on_press(Message::Settings(SettingsMsg::ThemeColorChanged(*color)))
         .width(Length::Fixed(SWATCH_SIZE))
         .height(Length::Fixed(SWATCH_SIZE))
