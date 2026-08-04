@@ -1196,6 +1196,16 @@ fn advanced_view<'a>(
             settings_ui.readonly_hovered.contains(&sf_str),
         ));
     }
+    if let Some(path) = crate::config::config_file_path() {
+        let p_str = path.to_string_lossy().into_owned();
+        engine_rows.push(labeled_readonly(
+            fluent,
+            theme,
+            fluent.get(Tr::ConfigFile),
+            &p_str,
+            settings_ui.readonly_hovered.contains(&p_str),
+        ));
+    }
 
     if let Some((stage, message)) = aria2_status {
         let status_color = if stage == "update-downloading"

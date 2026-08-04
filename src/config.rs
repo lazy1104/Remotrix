@@ -100,7 +100,8 @@ fn default_min_split_size_mb() -> u64 {
     1
 }
 fn default_user_agent() -> String {
-    format!("Remotrix/{}", env!("CARGO_PKG_VERSION"))
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+        .to_string()
 }
 fn default_max_tries() -> u32 {
     5
@@ -653,6 +654,10 @@ fn config_path() -> Option<PathBuf> {
     let proj = directories::ProjectDirs::from("dev", "remotrix", "Remotrix")?;
     let dir = proj.config_dir().to_path_buf();
     Some(dir.join("settings.json"))
+}
+
+pub fn config_file_path() -> Option<PathBuf> {
+    config_path()
 }
 
 fn settings_file_path() -> Option<PathBuf> {

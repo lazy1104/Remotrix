@@ -176,6 +176,7 @@ aria2-version = aria2-next 版本
 check-update = 检查更新
 engine-data-dir = 引擎数据目录
 engine-session-file = 会话文件
+config-file = 配置文件
 database-error = 数据库打开失败，下载历史将无法保存
 select-placeholder = 请选择...
 up-to-date = 已是最新版本
