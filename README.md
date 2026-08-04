@@ -69,32 +69,40 @@ Remotrix uses a **dual event loop** design:
 
 ```
 src/
-├── main.rs               # entry, tracing / file-logging init, window settings
-├── app.rs                 # Remotrix state, update(), view(), subscription()
-├── config.rs              # Settings (serde) load/save, aria2 option mapping, path helpers
-├── db.rs                  # SQLite persistence (rusqlite): task meta + progress flush
-├── engine.rs              # EngineBridge: spawn tokio supervisor + aria2-next sidecar, mpsc channels
-├── aria2_fetcher.rs       # runtime fetch / cache / verify aria2-next binary, staged updates
-├── updater.rs             # GitHub Releases lookup, ReleaseInfo, platform slug
-├── message.rs             # Message enum + page / filter / sort / setting enums
-├── task.rs                # DownloadTask model, formatters, TaskDetails / TaskFile
-├── i18n.rs                # Locale detection + Fluent translations
+├── main.rs               # entry, logging init, window settings
+├── app.rs                # Remotrix state, update(), view(), subscription()
+├── config.rs             # Settings (serde) load/save, aria2 option mapping, path helpers
+├── db.rs                 # SQLite persistence (rusqlite): task meta + progress flush
+├── engine.rs             # EngineBridge: spawn tokio supervisor + aria2-next sidecar, mpsc channels
+├── aria2_fetcher.rs      # runtime fetch / cache / verify aria2-next binary, staged updates
+├── updater.rs            # GitHub Releases lookup, ReleaseInfo, platform slug
+├── message.rs            # Message enum + page / filter / sort / setting enums
+├── task.rs               # DownloadTask model, formatters, TaskDetails / TaskFile
+├── i18n.rs               # Locale detection + Fluent translations
+├── clipboard_watch.rs    # clipboard link detection (http/ftp/magnet/ed2k/bt) for auto-add
+├── logging.rs            # tracing init, daily rolling file logs, runtime log levels
+├── scheduler.rs          # speed-limit schedule window + weekday helpers
+├── torrent_meta.rs       # .torrent metadata parsing (name, files, size)
+├── trackers.rs           # BT tracker list parse / reduce / merge
 └── ui/
-    ├── mod.rs             # ui module re-exports
-    ├── theme.rs           # accent-color → iced palette generation, ThemeMode, widget styles
-    ├── icon.rs            # iced_lucide icon font module (build-generated)
-    ├── icons.rs           # icon glyph constants + layout widths
-    ├── title_bar.rs       # custom frameless title bar + window controls
-    ├── close_dialog.rs    # close-confirmation overlay
-    ├── sidebar.rs         # nav: Tasks / New / About / Settings
-    ├── category_bar.rs    # task filters (All / Downloading / Completed) + settings categories
-    ├── task_list.rs       # download cards with progress, actions, sort menu
-    ├── add_dialog.rs      # new-download overlay (url / torrent / split)
-    ├── details_dialog.rs  # task details: summary / activity / files tabs
-    ├── piece_map.rs       # BitTorrent piece-completion canvas
-    ├── sort.rs            # task sorting comparators
-    ├── about_dialog.rs    # about / engine info overlay
-    └── settings_page.rs   # general, download, bittorrent, network, advanced, appearance
+    ├── mod.rs            # ui module re-exports
+    ├── theme.rs          # accent-color → iced palette generation, ThemeMode, widget styles
+    ├── icon.rs           # iced_lucide icon font module (build-generated)
+    ├── icons.rs          # icon glyph constants + layout widths
+    ├── dims.rs           # shared dimension constants
+    ├── title_bar.rs      # custom frameless title bar + window controls
+    ├── resize_frame.rs   # custom resize handles for the frameless window
+    ├── close_dialog.rs   # close-confirmation overlay
+    ├── confirm_dialog.rs # generic confirm overlay
+    ├── sidebar.rs        # nav: Tasks / New / About / Settings
+    ├── category_bar.rs   # task filters (All / Downloading / Completed) + settings categories
+    ├── task_list.rs      # download cards with progress, actions, sort menu
+    ├── add_dialog.rs     # new-download overlay (url / torrent / split / advanced)
+    ├── details_dialog.rs # task details: summary / activity / files tabs
+    ├── sort.rs           # task sorting comparators
+    ├── about_dialog.rs   # about / engine info overlay
+    ├── settings_page.rs  # general, download, bittorrent, ed2k, network, advanced, appearance
+    └── components/       # reusable widgets (piece_map, path_picker, time_picker, toast, ...)
 ```
 
 ## Build & Run
@@ -148,7 +156,7 @@ DHT, and more).
 
 | Component | Choice | Rationale |
 |---|---|---|
-| GUI | `iced 0.14` (+tokio, advanced, image, canvas) | Pure Rust, widget-based, dark theme support |
+| GUI | `iced 0.14` (+tokio, advanced, canvas, svg) | Pure Rust, widget-based, dark theme support |
 | Engine | `aria2-next` sidecar + `aria2-ws 0.5` | C++ aria2 fork, JSON-RPC over WebSocket, spawned as subprocess |
 | Async | `tokio 1.x` (full) | Shared runtime for engine + UI |
 | Persistence | `rusqlite 0.32` (bundled) | Embedded SQLite for task metadata / progress |
@@ -158,10 +166,12 @@ DHT, and more).
 | File dialog | `rfd 0.15` | Native OS file picker |
 | HTTP client | `reqwest 0.12` (rustls, json) | GitHub Releases fetch / updater |
 | Hashing | `sha2 0.10` | aria2-next binary checksum verification |
-| Icons | `iced_lucide 0.1`, `iced_aw 0.14` | Icon font + number input / drop-down |
-| Image | `image 0.24` | App icon loading |
+| Icons | `iced_lucide 0.1`, `iced_aw 0.14` | Icon font + time picker |
+| Image | `image 0.24` (png) | App icon loading |
 | Logging | `tracing` + `tracing-appender 0.2` | Rolling file logs |
 | Config dirs | `directories 5` | XDG / user data paths |
+| Fonts | `fontdb 0.23` | System font-family enumeration for Settings |
+| Process | `libc 0.2` | SIGTERM/SIGKILL stale aria2-next processes |
 | Time | `chrono 0.4` (clock) | Timestamp formatting |
 
 ## Roadmap

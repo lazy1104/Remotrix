@@ -29,34 +29,48 @@ Rust-native desktop download manager inspired by Motrix.app. Built with `iced` G
 ```rust
 // --- Channel Protocol (must match between engine.rs and message.rs) ---
 enum EngineCmd {
-    AddDownload { urls: Vec<String>, save_dir: PathBuf, split: u16, bt_metadata_only: bool },
-    AddTorrent { path: PathBuf, save_dir: PathBuf, split: u16 },
-    Pause(String), Resume(String), Remove(String),
-    PauseAll, ResumeAll, RemoveAll, Snapshot,
+    AddDownload { urls: Vec<String>, save_dir: PathBuf, split: u16, advanced: TaskAdvancedOptions, bt_metadata_only: bool },
+    AddTorrent { path: PathBuf, save_dir: PathBuf, split: u16, advanced: TaskAdvancedOptions, select_files: Option<Vec<u64>> },
+    Pause(String), Resume(String),
+    Remove { gid: String, delete_files: bool },
+    PauseAll, ResumeAll,
+    RemoveAll { delete_files: bool },
+    Snapshot,
+    PurgeResults(Vec<String>),
     ApplyAria2Options { options: TaskOptions },
+    FollowTorrent { gid: String, path: PathBuf, save_dir: PathBuf, split: u16, advanced: TaskAdvancedOptions, delete_after: bool },
+    SelectFiles { gid: String, files: Vec<u64> },
     FetchTaskDetails(String),
     ReaddTask { gid: String, url: String, save_dir: PathBuf, split: u16, paused: bool, bt_metadata_only: bool },
     Redownload { gid: String, url: String, save_dir: PathBuf, split: u16, bt_metadata_only: bool },
     Shutdown,
+    ForceKill,
     CheckAria2Update,
     RetryAria2Fetch,
     RestartEngine,
+    ResumeGids(Vec<String>),
+    CheckMissingFiles,
+    ReloadSchedules,
 }
 enum EngineEvent {
-    Added { gid: String, name: String, url: String, dir: String },
-    Progress { gid: String, downloaded: u64, total: u64, speed: u64, status: String, connections: u64 },
+    Added { gid: String, name: String, url: String, dir: String, info_hash: Option<String> },
+    Progress { gid: String, name: String, downloaded: u64, total: u64, speed: u64, upload_speed: u64, status: String, connections: u64, info_hash: Option<String> },
+    TorrentAdded { gid: String, path: PathBuf },
     Removed(String),
     TaskDetails { gid: String, details: crate::task::TaskDetails },
     TaskDetailsFailed { gid: String },
-    EngineReady, EngineStopped,
+    SelectFilesFailed { gid: String },
+    EngineReady, SyncComplete, EngineStopped,
     Aria2Status { stage: String, message: String },
     Aria2Version { version: String },
-    Aria2CheckResult { current: String, latest: Option<String> },
+    Aria2CheckResult { current: String },
     Aria2UpdateApplied { version: String },
     Aria2UpdateFailed { error: String },
     Aria2FetchFailed { error: String },
+    GlobalSpeed { download: u64, upload: u64 },
     Aria2UpdateStaged { version: String },
     EngineDegraded { reason: String },
+    FilesMissing { gids: Vec<String> },
 }
 ```
 
@@ -86,7 +100,7 @@ let status = client.tell_status(&gid).await?;
 [package] name = "remotrix" version = "0.1.0" edition = "2021" license = "GPL-2.0-or-later"
 [dependencies]
 aria2-ws = "0.5"
-iced = { version = "0.14", features = ["tokio", "advanced", "image", "canvas"] }
+iced = { version = "0.14", features = ["tokio", "advanced", "canvas", "svg"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -96,7 +110,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 directories = "5"
 rfd = "0.15"
-image = "0.24"
+image = { version = "0.24", default-features = false, features = ["png"] }
 dark-light = "1.1"
 fluent-templates = "0.14.0"
 futures = "0.3"
@@ -109,13 +123,15 @@ sha2 = "0.10"
 rusqlite = { version = "0.32", features = ["bundled"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 open = "5"
+libc = "0.2"
+fontdb = "0.23"
 
 [build-dependencies]
 iced_lucide = "0.1"
 ```
 
 ## Code Conventions
-- **Module structure**: `src/` with flat top-level modules (`app.rs`, `config.rs`, `db.rs`, `engine.rs`, `aria2_fetcher.rs`, `updater.rs`, `message.rs`, `task.rs`, `i18n.rs`) + `ui/` subdirectory
+- **Module structure**: `src/` with flat top-level modules (`app.rs`, `config.rs`, `db.rs`, `engine.rs`, `aria2_fetcher.rs`, `updater.rs`, `message.rs`, `task.rs`, `i18n.rs`, `clipboard_watch.rs`, `logging.rs`, `scheduler.rs`, `torrent_meta.rs`, `trackers.rs`) + `ui/` subdirectory
 - **UI pattern**: Each page is a `fn` returning `iced::Element<'_, Message, Theme>`; no widget OOP wrappers
 - **Time pickers** (`Settings > Download > Speed Limits`): `iced_aw` clock component (`time_picker` feature) wrapped in `src/ui/components/time_picker.rs`; the wrapper re-seeds iced_aw state on the open transition via `tree.children[0].state` so reopening shows the committed value.
 - **Theme**: single accent color → iced `Theme::custom` palette generation (`src/ui/theme.rs`), with the background derived as an M3-style surface from the accent hue (`surface_from_seed`); colors read from `iced::Theme::extended_palette()`, no hardcoded palette constants.
