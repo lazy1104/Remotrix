@@ -1,8 +1,8 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// d44890d7a3cd342961b9a89f59db91af1debbb622c770722ef3f1208a73c6f17
-use iced::widget::{text, Text};
+// ab7d664fcc80cd49fd827dd5585eb9e7f8792e8c2ac52ccb210dfc2e9a65a4ac
 use iced::Font;
+use iced::widget::{Text, text};
 
 pub const FONT: &[u8] = include_bytes!("../../fonts/lucide.ttf");
 
@@ -31,6 +31,7 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("globe", "\u{E0E8}"),
     ("info", "\u{E0F9}"),
     ("layers", "\u{E529}"),
+    ("link", "\u{E103}"),
     ("list", "\u{E106}"),
     ("magnet", "\u{E2B5}"),
     ("minus", "\u{E11C}"),
@@ -130,6 +131,10 @@ pub fn info<'a>() -> Text<'a> {
 
 pub fn layers<'a>() -> Text<'a> {
     icon("\u{E529}")
+}
+
+pub fn link<'a>() -> Text<'a> {
+    icon("\u{E103}")
 }
 
 pub fn list<'a>() -> Text<'a> {

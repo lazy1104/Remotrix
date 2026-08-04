@@ -367,7 +367,7 @@ fn task_card<'a>(
     };
 
     let copy_link_btn: Element<'a, Message> = if !t.url.is_empty() || t.info_hash.is_some() {
-        let glyph = icon::copy().size(FONT_ICON).color(text_secondary);
+        let glyph = icon::link().size(FONT_ICON).color(text_secondary);
         tip::standard(
             button(glyph)
                 .on_press(Message::Task(TaskMsg::CopyTaskLink(t.gid.clone())))
@@ -377,7 +377,7 @@ fn task_card<'a>(
             tooltip::Position::Bottom,
         )
     } else {
-        let glyph = icon::copy().size(FONT_ICON).color(text_secondary);
+        let glyph = icon::link().size(FONT_ICON).color(text_secondary);
         tip::standard(
             button(glyph)
                 .padding(PADDING_ICON_BTN)
