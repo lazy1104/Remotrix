@@ -8,12 +8,21 @@ pub fn view<'a, Message: 'a>(
 ) -> Element<'a, Message> {
     let primary = theme.extended_palette().primary.base.color;
     Svg::new(Handle::from_memory(include_bytes!(
-        "../../../assets/logo.svg"
+        "../../../assets/title-logo.svg"
     )))
     .width(Length::Fixed(width))
     .height(Length::Fixed(height))
     .style(move |_t, _s| Style {
         color: Some(primary),
     })
+    .into()
+}
+
+pub fn view_brand<'a, Message: 'a>(width: f32, height: f32) -> Element<'a, Message> {
+    Svg::new(Handle::from_memory(include_bytes!(
+        "../../../assets/logo.svg"
+    )))
+    .width(Length::Fixed(width))
+    .height(Length::Fixed(height))
     .into()
 }
