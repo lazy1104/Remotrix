@@ -1,6 +1,8 @@
 module = "ui::icon"
 
 [icons]
+arrow_up_down = "arrow-up-down"
+eraser = "eraser"
 list = "list"
 hourglass = "hourglass"
 folder_clock = "folder-clock"

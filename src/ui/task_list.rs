@@ -25,31 +25,27 @@ pub fn view<'a>(
     sort_menu_open: bool,
     search_query: &str,
 ) -> Element<'a, Message> {
-    let lucide_font = iced::Font::with_name("lucide");
-
-    let toolbar_btn =
-        |codepoint: char, tip: String, msg: Message, active: bool| -> Element<'a, Message> {
-            let glyph = text(codepoint.to_string())
-                .font(lucide_font)
-                .size(FONT_ICON);
-            let glyph = if active {
-                glyph.color(theme::accent(theme))
-            } else {
-                glyph
-            };
-            let btn = button(glyph)
-                .on_press(msg)
-                .padding(PADDING_BUTTON_XS)
-                .style(theme::style::button::toolbar_icon(active));
-            tip::standard(btn, text(tip).size(FONT_SMALL), tooltip::Position::Bottom)
+    let toolbar_btn = |glyph: iced::widget::Text<'a>,
+                       tip: String,
+                       msg: Message,
+                       active: bool|
+     -> Element<'a, Message> {
+        let glyph = if active {
+            glyph.color(theme::accent(theme))
+        } else {
+            glyph
         };
+        let btn = button(glyph)
+            .on_press(msg)
+            .padding(PADDING_BUTTON_XS)
+            .style(theme::style::button::toolbar_icon(active));
+        tip::standard(btn, text(tip).size(FONT_SMALL), tooltip::Position::Bottom)
+    };
 
     let sort_active = sort_menu_open || sort_field != SortField::AddedTime;
 
     let sort_underlay = {
-        let glyph = text('\u{E37D}'.to_string())
-            .font(lucide_font)
-            .size(FONT_ICON);
+        let glyph = icon::arrow_up_down().size(FONT_ICON);
         let glyph = if sort_active {
             glyph.color(theme::accent(theme))
         } else {
@@ -131,10 +127,7 @@ pub fn view<'a>(
     .width(Length::Fixed(170.0));
 
     let new_btn: Element<'a, Message> = {
-        let glyph = text('\u{E13D}'.to_string())
-            .font(lucide_font)
-            .size(FONT_ICON);
-        let btn = button(glyph)
+        let btn = button(icon::plus().size(FONT_ICON))
             .on_press(Message::Add(AddMsg::OpenAddDialog))
             .padding(PADDING_BUTTON_XS)
             .style(theme::style::button::toolbar_icon(true));
@@ -173,32 +166,32 @@ pub fn view<'a>(
         .push(
             row![]
                 .push(toolbar_btn(
-                    '\u{E145}',
+                    icon::refresh().size(FONT_ICON),
                     fluent.get(Tr::Refresh),
                     Message::Task(TaskMsg::Refresh),
                     false,
                 ))
                 .push(sort_dropdown)
                 .push(toolbar_btn(
-                    '\u{E13C}',
+                    icon::play().size(FONT_ICON),
                     fluent.get(Tr::StartAll),
                     Message::Task(TaskMsg::StartAll),
                     false,
                 ))
                 .push(toolbar_btn(
-                    '\u{E12E}',
+                    icon::pause().size(FONT_ICON),
                     fluent.get(Tr::PauseAll),
                     Message::Task(TaskMsg::PauseAll),
                     false,
                 ))
                 .push(toolbar_btn(
-                    '\u{E18E}',
+                    icon::trash().size(FONT_ICON),
                     fluent.get(Tr::DeleteAll),
                     Message::Dialog(DialogMsg::RequestConfirm(ConfirmAction::DeleteAll)),
                     false,
                 ))
                 .push(toolbar_btn(
-                    '\u{E28F}',
+                    icon::eraser().size(FONT_ICON),
                     fluent.get(Tr::ClearList),
                     Message::Dialog(DialogMsg::RequestConfirm(ConfirmAction::ClearCompleted)),
                     false,
