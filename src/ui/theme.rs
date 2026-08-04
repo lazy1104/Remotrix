@@ -329,18 +329,43 @@ pub mod style {
         focused: bool,
         hovered: bool,
     ) -> impl Fn(&iced::Theme) -> iced::widget::container::Style {
-        move |t| iced::widget::container::Style {
-            background: Some(t.extended_palette().background.base.color.into()),
-            border: iced::Border {
-                color: if focused || hovered {
-                    t.extended_palette().primary.base.color
-                } else {
-                    super::border_color(t)
+        move |t| {
+            let p = t.extended_palette();
+            iced::widget::container::Style {
+                background: Some(p.background.base.color.into()),
+                border: iced::Border {
+                    color: if focused || hovered {
+                        p.primary.base.color
+                    } else {
+                        super::border_color(t)
+                    },
+                    width: 1.0,
+                    radius: super::RADIUS_BUTTON.into(),
                 },
-                width: 1.0,
-                radius: super::RADIUS_BUTTON.into(),
-            },
-            ..Default::default()
+                ..Default::default()
+            }
+        }
+    }
+
+    pub fn grouped_field_state(
+        focused: bool,
+        hovered: bool,
+    ) -> impl Fn(&iced::Theme) -> iced::widget::container::Style {
+        move |t| {
+            let p = t.extended_palette();
+            iced::widget::container::Style {
+                background: Some(p.background.weak.color.into()),
+                border: iced::Border {
+                    color: if focused || hovered {
+                        p.primary.base.color
+                    } else {
+                        super::border_color(t)
+                    },
+                    width: 1.0,
+                    radius: super::RADIUS_BUTTON.into(),
+                },
+                ..Default::default()
+            }
         }
     }
 
@@ -797,10 +822,17 @@ pub mod style {
             }
         }
 
-        pub fn grouped_icon<'a>(trailing: bool) -> impl Fn(&iced::Theme, Status) -> Style + 'a {
+        pub fn grouped_icon<'a>(
+            trailing: bool,
+            on_field: bool,
+        ) -> impl Fn(&iced::Theme, Status) -> Style + 'a {
             move |t, status| {
                 let base_text = t.extended_palette().background.base.text;
-                let weak_bg = t.extended_palette().background.weak.color;
+                let base_bg = if on_field {
+                    t.extended_palette().background.base.color
+                } else {
+                    t.extended_palette().background.weak.color
+                };
                 let radius = if trailing {
                     iced::border::Radius::default().right(super::super::RADIUS_BUTTON)
                 } else {
@@ -808,9 +840,9 @@ pub mod style {
                 };
                 Style {
                     background: match status {
-                        Status::Hovered => Some(super::lighten(weak_bg, 0.08).into()),
-                        Status::Pressed => Some(super::lighten(weak_bg, 0.14).into()),
-                        _ => Some(weak_bg.into()),
+                        Status::Hovered => Some(super::lighten(base_bg, 0.08).into()),
+                        Status::Pressed => Some(super::lighten(base_bg, 0.14).into()),
+                        _ => Some(base_bg.into()),
                     },
                     text_color: base_text,
                     border: iced::Border {
@@ -835,6 +867,18 @@ pub mod style {
                 icon: p.background.weak.text,
                 placeholder: p.secondary.base.color,
                 value: p.background.base.text,
+                selection: p.primary.weak.color,
+            }
+        }
+
+        pub fn grouped_readonly(t: &iced::Theme, _status: text_input::Status) -> text_input::Style {
+            let p = t.extended_palette();
+            text_input::Style {
+                background: iced::Background::Color(iced::Color::TRANSPARENT),
+                border: iced::Border::default(),
+                icon: p.background.weak.text,
+                placeholder: p.secondary.base.color,
+                value: p.background.weak.text,
                 selection: p.primary.weak.color,
             }
         }

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -874,6 +874,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 Some(PathPickerAction::Select(p)) => {
                     apply_path(state, id, p);
                 }
+                Some(PathPickerAction::Open(p)) => {
+                    return open_path_in_manager(p);
+                }
                 None => {}
             }
         }
@@ -887,6 +890,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             if !s.is_empty() {
                 return iced::clipboard::write::<Message>(s);
             }
+        }
+        Message::Task(TaskMsg::OpenFolder(p)) => {
+            return open_path_in_manager(p);
         }
         Message::Add(AddMsg::SplitChanged(value)) => {
             if let Ok(n) = value.parse::<u16>() {
@@ -2402,6 +2408,13 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::Settings(SettingsMsg::ToggleScheduleDaysMenu) => {
             state.settings_ui.schedule_days_menu_open = !state.settings_ui.schedule_days_menu_open;
         }
+        Message::Settings(SettingsMsg::ReadOnlyHover { path, hovered }) => {
+            if hovered {
+                state.settings_ui.readonly_hovered.insert(path);
+            } else {
+                state.settings_ui.readonly_hovered.remove(&path);
+            }
+        }
         Message::Settings(SettingsMsg::ScheduleDayToggled { day, enabled }) => {
             let weekdays = &mut state.settings.speed_limit_schedule.weekdays;
             if enabled {
@@ -3263,4 +3276,24 @@ fn pick_path(id: PathPickerId) -> Task<Message> {
     Task::perform(task, move |maybe| {
         Message::Add(AddMsg::PathPicked(id, maybe))
     })
+}
+
+fn open_path_in_manager(p: PathBuf) -> Task<Message> {
+    if p.as_os_str().is_empty() {
+        return Task::none();
+    }
+    let target = if p.is_dir() {
+        p
+    } else {
+        p.parent()
+            .filter(|q| !q.as_os_str().is_empty())
+            .map(Path::to_path_buf)
+            .unwrap_or(p)
+    };
+    Task::perform(
+        async move {
+            let _ = open::that(&target);
+        },
+        |_| Message::Noop,
+    )
 }

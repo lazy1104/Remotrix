@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use iced::widget::{
@@ -34,6 +36,7 @@ pub struct SettingsUiState {
     pub custom_tracker_input: String,
     pub syncing_trackers: bool,
     pub tracker_sync_toast_id: Option<u64>,
+    pub readonly_hovered: HashSet<String>,
 }
 
 impl SettingsUiState {
@@ -60,6 +63,7 @@ impl SettingsUiState {
             custom_tracker_input: String::new(),
             syncing_trackers: false,
             tracker_sync_toast_id: None,
+            readonly_hovered: HashSet::new(),
         }
     }
 }
@@ -148,6 +152,7 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
             theme,
             settings,
             applied_settings,
+            settings_ui,
             *engine_restart_pending,
             *aria2_version,
             *aria2_check_msg,
@@ -1127,6 +1132,7 @@ fn advanced_view<'a>(
     theme: &'a iced::Theme,
     settings: &'a Settings,
     applied_settings: &'a Settings,
+    settings_ui: &'a SettingsUiState,
     engine_restart_pending: bool,
     aria2_version: Option<&'a str>,
     aria2_check_msg: Option<&'a str>,
@@ -1170,20 +1176,24 @@ fn advanced_view<'a>(
     );
 
     if let Some(dir) = crate::config::aria2_bin_dir() {
+        let dir_str = dir.to_string_lossy().into_owned();
         engine_rows.push(labeled_readonly(
             fluent,
             theme,
             fluent.get(Tr::EngineDataDir),
-            &dir.to_string_lossy(),
+            &dir_str,
+            settings_ui.readonly_hovered.contains(&dir_str),
         ));
     }
     if let Some(path) = crate::config::session_dir() {
         let sf = path.join("session.txt");
+        let sf_str = sf.to_string_lossy().into_owned();
         engine_rows.push(labeled_readonly(
             fluent,
             theme,
             fluent.get(Tr::EngineSessionFile),
-            &sf.to_string_lossy(),
+            &sf_str,
+            settings_ui.readonly_hovered.contains(&sf_str),
         ));
     }
 
@@ -1349,6 +1359,7 @@ fn advanced_view<'a>(
             theme,
             settings,
             applied_settings,
+            settings_ui,
             engine_restart_pending,
         ))
         .push(group_title(fluent, Tr::Engine, accent))
@@ -1361,6 +1372,7 @@ fn logging_view<'a>(
     theme: &'a iced::Theme,
     settings: &'a Settings,
     applied_settings: &'a Settings,
+    settings_ui: &'a SettingsUiState,
     engine_restart_pending: bool,
 ) -> Element<'a, Message> {
     let placeholder = fluent.get(Tr::SelectPlaceholder);
@@ -1392,11 +1404,13 @@ fn logging_view<'a>(
     let mut col = column![].spacing(SPACE_SM);
 
     if let Some(dir) = crate::config::log_dir() {
+        let dir_str = dir.to_string_lossy().into_owned();
         col = col.push(labeled_readonly(
             fluent,
             theme,
             fluent.get(Tr::LogLocation),
-            &dir.to_string_lossy(),
+            &dir_str,
+            settings_ui.readonly_hovered.contains(&dir_str),
         ));
     }
 
@@ -1641,12 +1655,26 @@ fn labeled_readonly<'a>(
     theme: &'a iced::Theme,
     label: String,
     value: &str,
+    hovered: bool,
 ) -> Element<'a, Message> {
-    let picker = PathPicker::read_only(value.to_string());
+    let mut picker = PathPicker::read_only(value.to_string());
+    picker.set_hovered(hovered);
+    let open_value = value.to_string();
     row![]
         .push(text(label).size(FONT_MEDIUM).width(Length::Fixed(200.0)))
-        .push(picker.view(fluent, theme, &[], |e| match e {
+        .push(picker.view(fluent, theme, &[], move |e| match e {
             PathPickerEvent::Copy(s) => Message::Task(TaskMsg::CopyPath(s)),
+            PathPickerEvent::Open => {
+                Message::Task(TaskMsg::OpenFolder(PathBuf::from(open_value.clone())))
+            }
+            PathPickerEvent::Entered => Message::Settings(SettingsMsg::ReadOnlyHover {
+                path: open_value.clone(),
+                hovered: true,
+            }),
+            PathPickerEvent::Exited => Message::Settings(SettingsMsg::ReadOnlyHover {
+                path: open_value.clone(),
+                hovered: false,
+            }),
             _ => Message::Noop,
         }))
         .height(Length::Fixed(36.0))

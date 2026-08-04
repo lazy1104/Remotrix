@@ -128,6 +128,7 @@ pub enum TaskMsg {
     DetailsFilesScroll(f32),
     DetailsFilesFlush(u64),
     CopyPath(String),
+    OpenFolder(PathBuf),
 }
 
 #[derive(Debug, Clone)]
@@ -168,6 +169,10 @@ pub enum SettingsMsg {
     },
     SetAutoCheck(bool),
     ClearLogs,
+    ReadOnlyHover {
+        path: String,
+        hovered: bool,
+    },
 }
 
 #[derive(Debug, Clone)]

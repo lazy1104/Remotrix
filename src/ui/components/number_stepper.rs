@@ -157,7 +157,7 @@ where
         .push(separator());
 
     let minus_btn = button(icon_content::<Message>(icon::minus().size(FONT_ICON)))
-        .style(theme::style::button::grouped_icon(false))
+        .style(theme::style::button::grouped_icon(false, false))
         .height(Length::Fill);
     if !read_only {
         let minus_val = if value >= min + step {
@@ -174,7 +174,7 @@ where
     r = r.push(separator());
 
     let plus_btn = button(icon_content::<Message>(icon::plus().size(FONT_ICON)))
-        .style(theme::style::button::grouped_icon(true))
+        .style(theme::style::button::grouped_icon(true, false))
         .height(Length::Fill);
     if !read_only {
         let plus_val = if value <= max - step {

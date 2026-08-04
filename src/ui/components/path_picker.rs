@@ -28,6 +28,8 @@ pub enum PathPickerEvent {
     SelectHistory(PathBuf),
     Browse,
     Copy(String),
+    Changed,
+    Open,
     Entered,
     Exited,
 }
@@ -37,6 +39,7 @@ pub enum PathPickerAction {
     Copy(String),
     Browse,
     Select(PathBuf),
+    Open(PathBuf),
 }
 
 #[derive(Debug, Clone)]
@@ -87,6 +90,10 @@ impl PathPicker {
         self.value = v.into();
     }
 
+    pub fn set_hovered(&mut self, hovered: bool) {
+        self.hovered = hovered;
+    }
+
     pub fn value(&self) -> &str {
         &self.value
     }
@@ -124,6 +131,10 @@ impl PathPicker {
                     Some(PathPickerAction::Copy(s))
                 }
             }
+            PathPickerEvent::Changed => None,
+            PathPickerEvent::Open => {
+                Some(PathPickerAction::Open(PathBuf::from(self.value.clone())))
+            }
             PathPickerEvent::Entered => {
                 self.hovered = true;
                 None
@@ -147,16 +158,33 @@ impl PathPicker {
         M: Clone + 'a,
     {
         let text_secondary = theme::text_secondary(theme);
+
+        let copy_msg = map(PathPickerEvent::Copy(self.value.clone()));
+        let open_msg = map(PathPickerEvent::Open);
+        let browse_msg = map(PathPickerEvent::Browse);
+        let toggle_msg = map(PathPickerEvent::ToggleHistory);
+        let dismiss_msg = map(PathPickerEvent::DismissHistory);
+        let enter_msg = map(PathPickerEvent::Entered);
+        let exit_msg = map(PathPickerEvent::Exited);
+        let select_msgs: Vec<M> = history
+            .iter()
+            .map(|p| map(PathPickerEvent::SelectHistory(PathBuf::from(p.clone()))))
+            .collect();
+
+        let input = theme::grouped_input_layout(
+            text_input("", &self.value)
+                .on_input(move |_s| map(PathPickerEvent::Changed))
+                .style(if self.mode == PickerMode::ReadOnly {
+                    theme::style::input::grouped_readonly
+                } else {
+                    theme::style::input::grouped
+                })
+                .width(Length::Fill),
+        );
         let mut row = row![]
             .spacing(SPACE_NONE)
             .align_y(Alignment::Center)
             .height(Length::Fill);
-
-        let input = theme::grouped_input_layout(
-            text_input("", &self.value)
-                .style(theme::style::input::grouped)
-                .width(Length::Fill),
-        );
         row = row.push(input);
         row = row.push(Self::separator());
 
@@ -164,10 +192,10 @@ impl PathPicker {
             let mut btn = button(Self::icon_content(
                 icon::copy().size(FONT_ICON).color(text_secondary),
             ))
-            .style(theme::style::button::grouped_icon(false))
+            .style(theme::style::button::grouped_icon(false, false))
             .height(Length::Fill);
             if !self.value.is_empty() {
-                btn = btn.on_press(map(PathPickerEvent::Copy(self.value.clone())));
+                btn = btn.on_press(copy_msg);
             }
             tooltip::standard(
                 btn,
@@ -177,15 +205,33 @@ impl PathPicker {
         };
         row = row.push(copy_btn);
 
+        let reveal_btn: Element<'a, M> = {
+            let mut btn = button(Self::icon_content(
+                icon::folder_search().size(FONT_ICON).color(text_secondary),
+            ))
+            .style(theme::style::button::grouped_icon(false, false))
+            .height(Length::Fill);
+            if !self.value.is_empty() {
+                btn = btn.on_press(open_msg);
+            }
+            tooltip::standard(
+                btn,
+                text(fluent.get(Tr::ShowInFolder)),
+                iced::widget::tooltip::Position::Bottom,
+            )
+        };
+
         if self.mode != PickerMode::ReadOnly {
+            row = row.push(Self::separator());
+            row = row.push(reveal_btn);
             row = row.push(Self::separator());
 
             let browse_btn: Element<'a, M> = tooltip::standard(
                 button(Self::icon_content(
                     icon::folder_open().size(FONT_ICON).color(text_secondary),
                 ))
-                .on_press(map(PathPickerEvent::Browse))
-                .style(theme::style::button::grouped_icon(false))
+                .on_press(browse_msg)
+                .style(theme::style::button::grouped_icon(false, false))
                 .height(Length::Fill),
                 text(fluent.get(Tr::Browse)),
                 iced::widget::tooltip::Position::Bottom,
@@ -198,12 +244,12 @@ impl PathPicker {
                     let btn = button(Self::icon_content(
                         icon::folder_clock().size(FONT_ICON).color(text_secondary),
                     ))
-                    .style(theme::style::button::grouped_icon(true))
+                    .style(theme::style::button::grouped_icon(true, false))
                     .height(Length::Fill);
                     if history.is_empty() {
                         btn.into()
                     } else {
-                        btn.on_press(map(PathPickerEvent::ToggleHistory)).into()
+                        btn.on_press(toggle_msg).into()
                     }
                 };
                 let history_btn = tooltip::standard(
@@ -213,13 +259,16 @@ impl PathPicker {
                 );
                 row = row.push(history_btn);
             }
+        } else {
+            row = row.push(Self::separator());
+            row = row.push(reveal_btn);
         }
 
         let group = container(row)
             .width(Length::Fill)
             .height(Length::Fixed(CONTROL_HEIGHT))
             .padding(PADDING_GROUPED)
-            .style(theme::style::grouped_frame_state(
+            .style(theme::style::grouped_field_state(
                 self.focused,
                 self.hovered,
             ));
@@ -228,11 +277,10 @@ impl PathPicker {
             if self.mode != PickerMode::ReadOnly && self.show_history && !history.is_empty() {
                 let overlay_items: Vec<Element<'a, M>> = history
                     .iter()
-                    .map(|p| {
+                    .zip(&select_msgs)
+                    .map(|(p, msg)| {
                         button(text(p.as_str()).size(FONT_SMALL))
-                            .on_press(map(PathPickerEvent::SelectHistory(PathBuf::from(
-                                p.clone(),
-                            ))))
+                            .on_press(msg.clone())
                             .width(Length::Fill)
                             .padding(PADDING_BUTTON_XS)
                             .style(theme::style::button::picker_item())
@@ -252,20 +300,16 @@ impl PathPicker {
                 drop_down::DropDown::new(group, overlay, self.history_open)
                     .alignment(drop_down::Alignment::Bottom)
                     .offset(drop_down::Offset::from(0.0))
-                    .on_dismiss(map(PathPickerEvent::DismissHistory))
+                    .on_dismiss(dismiss_msg)
                     .into()
             } else {
                 group.into()
             };
 
-        if self.mode != PickerMode::ReadOnly {
-            mouse_area(inner)
-                .on_enter(map(PathPickerEvent::Entered))
-                .on_exit(map(PathPickerEvent::Exited))
-                .into()
-        } else {
-            inner
-        }
+        mouse_area(inner)
+            .on_enter(enter_msg)
+            .on_exit(exit_msg)
+            .into()
     }
 
     fn icon_content<'a, M: 'a>(icon: Text<'a>) -> Element<'a, M> {

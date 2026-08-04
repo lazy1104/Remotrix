@@ -1,6 +1,6 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// 1b26fabcae9ec29dac3cc1699fa8b4bdd7c1b1dace99c67b8c30e658b8eb57ba
+// d7a24b2aee04c03007d4c5718c2bab34710324e25bbccde5f4d21a81dc0ff6d6
 use iced::widget::{text, Text};
 use iced::Font;
 
@@ -30,6 +30,7 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("folder", "\u{E0D7}"),
     ("folder_clock", "\u{E32F}"),
     ("folder_open", "\u{E247}"),
+    ("folder_search", "\u{E339}"),
     ("globe", "\u{E0E8}"),
     ("info", "\u{E0F9}"),
     ("layers", "\u{E529}"),
@@ -121,6 +122,10 @@ pub fn folder_clock<'a>() -> Text<'a> {
 
 pub fn folder_open<'a>() -> Text<'a> {
     icon("\u{E247}")
+}
+
+pub fn folder_search<'a>() -> Text<'a> {
+    icon("\u{E339}")
 }
 
 pub fn globe<'a>() -> Text<'a> {
