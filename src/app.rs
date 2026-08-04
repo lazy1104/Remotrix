@@ -2682,6 +2682,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::Toast(ToastMsg::ToastTick) => {
             state.toasts.tick();
         }
+        Message::CopyText(s) => return iced::clipboard::write::<Message>(s),
         Message::Noop => {}
     }
     Task::none()

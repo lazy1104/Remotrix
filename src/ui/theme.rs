@@ -508,7 +508,6 @@ pub mod style {
             }
         }
 
-        #[allow(dead_code)]
         pub fn copyable<'a>() -> impl Fn(&iced::Theme, Status) -> Style + 'a {
             move |t: &iced::Theme, status: Status| -> Style {
                 let p = t.extended_palette();

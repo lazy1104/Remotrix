@@ -190,4 +190,4 @@ DHT, and more).
 
 ## License
 
-GPL-2.0-or-later. See the `license` field in `Cargo.toml`.
+GPL-2.0-or-later. See the `LICENSE` file for the full license text.

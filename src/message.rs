@@ -67,6 +67,7 @@ pub enum Message {
     Sort(SortMsg),
     Dialog(DialogMsg),
     Toast(ToastMsg),
+    CopyText(String),
     Noop,
 }
 

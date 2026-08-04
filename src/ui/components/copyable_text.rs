@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use iced::alignment::Alignment;
 use iced::widget::{button, row, text};
 use iced::{Element, Length};
