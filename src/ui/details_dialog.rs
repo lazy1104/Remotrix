@@ -15,6 +15,8 @@ use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
+const DETAILS_WIDTH: f32 = 640.0;
+
 pub struct DetailsDialogState {
     pub visible: bool,
     pub gid: Option<String>,
@@ -144,7 +146,7 @@ pub fn view<'a>(
             .width(Length::Fill)
             .height(Length::Fill),
     )
-    .width(Length::Fixed(640.0))
+    .width(Length::Fixed(DETAILS_WIDTH))
     .height(Length::Fixed(480.0))
     .padding(PADDING_DETAILS)
     .style(theme::style::card);
@@ -212,9 +214,13 @@ fn activity_tab<'a>(
         let piece_map_el = crate::ui::components::piece_map::view(
             details.bitfield.clone(),
             details.num_pieces,
-            theme::success(theme),
-            theme::text_secondary(theme),
+            DETAILS_WIDTH - 2.0 * PADDING_DETAILS as f32,
         );
+
+        let mut piece_content = column![piece_info].spacing(SPACE_SM);
+        if let Some(map) = piece_map_el {
+            piece_content = piece_content.push(map);
+        }
 
         let pct = task.progress_pct();
         let bar_color = theme::task_bar_color(theme, task.status);
@@ -241,7 +247,7 @@ fn activity_tab<'a>(
         let conn_str = task.connections.to_string();
 
         (
-            column![piece_info, piece_map_el].spacing(SPACE_SM).into(),
+            piece_content.into(),
             column![]
                 .push(bar)
                 .push(
