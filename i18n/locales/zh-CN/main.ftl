@@ -224,6 +224,7 @@ confirm-missing-file-title = 移除任务记录？
 confirm-missing-file-body = 本地文件已被删除，是否移除任务记录？
 loading = 加载中…
 task-gone = 该任务已不存在
+task-completed = 该任务已完成
 
 confirm-delete-all-title = 删除全部任务？
 confirm-delete-all-body = 请选择操作："删除全部文件"将移除所有任务并删除对应的下载文件；"移除全部记录"仅从列表中移除所有任务，保留文件。

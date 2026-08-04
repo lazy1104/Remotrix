@@ -224,6 +224,7 @@ confirm-missing-file-title = Remove this task record?
 confirm-missing-file-body = The local file has been deleted. Remove the task record?
 loading = Loading…
 task-gone = This task no longer exists
+task-completed = This task is completed
 
 confirm-delete-all-title = Delete all tasks?
 confirm-delete-all-body = Choose an action: "Delete All Files" removes all tasks and deletes their downloaded files; "Remove All from List" only removes all tasks from the list, keeping the files.

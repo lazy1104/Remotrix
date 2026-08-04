@@ -11,6 +11,7 @@ use crate::task::{
 use crate::ui::components::dialog::overlay;
 use crate::ui::components::file_tree;
 use crate::ui::components::key_value_list::key_value_list;
+use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
@@ -23,6 +24,7 @@ pub struct DetailsDialogState {
     pub active_tab: DetailsTab,
     pub details: Option<TaskDetails>,
     pub loading: bool,
+    pub fetch_failed: bool,
     pub files_expanded: HashSet<String>,
     pub files_tree: Vec<file_tree::FileTreeNode>,
     pub files_scroll_offset: f32,
@@ -38,6 +40,7 @@ impl DetailsDialogState {
             active_tab: DetailsTab::Summary,
             details: None,
             loading: false,
+            fetch_failed: false,
             files_expanded: HashSet::new(),
             files_tree: Vec::new(),
             files_scroll_offset: 0.0,
@@ -52,6 +55,7 @@ impl DetailsDialogState {
         self.active_tab = DetailsTab::Summary;
         self.details = None;
         self.loading = true;
+        self.fetch_failed = false;
         self.files_expanded.clear();
         self.files_scroll_offset = 0.0;
     }
@@ -61,6 +65,7 @@ impl DetailsDialogState {
         self.gid = None;
         self.details = None;
         self.loading = false;
+        self.fetch_failed = false;
         self.files_expanded.clear();
         self.files_tree.clear();
         self.files_scroll_offset = 0.0;
@@ -130,7 +135,11 @@ pub fn view<'a>(
         .center_y(Length::Fill)
         .into(),
         Some(task) => match state.active_tab {
-            DetailsTab::Summary => summary_tab(fluent, theme, task, state.details.as_ref()),
+            DetailsTab::Summary => {
+                slim_scrollable(summary_tab(fluent, theme, task, state.details.as_ref()))
+                    .height(Length::Fill)
+                    .into()
+            }
             DetailsTab::Activity => activity_tab(fluent, theme, task, state),
             DetailsTab::Files => files_tab(fluent, theme, task, state),
         },
@@ -320,13 +329,15 @@ fn activity_tab<'a>(
                 .into(),
         )
     } else {
-        let loading_text = if state.loading {
+        let fallback_text = if task.is_completed() {
+            fluent.get(Tr::TaskCompleted)
+        } else if state.loading {
             fluent.get(Tr::Loading)
         } else {
             fluent.get(Tr::TaskGone)
         };
         let empty: Element<'a, Message> =
-            container(text(loading_text).size(FONT_BODY).style(text_secondary_fn))
+            container(text(fallback_text).size(FONT_BODY).style(text_secondary_fn))
                 .center_x(Length::Fill)
                 .center_y(Length::Fill)
                 .into();
@@ -400,14 +411,17 @@ fn files_tab<'a>(
             &details_files_scroll,
         )
     } else {
+        let fallback_text = if task.is_completed() {
+            fluent.get(Tr::TaskCompleted)
+        } else if state.loading {
+            fluent.get(Tr::Loading)
+        } else {
+            fluent.get(Tr::TaskGone)
+        };
         container(
-            container(
-                text(fluent.get(Tr::Loading))
-                    .size(FONT_BODY)
-                    .style(text_secondary_fn),
-            )
-            .center_x(Length::Fill)
-            .center_y(Length::Fill),
+            container(text(fallback_text).size(FONT_BODY).style(text_secondary_fn))
+                .center_x(Length::Fill)
+                .center_y(Length::Fill),
         )
         .width(Length::Fill)
         .height(Length::Fill)

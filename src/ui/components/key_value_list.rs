@@ -2,7 +2,6 @@ use iced::widget::text::Wrapping;
 use iced::widget::{column, container, row, text, Space};
 use iced::{Alignment, Element, Length};
 
-use crate::ui::components::truncated_text::truncated_text;
 use crate::ui::dims::*;
 use crate::ui::theme;
 
@@ -18,9 +17,9 @@ pub fn key_value_row<'a, Message: 'a>(
                 .width(Length::Fixed(140.0)),
         )
         .push(
-            truncated_text(value.into())
+            text(value.into())
                 .size(FONT_MEDIUM)
-                .max_lines(2)
+                .width(Length::Fill)
                 .wrapping(Wrapping::Glyph),
         )
         .spacing(SPACE_LG)

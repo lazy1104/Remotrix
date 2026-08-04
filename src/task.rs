@@ -37,6 +37,10 @@ impl DownloadTask {
     pub fn is_download_active(&self) -> bool {
         matches!(self.status, TaskStatus::Active | TaskStatus::Waiting)
     }
+
+    pub fn is_completed(&self) -> bool {
+        matches!(self.status, TaskStatus::Completed)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

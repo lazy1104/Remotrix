@@ -1880,6 +1880,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     let first_load = state.details.loading;
                     state.details.details = Some(details);
                     state.details.loading = false;
+                    state.details.fetch_failed = false;
                     let save_dir = state.tasks.get(&gid).map(|t| t.save_dir.clone());
                     let tree =
                         details_files_tree(state.details.details.as_ref(), save_dir.as_deref());
@@ -1897,6 +1898,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 tracing::debug!(?gid, "task details failed");
                 if state.details.gid.as_deref() == Some(&gid) {
                     state.details.loading = false;
+                    state.details.fetch_failed = true;
                 }
             }
             EngineEvent::SelectFilesFailed { gid } => {
@@ -2429,6 +2431,13 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.details.pending_select = None;
             state.details.open(gid.clone());
             if state
+                .tasks
+                .get(&gid)
+                .map(|t| t.is_completed())
+                .unwrap_or(false)
+            {
+                state.details.loading = false;
+            } else if state
                 .handle
                 .cmd_tx
                 .send(EngineCmd::FetchTaskDetails(gid))
@@ -2448,13 +2457,19 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.details.close();
         }
         Message::Task(TaskMsg::RefreshTaskDetails) => {
-            if state.details.is_visible() {
+            if state.details.is_visible() && !state.details.fetch_failed {
                 if let Some(ref gid) = state.details.gid {
-                    if state
-                        .handle
-                        .cmd_tx
-                        .send(EngineCmd::FetchTaskDetails(gid.clone()))
-                        .is_err()
+                    let queryable = state
+                        .tasks
+                        .get(gid)
+                        .map(|t| !t.is_completed())
+                        .unwrap_or(false);
+                    if queryable
+                        && state
+                            .handle
+                            .cmd_tx
+                            .send(EngineCmd::FetchTaskDetails(gid.clone()))
+                            .is_err()
                     {
                         tracing::warn!("refresh task details cmd send failed");
                     }
