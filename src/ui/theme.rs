@@ -347,28 +347,6 @@ pub mod style {
         }
     }
 
-    pub fn grouped_field_state(
-        focused: bool,
-        hovered: bool,
-    ) -> impl Fn(&iced::Theme) -> iced::widget::container::Style {
-        move |t| {
-            let p = t.extended_palette();
-            iced::widget::container::Style {
-                background: Some(p.background.weak.color.into()),
-                border: iced::Border {
-                    color: if focused || hovered {
-                        p.primary.base.color
-                    } else {
-                        super::border_color(t)
-                    },
-                    width: 1.0,
-                    radius: super::RADIUS_BUTTON.into(),
-                },
-                ..Default::default()
-            }
-        }
-    }
-
     pub fn overlay(_t: &iced::Theme) -> iced::widget::container::Style {
         iced::widget::container::Style {
             background: Some(super::OVERLAY.into()),

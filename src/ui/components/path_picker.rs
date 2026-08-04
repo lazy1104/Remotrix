@@ -268,7 +268,7 @@ impl PathPicker {
             .width(Length::Fill)
             .height(Length::Fixed(CONTROL_HEIGHT))
             .padding(PADDING_GROUPED)
-            .style(theme::style::grouped_field_state(
+            .style(theme::style::grouped_frame_state(
                 self.focused,
                 self.hovered,
             ));
