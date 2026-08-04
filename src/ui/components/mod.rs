@@ -3,6 +3,7 @@ pub mod dialog;
 pub mod drop_down;
 pub mod drop_overlay;
 pub mod file_tree;
+pub mod key_value_list;
 pub mod logo;
 pub mod number_stepper;
 pub mod path_picker;

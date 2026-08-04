@@ -10,7 +10,7 @@ use crate::task::{
 };
 use crate::ui::components::dialog::overlay;
 use crate::ui::components::file_tree;
-use crate::ui::components::truncated_text::truncated_text;
+use crate::ui::components::key_value_list::key_value_list;
 use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
@@ -152,34 +152,11 @@ pub fn view<'a>(
     overlay(panel)
 }
 
-fn key_value_row(key: String, value: String) -> Element<'static, Message> {
-    row![]
-        .push(
-            text(key)
-                .size(FONT_MEDIUM)
-                .style(theme::style::text::secondary)
-                .width(Length::Fixed(140.0)),
-        )
-        .push(
-            truncated_text(value)
-                .size(FONT_MEDIUM)
-                .max_lines(2)
-                .wrapping(text::Wrapping::Glyph),
-        )
-        .spacing(SPACE_LG)
-        .align_y(Alignment::Center)
-        .width(Length::Fill)
-        .into()
-}
-
 fn summary_tab<'a>(
     fluent: &'a Fluent,
     _theme: &'a iced::Theme,
     task: &'a DownloadTask,
 ) -> Element<'a, Message> {
-    let gid_val = &task.gid;
-    let name_val = &task.name;
-    let dir_val = task.save_dir.to_string_lossy();
     let status_val = match task.status {
         crate::task::TaskStatus::Waiting => fluent.get(Tr::Waiting),
         crate::task::TaskStatus::Active => fluent.get(Tr::Active),
@@ -188,18 +165,22 @@ fn summary_tab<'a>(
         crate::task::TaskStatus::Error => fluent.get(Tr::Error),
         crate::task::TaskStatus::Removed => fluent.get(Tr::Removed),
     };
-    let time_val = format_add_time(task.added_at);
 
-    column![
-        key_value_row(fluent.get(Tr::FieldGid), gid_val.to_string()),
-        key_value_row(fluent.get(Tr::FieldFileName), name_val.to_string()),
-        key_value_row(fluent.get(Tr::FieldDownloadLocation), dir_val.to_string()),
-        key_value_row(fluent.get(Tr::FieldTaskStatus), status_val),
-        key_value_row(fluent.get(Tr::FieldAddedTime), time_val),
-    ]
-    .spacing(SPACE_MD)
-    .width(Length::Fill)
-    .into()
+    let rows = [
+        (fluent.get(Tr::FieldGid), task.gid.clone()),
+        (fluent.get(Tr::FieldFileName), task.name.clone()),
+        (
+            fluent.get(Tr::FieldDownloadLocation),
+            task.save_dir.to_string_lossy().to_string(),
+        ),
+        (fluent.get(Tr::FieldTaskStatus), status_val),
+        (
+            fluent.get(Tr::FieldAddedTime),
+            format_add_time(task.added_at),
+        ),
+    ];
+
+    key_value_list(rows)
 }
 
 fn activity_tab<'a>(
