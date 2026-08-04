@@ -18,9 +18,8 @@ use iced::Color;
 use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::path_picker::{PathPicker, PathPickerEvent};
 use crate::ui::components::slim_scrollable::slim_scrollable;
-use crate::ui::components::time_picker::time_picker;
+use crate::ui::components::tag_picker::tag_picker;
 use crate::ui::components::tooltip;
-use crate::ui::components::weekday_select::weekday_select;
 use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
@@ -31,8 +30,6 @@ pub struct SettingsUiState {
     pub ed2k_server_list_picker: PathPicker,
     pub ed2k_node_list_picker: PathPicker,
     pub speed_units: HashMap<SettingKey, SpeedUnit>,
-    pub schedule_start_picker_open: bool,
-    pub schedule_end_picker_open: bool,
     pub schedule_days_menu_open: bool,
     pub custom_tracker_input: String,
     pub syncing_trackers: bool,
@@ -59,8 +56,6 @@ impl SettingsUiState {
             ed2k_server_list_picker: PathPicker::file(settings.aria2.ed2k_server_list.clone()),
             ed2k_node_list_picker: PathPicker::file(settings.aria2.ed2k_node_list.clone()),
             speed_units,
-            schedule_start_picker_open: false,
-            schedule_end_picker_open: false,
             schedule_days_menu_open: false,
             custom_tracker_input: String::new(),
             syncing_trackers: false,
@@ -640,29 +635,25 @@ fn download_view<'a>(
         .push({
             let el: Element<'_, Message> = if settings.speed_limit_schedule.enabled {
                 column![
-                    setting_row(
+                    labeled_pick(
+                        fluent,
                         fluent.get(Tr::ScheduleStartTime),
-                        time_picker(
-                            &settings.speed_limit_schedule.start,
-                            settings_ui.schedule_start_picker_open,
-                            Message::Settings(SettingsMsg::ToggleScheduleStartPicker),
-                            move |s| Message::Settings(SettingsMsg::SettingChanged(
-                                SettingKey::ScheduleStart,
-                                SettingValue::Text(s)
-                            )),
-                        ),
+                        time_pick_options(),
+                        Some(settings.speed_limit_schedule.start.clone()),
+                        move |opt| Message::Settings(SettingsMsg::SettingChanged(
+                            SettingKey::ScheduleStart,
+                            SettingValue::Text(opt.value)
+                        )),
                     ),
-                    setting_row(
+                    labeled_pick(
+                        fluent,
                         fluent.get(Tr::ScheduleEndTime),
-                        time_picker(
-                            &settings.speed_limit_schedule.end,
-                            settings_ui.schedule_end_picker_open,
-                            Message::Settings(SettingsMsg::ToggleScheduleEndPicker),
-                            move |s| Message::Settings(SettingsMsg::SettingChanged(
-                                SettingKey::ScheduleEnd,
-                                SettingValue::Text(s)
-                            )),
-                        ),
+                        time_pick_options(),
+                        Some(settings.speed_limit_schedule.end.clone()),
+                        move |opt| Message::Settings(SettingsMsg::SettingChanged(
+                            SettingKey::ScheduleEnd,
+                            SettingValue::Text(opt.value)
+                        )),
                     ),
                     {
                         let day_labels = [
@@ -674,23 +665,17 @@ fn download_view<'a>(
                             fluent.get(Tr::WeekdaySat),
                             fluent.get(Tr::WeekdaySun),
                         ];
-                        let weekdays = &settings.speed_limit_schedule.weekdays;
-                        let summary = if weekdays.is_empty() || weekdays.len() == 7 {
-                            fluent.get(Tr::EveryDay)
-                        } else {
-                            weekdays
-                                .iter()
-                                .filter(|d| (1..=7).contains(*d))
-                                .map(|d| day_labels[*d as usize - 1].clone())
-                                .collect::<Vec<_>>()
-                                .join(" / ")
-                        };
-                        setting_row(
+                        let options = day_labels
+                            .iter()
+                            .enumerate()
+                            .map(|(i, label)| ((i + 1) as u8, label.clone()))
+                            .collect::<Vec<_>>();
+                        setting_row_auto(
                             fluent.get(Tr::ScheduleDays),
-                            weekday_select(
-                                summary,
-                                weekdays,
-                                day_labels,
+                            tag_picker(
+                                options,
+                                &settings.speed_limit_schedule.weekdays,
+                                fluent.get(Tr::ScheduleDays),
                                 settings_ui.schedule_days_menu_open,
                                 move |day, enabled| {
                                     Message::Settings(SettingsMsg::ScheduleDayToggled {
@@ -699,6 +684,7 @@ fn download_view<'a>(
                                     })
                                 },
                                 Message::Settings(SettingsMsg::ToggleScheduleDaysMenu),
+                                Length::Fill,
                             ),
                         )
                     },
@@ -1738,4 +1724,17 @@ fn speed_labeled_input<'a>(
 
 fn group_title<'a>(fluent: &'a Fluent, key: Tr, accent: Color) -> Element<'a, Message> {
     text(fluent.get(key)).size(FONT_TITLE).color(accent).into()
+}
+
+fn time_pick_options() -> Vec<Labeled<String>> {
+    (0..48)
+        .map(|i| {
+            let minutes = i * 30;
+            let value = format!("{:02}:{:02}", minutes / 60, minutes % 60);
+            Labeled {
+                value: value.clone(),
+                label: value,
+            }
+        })
+        .collect()
 }

@@ -161,8 +161,6 @@ pub enum SettingsMsg {
         startup: bool,
     },
     SpeedUnitChanged(SettingKey, SpeedUnit),
-    ToggleScheduleStartPicker,
-    ToggleScheduleEndPicker,
     ToggleScheduleDaysMenu,
     ScheduleDayToggled {
         day: u8,

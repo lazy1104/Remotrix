@@ -79,10 +79,6 @@ pub fn circle_x<'a>() -> Text<'a> {
     icon("\u{E084}")
 }
 
-pub fn clock<'a>() -> Text<'a> {
-    icon("\u{E087}")
-}
-
 pub fn collapse<'a>() -> Text<'a> {
     icon("\u{E228}")
 }

@@ -527,6 +527,25 @@ pub mod style {
             }
         }
 
+        pub fn chip<'a>() -> impl Fn(&iced::Theme, Status) -> Style + 'a {
+            move |t: &iced::Theme, status: Status| -> Style {
+                let accent = t.extended_palette().primary.base.color;
+                let alpha = match status {
+                    Status::Hovered => 0.28,
+                    Status::Pressed => 0.34,
+                    Status::Disabled => 0.14,
+                    _ => 0.18,
+                };
+                Style {
+                    background: Some(Color::from_rgba(accent.r, accent.g, accent.b, alpha).into()),
+                    text_color: accent,
+                    border: iced::border::rounded(super::super::RADIUS_PILL),
+                    shadow: Shadow::default(),
+                    ..Default::default()
+                }
+            }
+        }
+
         pub fn toolbar_icon<'a>(active: bool) -> impl Fn(&iced::Theme, Status) -> Style + 'a {
             move |t: &iced::Theme, status: Status| -> Style {
                 let accent = t.extended_palette().primary.base.color;

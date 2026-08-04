@@ -1441,7 +1441,6 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         state.settings.speed_limit_schedule.start = s;
                     }
                 }
-                state.settings_ui.schedule_start_picker_open = false;
             }
             SettingKey::ScheduleEnd => {
                 if let SettingValue::Text(s) = value {
@@ -1449,7 +1448,6 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         state.settings.speed_limit_schedule.end = s;
                     }
                 }
-                state.settings_ui.schedule_end_picker_open = false;
             }
             SettingKey::AppLogLevel => {
                 if let SettingValue::Text(s) = value {
@@ -2400,14 +2398,6 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::Settings(SettingsMsg::SetAutoCheck(enabled)) => {
             state.settings.update.set_ignored("aria2-next", !enabled);
             config::save(&state.settings);
-        }
-        Message::Settings(SettingsMsg::ToggleScheduleStartPicker) => {
-            state.settings_ui.schedule_start_picker_open =
-                !state.settings_ui.schedule_start_picker_open;
-        }
-        Message::Settings(SettingsMsg::ToggleScheduleEndPicker) => {
-            state.settings_ui.schedule_end_picker_open =
-                !state.settings_ui.schedule_end_picker_open;
         }
         Message::Settings(SettingsMsg::ToggleScheduleDaysMenu) => {
             state.settings_ui.schedule_days_menu_open = !state.settings_ui.schedule_days_menu_open;
