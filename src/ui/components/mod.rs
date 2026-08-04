@@ -1,3 +1,4 @@
+pub mod copyable_text;
 pub mod dialog;
 pub mod drop_down;
 pub mod drop_overlay;
