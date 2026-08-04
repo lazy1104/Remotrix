@@ -684,13 +684,17 @@ fn download_view<'a>(
                                     })
                                 },
                                 Message::Settings(SettingsMsg::ToggleScheduleDaysMenu),
-                                Length::Fill,
+                                Length::Fixed(360.0),
                             ),
                         )
                     },
-                    text(fluent.get(Tr::ScheduleHint))
-                        .size(FONT_SMALL)
-                        .style(theme::style::text::secondary),
+                    setting_row_auto(
+                        String::new(),
+                        text(fluent.get(Tr::ScheduleHint))
+                            .size(FONT_SMALL)
+                            .style(theme::style::text::secondary)
+                            .into(),
+                    ),
                 ]
                 .spacing(SPACE_SM)
                 .into()

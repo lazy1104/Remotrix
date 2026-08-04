@@ -1,6 +1,4 @@
-use std::rc::Rc;
-
-use iced::widget::{button, checkbox, column, container, row, text};
+use iced::widget::{button, column, container, row, text};
 use iced::{Alignment, Element, Length};
 
 use super::drop_down::{self, DropDown};
@@ -21,8 +19,6 @@ where
     V: PartialEq + Clone + 'a,
     M: 'a + Clone,
 {
-    let on_toggle = Rc::new(on_toggle);
-
     let label_of = |value: &V| {
         options
             .iter()
@@ -59,10 +55,10 @@ where
     }
 
     tag_items.push(
-        button(icon::chevron_down().size(FONT_ICON))
+        button(icon::plus().size(FONT_MEDIUM))
             .on_press(on_dismiss.clone())
-            .padding(PADDING_ICON_BTN)
-            .style(theme::style::button::text())
+            .padding([2, 8])
+            .style(theme::style::button::chip())
             .into(),
     );
 
@@ -70,28 +66,31 @@ where
         .spacing(SPACE_XS)
         .wrap()
         .vertical_spacing(SPACE_XS)
-        .align_x(Alignment::Center);
+        .align_x(Alignment::Start);
 
     let underlay = container(tag_row)
         .width(width)
-        .padding(PADDING_GROUPED)
+        .padding([6, 8])
         .style(theme::style::grouped_frame_state(false, false));
 
     let mut overlay = column![].spacing(SPACE_XS).width(Length::Fill);
     for (value, label) in &options {
         let checked = selected.contains(value);
-        let on_toggle = Rc::clone(&on_toggle);
-        let value = value.clone();
-        overlay = overlay.push(
-            row![
-                text(label.clone())
-                    .size(FONT_MEDIUM)
-                    .width(Length::Fixed(64.0)),
-                checkbox(checked).on_toggle(move |b| on_toggle(value.clone(), b)),
-            ]
-            .align_y(Alignment::Center)
-            .spacing(SPACE_LG),
-        );
+        let toggle = on_toggle(value.clone(), !checked);
+        let item: iced::widget::Button<'_, M, iced::Theme, iced::Renderer> = if checked {
+            button(text(label.clone()).size(FONT_MEDIUM).width(Length::Fill))
+                .on_press(toggle)
+                .width(Length::Fill)
+                .padding(PADDING_BUTTON_XS)
+                .style(theme::style::button::chip())
+        } else {
+            button(text(label.clone()).size(FONT_MEDIUM).width(Length::Fill))
+                .on_press(toggle)
+                .width(Length::Fill)
+                .padding(PADDING_BUTTON_XS)
+                .style(theme::style::button::text())
+        };
+        overlay = overlay.push(item);
     }
     let overlay = container(overlay)
         .padding(PADDING_DROPDOWN)

@@ -539,7 +539,7 @@ pub mod style {
                 Style {
                     background: Some(Color::from_rgba(accent.r, accent.g, accent.b, alpha).into()),
                     text_color: accent,
-                    border: iced::border::rounded(super::super::RADIUS_PILL),
+                    border: iced::border::rounded(super::super::RADIUS_BUTTON),
                     shadow: Shadow::default(),
                     ..Default::default()
                 }
