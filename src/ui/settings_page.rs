@@ -8,7 +8,10 @@ use iced::{Alignment, Element, Length};
 
 use crate::config::Settings;
 use crate::i18n::{Fluent, Locale, Tr};
-use crate::message::{Message, PathPickerId, SettingKey, SettingsCategory, SpeedUnit};
+use crate::message::{
+    AddMsg, EngineMsg, Message, PathPickerId, SettingKey, SettingValue, SettingsCategory,
+    SettingsMsg, SpeedUnit, TaskMsg,
+};
 use chrono::TimeZone;
 use iced::Color;
 
@@ -32,6 +35,8 @@ pub struct SettingsUiState {
     pub schedule_end_picker_open: bool,
     pub schedule_days_menu_open: bool,
     pub custom_tracker_input: String,
+    pub syncing_trackers: bool,
+    pub tracker_sync_toast_id: Option<u64>,
 }
 
 impl SettingsUiState {
@@ -58,6 +63,8 @@ impl SettingsUiState {
             schedule_end_picker_open: false,
             schedule_days_menu_open: false,
             custom_tracker_input: String::new(),
+            syncing_trackers: false,
+            tracker_sync_toast_id: None,
         }
     }
 }
@@ -83,31 +90,50 @@ where
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn view<'a>(
-    fluent: &'a Fluent,
-    theme: &'a iced::Theme,
-    settings: &'a Settings,
-    settings_ui: &'a SettingsUiState,
-    category: SettingsCategory,
-    applied_settings: &'a Settings,
-    engine_restart_pending: bool,
-    engine_restart_in_progress: bool,
-    aria2_version: Option<&'a str>,
-    aria2_check_msg: Option<&'a str>,
-    aria2_status: Option<(&'a str, &'a str)>,
-    aria2_fetch_error: Option<&'a str>,
-    update_pending: Option<&'a str>,
-    ua_editor: &'a text_editor::Content,
-    bt_tracker_editor: &'a text_editor::Content,
-    syncing_trackers: bool,
-    path_history: &'a HashMap<String, Vec<String>>,
-    font_restart_required: bool,
-) -> Element<'a, Message> {
+pub struct SettingsPageContext<'a> {
+    pub fluent: &'a Fluent,
+    pub theme: &'a iced::Theme,
+    pub settings: &'a Settings,
+    pub settings_ui: &'a SettingsUiState,
+    pub category: SettingsCategory,
+    pub applied_settings: &'a Settings,
+    pub engine_restart_pending: bool,
+    pub engine_restart_in_progress: bool,
+    pub aria2_version: Option<&'a str>,
+    pub aria2_check_msg: Option<&'a str>,
+    pub aria2_status: Option<(&'a str, &'a str)>,
+    pub aria2_fetch_error: Option<&'a str>,
+    pub update_pending: Option<&'a str>,
+    pub ua_editor: &'a text_editor::Content,
+    pub bt_tracker_editor: &'a text_editor::Content,
+    pub path_history: &'a HashMap<String, Vec<String>>,
+    pub font_restart_required: bool,
+}
+
+pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
+    let SettingsPageContext {
+        fluent,
+        theme,
+        settings,
+        settings_ui,
+        category,
+        applied_settings,
+        engine_restart_pending,
+        engine_restart_in_progress,
+        aria2_version,
+        aria2_check_msg,
+        aria2_status,
+        aria2_fetch_error,
+        update_pending,
+        ua_editor,
+        bt_tracker_editor,
+        path_history,
+        font_restart_required,
+    } = ctx;
     let accent = theme::accent(theme);
-    let dirty = !settings.apply_fields_equal(applied_settings);
+    let dirty = settings != applied_settings;
     let content = match category {
-        SettingsCategory::General => general_view(fluent, theme, settings, font_restart_required),
+        SettingsCategory::General => general_view(fluent, theme, settings, *font_restart_required),
         SettingsCategory::Download => {
             download_view(fluent, theme, settings, settings_ui, path_history)
         }
@@ -117,7 +143,7 @@ pub fn view<'a>(
             applied_settings,
             settings_ui,
             bt_tracker_editor,
-            syncing_trackers,
+            settings_ui.syncing_trackers,
             accent,
         ),
         SettingsCategory::Ed2k => ed2k_view(fluent, theme, settings, settings_ui),
@@ -127,17 +153,17 @@ pub fn view<'a>(
             theme,
             settings,
             applied_settings,
-            engine_restart_pending,
-            aria2_version,
-            aria2_check_msg,
-            aria2_status,
-            aria2_fetch_error,
-            update_pending,
+            *engine_restart_pending,
+            *aria2_version,
+            *aria2_check_msg,
+            *aria2_status,
+            *aria2_fetch_error,
+            *update_pending,
         ),
     };
 
     let mut body = column![]
-        .push(text(settings_title(fluent, category)).size(FONT_PAGE_TITLE))
+        .push(text(settings_title(fluent, *category)).size(FONT_PAGE_TITLE))
         .push(iced::widget::Space::new().height(Length::Fixed(20.0)))
         .push(slim_scrollable(content).height(Length::Fill));
 
@@ -145,7 +171,7 @@ pub fn view<'a>(
     actions = actions.push(
         button(text(fluent.get(Tr::Apply)).size(FONT_BODY))
             .on_press_maybe(if dirty {
-                Some(Message::ApplySettings)
+                Some(Message::Settings(SettingsMsg::ApplySettings))
             } else {
                 None
             })
@@ -155,7 +181,7 @@ pub fn view<'a>(
     actions = actions.push(
         button(text(fluent.get(Tr::Reset)).size(FONT_BODY))
             .on_press_maybe(if dirty {
-                Some(Message::ResetSettings)
+                Some(Message::Settings(SettingsMsg::ResetSettings))
             } else {
                 None
             })
@@ -171,10 +197,10 @@ pub fn view<'a>(
             .spacing(SPACE_SM)
             .align_y(Alignment::Center),
         )
-        .on_press_maybe(if engine_restart_in_progress {
+        .on_press_maybe(if *engine_restart_in_progress {
             None
         } else {
-            Some(Message::RestartEngine)
+            Some(Message::Engine(EngineMsg::RestartEngine))
         })
         .padding(PADDING_BUTTON_XL)
         .style(theme::style::button::secondary()),
@@ -232,7 +258,7 @@ fn general_view<'a>(
             fluent.get(Tr::ColorMode),
             mode_opts,
             Some(settings.theme_mode),
-            |opt| Message::ThemeModeChanged(opt.value),
+            |opt| Message::Settings(SettingsMsg::ThemeModeChanged(opt.value)),
         ))
         .push(font_family_row(fluent, settings, font_restart_required))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
@@ -255,7 +281,7 @@ fn general_view<'a>(
                 },
             ],
             Some(settings.locale),
-            |opt| Message::LocaleChanged(opt.value),
+            |opt| Message::Settings(SettingsMsg::LocaleChanged(opt.value)),
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .into()
@@ -271,7 +297,7 @@ fn theme_color_swatches<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Eleme
         } else {
             text("").size(FONT_ICON)
         })
-        .on_press(Message::ThemeColorChanged(*color))
+        .on_press(Message::Settings(SettingsMsg::ThemeColorChanged(*color)))
         .width(Length::Fixed(SWATCH_SIZE))
         .height(Length::Fixed(SWATCH_SIZE))
         .padding(0)
@@ -303,15 +329,16 @@ fn font_family_row<'a>(
         .iter()
         .find(|o| o.value == settings.font_family)
         .cloned();
-    let pick: Element<'a, Message> =
-        pick_list(options, selected, |o| Message::FontFamilyChanged(o.value))
-            .placeholder(&placeholder)
-            .text_size(FONT_MEDIUM)
-            .padding(theme::INPUT_PADDING)
-            .width(Length::Fixed(240.0))
-            .style(theme::style::pick_list::standard)
-            .menu_style(theme::style::pick_list::menu)
-            .into();
+    let pick: Element<'a, Message> = pick_list(options, selected, |o| {
+        Message::Settings(SettingsMsg::FontFamilyChanged(o.value))
+    })
+    .placeholder(&placeholder)
+    .text_size(FONT_MEDIUM)
+    .padding(theme::INPUT_PADDING)
+    .width(Length::Fixed(240.0))
+    .style(theme::style::pick_list::standard)
+    .menu_style(theme::style::pick_list::menu)
+    .into();
 
     let mut controls = column![
         pick,
@@ -326,7 +353,7 @@ fn font_family_row<'a>(
     if restart_required {
         controls = controls.push(
             button(text(fluent.get(Tr::SaveAndRestartApp)).size(FONT_SMALL))
-                .on_press(Message::RestartApp)
+                .on_press(Message::Settings(SettingsMsg::RestartApp))
                 .padding(PADDING_BUTTON_SM)
                 .style(theme::style::button::primary()),
         );
@@ -403,7 +430,7 @@ fn download_view<'a>(
                     settings_ui
                         .download_picker
                         .view(fluent, theme, download_hist, |e| {
-                            Message::PathPicker(PathPickerId::DownloadDir, e)
+                            Message::Add(AddMsg::PathPicker(PathPickerId::DownloadDir, e))
                         }),
                 )
                 .height(Length::Fixed(36.0))
@@ -413,21 +440,21 @@ fn download_view<'a>(
         .push(group_title(fluent, Tr::ConnectionSegment, accent))
         .push(labeled_number(
             fluent.get(Tr::MaxConcurrent),
-            &settings.max_concurrent,
+            settings.max_concurrent,
             1..=u32::MAX,
             1,
             SettingKey::MaxConcurrent,
         ))
         .push(labeled_number(
             fluent.get(Tr::Split),
-            &settings.split,
+            settings.split,
             1..=128u16,
             1,
             SettingKey::Split,
         ))
         .push(labeled_number(
             fluent.get(Tr::MaxConnectionPerServer),
-            &settings.aria2.max_connection_per_server,
+            settings.aria2.max_connection_per_server,
             1..=16u32,
             1,
             SettingKey::MaxConnectionPerServer,
@@ -437,10 +464,15 @@ fn download_view<'a>(
             row![]
                 .spacing(SPACE_LG)
                 .push(number_stepper(
-                    &settings.aria2.min_split_size_mb,
+                    settings.aria2.min_split_size_mb,
                     1..=1024u64,
                     1,
-                    move |v| Message::SettingChanged(SettingKey::MinSplitSize, v.to_string()),
+                    move |v| {
+                        Message::Settings(SettingsMsg::SettingChanged(
+                            SettingKey::MinSplitSize,
+                            SettingValue::Num(v),
+                        ))
+                    },
                     Length::Fixed(160.0),
                 ))
                 .align_y(Alignment::Center)
@@ -450,14 +482,14 @@ fn download_view<'a>(
         .push(group_title(fluent, Tr::ResumeRetry, accent))
         .push(labeled_number(
             fluent.get(Tr::MaxTries),
-            &settings.aria2.max_tries,
+            settings.aria2.max_tries,
             0..=u32::MAX,
             1,
             SettingKey::MaxTries,
         ))
         .push(labeled_number(
             fluent.get(Tr::RetryWait),
-            &settings.aria2.retry_wait,
+            settings.aria2.retry_wait,
             0..=u32::MAX,
             1,
             SettingKey::RetryWait,
@@ -494,10 +526,17 @@ fn download_view<'a>(
                 .unwrap_or(SpeedUnit::Kbps);
             speed_labeled_input(
                 fluent.get(Tr::DownloadLimit),
-                &settings.download_limit_kb,
+                settings.download_limit_kb,
                 unit,
-                move |v| Message::SettingChanged(SettingKey::DownloadLimit, v.to_string()),
-                move |u| Message::SpeedUnitChanged(SettingKey::DownloadLimit, u),
+                move |v| {
+                    Message::Settings(SettingsMsg::SettingChanged(
+                        SettingKey::DownloadLimit,
+                        SettingValue::Num(v),
+                    ))
+                },
+                move |u| {
+                    Message::Settings(SettingsMsg::SpeedUnitChanged(SettingKey::DownloadLimit, u))
+                },
             )
         })
         .push({
@@ -508,10 +547,17 @@ fn download_view<'a>(
                 .unwrap_or(SpeedUnit::Kbps);
             speed_labeled_input(
                 fluent.get(Tr::UploadLimit),
-                &settings.upload_limit_kb,
+                settings.upload_limit_kb,
                 unit,
-                move |v| Message::SettingChanged(SettingKey::UploadLimit, v.to_string()),
-                move |u| Message::SpeedUnitChanged(SettingKey::UploadLimit, u),
+                move |v| {
+                    Message::Settings(SettingsMsg::SettingChanged(
+                        SettingKey::UploadLimit,
+                        SettingValue::Num(v),
+                    ))
+                },
+                move |u| {
+                    Message::Settings(SettingsMsg::SpeedUnitChanged(SettingKey::UploadLimit, u))
+                },
             )
         })
         .push({
@@ -522,13 +568,21 @@ fn download_view<'a>(
                 .unwrap_or(SpeedUnit::Kbps);
             speed_labeled_input(
                 fluent.get(Tr::PerTaskDownloadLimit),
-                &settings.aria2.max_download_limit_kb,
+                settings.aria2.max_download_limit_kb,
                 unit,
                 move |v| {
                     let kb = if unit == SpeedUnit::Kbps { v } else { v * 1024 };
-                    Message::SettingChanged(SettingKey::MaxDownloadLimit, kb.to_string())
+                    Message::Settings(SettingsMsg::SettingChanged(
+                        SettingKey::MaxDownloadLimit,
+                        SettingValue::Num(kb),
+                    ))
                 },
-                move |u| Message::SpeedUnitChanged(SettingKey::MaxDownloadLimit, u),
+                move |u| {
+                    Message::Settings(SettingsMsg::SpeedUnitChanged(
+                        SettingKey::MaxDownloadLimit,
+                        u,
+                    ))
+                },
             )
         })
         .push({
@@ -539,13 +593,18 @@ fn download_view<'a>(
                 .unwrap_or(SpeedUnit::Kbps);
             speed_labeled_input(
                 fluent.get(Tr::PerTaskUploadLimit),
-                &settings.aria2.max_upload_limit_kb,
+                settings.aria2.max_upload_limit_kb,
                 unit,
                 move |v| {
                     let kb = if unit == SpeedUnit::Kbps { v } else { v * 1024 };
-                    Message::SettingChanged(SettingKey::MaxUploadLimit, kb.to_string())
+                    Message::Settings(SettingsMsg::SettingChanged(
+                        SettingKey::MaxUploadLimit,
+                        SettingValue::Num(kb),
+                    ))
                 },
-                move |u| Message::SpeedUnitChanged(SettingKey::MaxUploadLimit, u),
+                move |u| {
+                    Message::Settings(SettingsMsg::SpeedUnitChanged(SettingKey::MaxUploadLimit, u))
+                },
             )
         })
         .push({
@@ -556,13 +615,21 @@ fn download_view<'a>(
                 .unwrap_or(SpeedUnit::Kbps);
             speed_labeled_input(
                 fluent.get(Tr::LowestSpeedLimit),
-                &settings.aria2.lowest_speed_limit_kb,
+                settings.aria2.lowest_speed_limit_kb,
                 unit,
                 move |v| {
                     let kb = if unit == SpeedUnit::Kbps { v } else { v * 1024 };
-                    Message::SettingChanged(SettingKey::LowestSpeedLimit, kb.to_string())
+                    Message::Settings(SettingsMsg::SettingChanged(
+                        SettingKey::LowestSpeedLimit,
+                        SettingValue::Num(kb),
+                    ))
                 },
-                move |u| Message::SpeedUnitChanged(SettingKey::LowestSpeedLimit, u),
+                move |u| {
+                    Message::Settings(SettingsMsg::SpeedUnitChanged(
+                        SettingKey::LowestSpeedLimit,
+                        u,
+                    ))
+                },
             )
         })
         .push(labeled_toggle(
@@ -578,8 +645,11 @@ fn download_view<'a>(
                         time_picker(
                             &settings.speed_limit_schedule.start,
                             settings_ui.schedule_start_picker_open,
-                            Message::ToggleScheduleStartPicker,
-                            move |s| Message::SettingChanged(SettingKey::ScheduleStart, s),
+                            Message::Settings(SettingsMsg::ToggleScheduleStartPicker),
+                            move |s| Message::Settings(SettingsMsg::SettingChanged(
+                                SettingKey::ScheduleStart,
+                                SettingValue::Text(s)
+                            )),
                         ),
                     ),
                     setting_row(
@@ -587,8 +657,11 @@ fn download_view<'a>(
                         time_picker(
                             &settings.speed_limit_schedule.end,
                             settings_ui.schedule_end_picker_open,
-                            Message::ToggleScheduleEndPicker,
-                            move |s| Message::SettingChanged(SettingKey::ScheduleEnd, s),
+                            Message::Settings(SettingsMsg::ToggleScheduleEndPicker),
+                            move |s| Message::Settings(SettingsMsg::SettingChanged(
+                                SettingKey::ScheduleEnd,
+                                SettingValue::Text(s)
+                            )),
                         ),
                     ),
                     {
@@ -619,8 +692,13 @@ fn download_view<'a>(
                                 weekdays,
                                 day_labels,
                                 settings_ui.schedule_days_menu_open,
-                                move |day, enabled| Message::ScheduleDayToggled { day, enabled },
-                                Message::ToggleScheduleDaysMenu,
+                                move |day, enabled| {
+                                    Message::Settings(SettingsMsg::ScheduleDayToggled {
+                                        day,
+                                        enabled,
+                                    })
+                                },
+                                Message::Settings(SettingsMsg::ToggleScheduleDaysMenu),
                             ),
                         )
                     },
@@ -706,9 +784,11 @@ fn bittorrent_view<'a>(
         tracker_rows.push(setting_row(
             format!("{owner}/{repo}"),
             checkbox(checked)
-                .on_toggle(move |enabled| Message::TrackerSourceToggled {
-                    source: url_str.clone(),
-                    enabled,
+                .on_toggle(move |enabled| {
+                    Message::Settings(SettingsMsg::TrackerSourceToggled {
+                        source: url_str.clone(),
+                        enabled,
+                    })
                 })
                 .into(),
         ));
@@ -718,12 +798,12 @@ fn bittorrent_view<'a>(
         fluent.get(Tr::BtTrackerSourceCustom),
         row![
             text_input(&custom_placeholder, &settings_ui.custom_tracker_input)
-                .on_input(Message::TrackerCustomInputChanged)
-                .on_submit(Message::TrackerCustomAdd)
+                .on_input(|s| Message::Settings(SettingsMsg::TrackerCustomInputChanged(s)))
+                .on_submit(Message::Settings(SettingsMsg::TrackerCustomAdd))
                 .width(Length::Fill)
                 .style(theme::style::input::standard),
             button(icon::plus().size(FONT_BODY))
-                .on_press(Message::TrackerCustomAdd)
+                .on_press(Message::Settings(SettingsMsg::TrackerCustomAdd))
                 .padding(PADDING_BUTTON_SM)
                 .style(theme::style::button::secondary()),
         ]
@@ -742,7 +822,9 @@ fn bittorrent_view<'a>(
                         .width(Length::Fill)
                         .wrapping(text::Wrapping::Glyph),
                     button(icon::x().size(FONT_BODY))
-                        .on_press(Message::TrackerCustomRemove(url.clone()))
+                        .on_press(Message::Settings(SettingsMsg::TrackerCustomRemove(
+                            url.clone()
+                        )))
                         .padding(PADDING_BUTTON_SM)
                         .style(theme::style::button::text()),
                 ]
@@ -770,7 +852,7 @@ fn bittorrent_view<'a>(
             if syncing_trackers || settings.tracker.sources != applied_settings.tracker.sources {
                 None
             } else {
-                Some(Message::SyncTrackers)
+                Some(Message::Settings(SettingsMsg::SyncTrackers))
             },
         )
         .padding(PADDING_BUTTON_SM)
@@ -787,7 +869,7 @@ fn bittorrent_view<'a>(
     tracker_rows.push(labeled_editor(
         fluent.get(Tr::BtTracker),
         bt_tracker_editor,
-        Message::BtTrackerEditor,
+        |a| Message::Settings(SettingsMsg::BtTrackerEditor(a)),
         fluent.get(Tr::BtTrackerInputTips),
         140.0,
     ));
@@ -824,7 +906,12 @@ fn bittorrent_view<'a>(
             fluent.get(Tr::SyncFrequency),
             freq_opts,
             Some(settings.tracker.sync_interval_hours),
-            |opt| Message::SettingChanged(SettingKey::TrackerSyncInterval, opt.value.to_string()),
+            |opt| {
+                Message::Settings(SettingsMsg::SettingChanged(
+                    SettingKey::TrackerSyncInterval,
+                    SettingValue::Num(opt.value as u64),
+                ))
+            },
         ));
     }
 
@@ -869,14 +956,14 @@ fn bittorrent_view<'a>(
         .push(group_title(fluent, Tr::Seeding, accent))
         .push(labeled_number(
             fluent.get(Tr::SeedRatio),
-            &settings.aria2.seed_ratio,
+            settings.aria2.seed_ratio,
             0.0..=100.0f64,
             0.1,
             SettingKey::SeedRatio,
         ))
         .push(labeled_number(
             fluent.get(Tr::SeedTime),
-            &settings.aria2.seed_time,
+            settings.aria2.seed_time,
             0..=u32::MAX,
             1,
             SettingKey::SeedTime,
@@ -915,7 +1002,7 @@ fn ed2k_view<'a>(
                     settings_ui
                         .ed2k_server_list_picker
                         .view(fluent, theme, &[], |e| {
-                            Message::PathPicker(PathPickerId::Ed2kServerList, e)
+                            Message::Add(AddMsg::PathPicker(PathPickerId::Ed2kServerList, e))
                         }),
                 )
                 .height(Length::Fixed(36.0))
@@ -932,7 +1019,7 @@ fn ed2k_view<'a>(
                     settings_ui
                         .ed2k_node_list_picker
                         .view(fluent, theme, &[], |e| {
-                            Message::PathPicker(PathPickerId::Ed2kNodeList, e)
+                            Message::Add(AddMsg::PathPicker(PathPickerId::Ed2kNodeList, e))
                         }),
                 )
                 .height(Length::Fixed(36.0))
@@ -942,21 +1029,21 @@ fn ed2k_view<'a>(
         .push(group_title(fluent, Tr::Network, accent))
         .push(labeled_number(
             fluent.get(Tr::Ed2kListenPort),
-            &settings.aria2.ed2k_listen_port,
+            settings.aria2.ed2k_listen_port,
             0..=65535u16,
             1,
             SettingKey::Ed2kListenPort,
         ))
         .push(labeled_number(
             fluent.get(Tr::Ed2kUdpListenPort),
-            &settings.aria2.ed2k_udp_listen_port,
+            settings.aria2.ed2k_udp_listen_port,
             0..=65535u16,
             1,
             SettingKey::Ed2kUdpListenPort,
         ))
         .push(labeled_number(
             fluent.get(Tr::Ed2kUploadSlots),
-            &settings.aria2.ed2k_upload_slots,
+            settings.aria2.ed2k_upload_slots,
             1..=u16::MAX,
             1,
             SettingKey::Ed2kUploadSlots,
@@ -992,7 +1079,7 @@ fn network_view<'a>(
             labeled_editor(
                 fluent.get(Tr::UserAgent),
                 ua_editor,
-                Message::UaEditor,
+                |a| Message::Settings(SettingsMsg::UaEditor(a)),
                 placeholder,
                 80.0,
             )
@@ -1001,7 +1088,7 @@ fn network_view<'a>(
         .push(group_title(fluent, Tr::ConnectTimeout, accent))
         .push(labeled_number(
             fluent.get(Tr::ConnectTimeout),
-            &settings.aria2.connect_timeout,
+            settings.aria2.connect_timeout,
             0..=u32::MAX,
             1,
             SettingKey::ConnectTimeout,
@@ -1064,7 +1151,7 @@ fn advanced_view<'a>(
     let update_toggle = setting_row(
         fluent.get(Tr::AutoCheckUpdate),
         toggler(auto_check_enabled)
-            .on_toggle(Message::SetAutoCheck)
+            .on_toggle(|v| Message::Settings(SettingsMsg::SetAutoCheck(v)))
             .width(Length::Fixed(50.0))
             .into(),
     );
@@ -1138,7 +1225,7 @@ fn advanced_view<'a>(
     if let Some(pending) = update_pending {
         btn_row = btn_row.push(
             button(text(fluent.get(Tr::RestartToUpdate)).size(FONT_SMALL))
-                .on_press(Message::RestartEngine)
+                .on_press(Message::Engine(EngineMsg::RestartEngine))
                 .padding(PADDING_BUTTON_SM)
                 .style(theme::style::button::primary()),
         );
@@ -1153,14 +1240,14 @@ fn advanced_view<'a>(
     } else if aria2_fetch_error.is_some() {
         btn_row = btn_row.push(
             button(text(fluent.get(Tr::Retry)).size(FONT_SMALL))
-                .on_press(Message::RetryAria2Fetch)
+                .on_press(Message::Engine(EngineMsg::RetryAria2Fetch))
                 .padding(PADDING_BUTTON_SM)
                 .style(theme::style::button::secondary()),
         );
     } else {
         btn_row = btn_row.push(
             button(text(fluent.get(Tr::CheckUpdate)).size(FONT_SMALL))
-                .on_press(Message::CheckAria2Update)
+                .on_press(Message::Engine(EngineMsg::CheckAria2Update))
                 .padding(PADDING_BUTTON_SM)
                 .style(theme::style::button::secondary()),
         );
@@ -1251,12 +1338,17 @@ fn advanced_view<'a>(
                 fluent.get(Tr::FileAllocation),
                 opts,
                 Some(settings.aria2.file_allocation.clone()),
-                |opt| Message::SettingChanged(SettingKey::FileAllocation, opt.value),
+                |opt| {
+                    Message::Settings(SettingsMsg::SettingChanged(
+                        SettingKey::FileAllocation,
+                        SettingValue::Text(opt.value),
+                    ))
+                },
             )
         })
         .push(labeled_number(
             fluent.get(Tr::DiskCache),
-            &settings.aria2.disk_cache_mb,
+            settings.aria2.disk_cache_mb,
             0..=u64::MAX,
             1,
             SettingKey::DiskCache,
@@ -1321,7 +1413,10 @@ fn logging_view<'a>(
     col = col.push(setting_row(
         fluent.get(Tr::LogLevelApp),
         pick_list(app_opts, sel_app, |opt| {
-            Message::SettingChanged(SettingKey::AppLogLevel, opt.value)
+            Message::Settings(SettingsMsg::SettingChanged(
+                SettingKey::AppLogLevel,
+                SettingValue::Text(opt.value),
+            ))
         })
         .placeholder(&placeholder)
         .text_size(FONT_MEDIUM)
@@ -1334,7 +1429,10 @@ fn logging_view<'a>(
     col = col.push(setting_row(
         fluent.get(Tr::LogLevelEngine),
         pick_list(engine_opts, sel_engine, |opt| {
-            Message::SettingChanged(SettingKey::EngineLogLevel, opt.value)
+            Message::Settings(SettingsMsg::SettingChanged(
+                SettingKey::EngineLogLevel,
+                SettingValue::Text(opt.value),
+            ))
         })
         .placeholder(&placeholder)
         .text_size(FONT_MEDIUM)
@@ -1356,7 +1454,7 @@ fn logging_view<'a>(
     col = col.push(setting_row(
         String::new(),
         button(text(fluent.get(Tr::ClearLogs)).size(FONT_BODY))
-            .on_press(Message::ClearLogs)
+            .on_press(Message::Settings(SettingsMsg::ClearLogs))
             .padding(PADDING_BUTTON_SM)
             .style(theme::style::button::secondary())
             .into(),
@@ -1387,6 +1485,34 @@ fn setting_row<'a>(label: String, control: Element<'a, Message>) -> Element<'a, 
         .into()
 }
 
+trait ToSettingValue {
+    fn to_setting_value(self) -> SettingValue;
+}
+
+impl ToSettingValue for u16 {
+    fn to_setting_value(self) -> SettingValue {
+        SettingValue::Num(self as u64)
+    }
+}
+
+impl ToSettingValue for u32 {
+    fn to_setting_value(self) -> SettingValue {
+        SettingValue::Num(self as u64)
+    }
+}
+
+impl ToSettingValue for u64 {
+    fn to_setting_value(self) -> SettingValue {
+        SettingValue::Num(self)
+    }
+}
+
+impl ToSettingValue for f64 {
+    fn to_setting_value(self) -> SettingValue {
+        SettingValue::NumF(self)
+    }
+}
+
 fn setting_row_auto<'a>(label: String, control: Element<'a, Message>) -> Element<'a, Message> {
     row![]
         .push(
@@ -1401,7 +1527,7 @@ fn setting_row_auto<'a>(label: String, control: Element<'a, Message>) -> Element
 
 fn labeled_number<'a, T>(
     label: String,
-    value: &'a T,
+    value: T,
     bounds: impl std::ops::RangeBounds<T> + 'a,
     step: T,
     key: SettingKey,
@@ -1415,6 +1541,7 @@ where
         + Clone
         + Copy
         + num_traits::Bounded
+        + ToSettingValue
         + 'static,
     <T as std::str::FromStr>::Err: std::fmt::Debug,
 {
@@ -1424,7 +1551,7 @@ where
             value,
             bounds,
             step,
-            move |v| Message::SettingChanged(key, v.to_string()),
+            move |v| Message::Settings(SettingsMsg::SettingChanged(key, v.to_setting_value())),
             Length::Fixed(160.0),
         ),
     )
@@ -1434,7 +1561,9 @@ fn labeled_toggle<'a>(label: String, value: bool, key: SettingKey) -> Element<'a
     setting_row(
         label,
         toggler(value)
-            .on_toggle(move |v| Message::SettingChanged(key, v.to_string()))
+            .on_toggle(move |v| {
+                Message::Settings(SettingsMsg::SettingChanged(key, SettingValue::Bool(v)))
+            })
             .width(Length::Fixed(50.0))
             .into(),
     )
@@ -1444,7 +1573,9 @@ fn labeled_checkbox<'a>(label: String, value: bool, key: SettingKey) -> Element<
     setting_row(
         label,
         checkbox(value)
-            .on_toggle(move |v| Message::SettingChanged(key, v.to_string()))
+            .on_toggle(move |v| {
+                Message::Settings(SettingsMsg::SettingChanged(key, SettingValue::Bool(v)))
+            })
             .into(),
     )
 }
@@ -1458,7 +1589,9 @@ fn labeled_text_input<'a>(
 ) -> Element<'a, Message> {
     let mut input = theme::input_layout(
         text_input(placeholder, value)
-            .on_input(move |s| Message::SettingChanged(key, s))
+            .on_input(move |s| {
+                Message::Settings(SettingsMsg::SettingChanged(key, SettingValue::Text(s)))
+            })
             .width(Length::Fill)
             .style(theme::style::input::standard),
     );
@@ -1523,7 +1656,7 @@ fn labeled_readonly<'a>(
     row![]
         .push(text(label).size(FONT_MEDIUM).width(Length::Fixed(200.0)))
         .push(picker.view(fluent, theme, &[], |e| match e {
-            PathPickerEvent::Copy(s) => Message::CopyPath(s),
+            PathPickerEvent::Copy(s) => Message::Task(TaskMsg::CopyPath(s)),
             _ => Message::Noop,
         }))
         .height(Length::Fixed(36.0))
@@ -1551,7 +1684,7 @@ impl PartialEq for UnitOption {
 
 fn speed_labeled_input<'a>(
     label: String,
-    value_kb: &'a u64,
+    value_kb: u64,
     unit: SpeedUnit,
     on_value: impl Fn(u64) -> Message + 'a,
     on_unit: impl Fn(SpeedUnit) -> Message + 'a,
@@ -1569,23 +1702,22 @@ fn speed_labeled_input<'a>(
     let sel = unit_opts.iter().find(|o| o.value == unit).copied();
 
     let (display_val, step) = match unit {
-        SpeedUnit::Kbps => (*value_kb, 100),
+        SpeedUnit::Kbps => (value_kb, 100),
         SpeedUnit::Mbps => {
-            if *value_kb == 0 {
+            if value_kb == 0 {
                 (0, 1)
             } else {
-                (*value_kb / 1024, 1)
+                (value_kb / 1024, 1)
             }
         }
     };
-    let display: &'a u64 = &*Box::leak(Box::new(display_val));
 
     setting_row(
         label,
         row![]
             .spacing(SPACE_LG)
             .push(number_stepper(
-                display,
+                display_val,
                 0..=u64::MAX,
                 step,
                 on_value,

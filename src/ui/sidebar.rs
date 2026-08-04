@@ -2,7 +2,7 @@ use iced::widget::{button, column, container, text, Text};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
-use crate::message::{Message, Page};
+use crate::message::{AddMsg, DialogMsg, Message, NavMsg, Page};
 use crate::ui::components::logo;
 use crate::ui::components::tooltip;
 use crate::ui::dims::*;
@@ -35,25 +35,25 @@ pub fn view<'a>(fluent: &'a Fluent, theme: &'a iced::Theme, page: Page) -> Eleme
     let list_area = icon_btn(
         icon::list().size(FONT_DIALOG_TITLE).line_height(1.0),
         fluent.get(Tr::Tasks),
-        Message::NavigatePage(Page::Tasks),
+        Message::Nav(NavMsg::NavigatePage(Page::Tasks)),
         page == Page::Tasks,
     );
     let new_area = icon_btn(
         icon::plus().size(FONT_DIALOG_TITLE).line_height(1.0),
         fluent.get(Tr::New),
-        Message::OpenAddDialog,
+        Message::Add(AddMsg::OpenAddDialog),
         false,
     );
     let about_area = icon_btn(
         icon::circle_help().size(FONT_DIALOG_TITLE).line_height(1.0),
         fluent.get(Tr::About),
-        Message::OpenAbout,
+        Message::Dialog(DialogMsg::OpenAbout),
         false,
     );
     let sett_area = icon_btn(
         icon::settings().size(FONT_DIALOG_TITLE).line_height(1.0),
         fluent.get(Tr::Settings),
-        Message::NavigatePage(Page::Settings),
+        Message::Nav(NavMsg::NavigatePage(Page::Settings)),
         page == Page::Settings,
     );
 

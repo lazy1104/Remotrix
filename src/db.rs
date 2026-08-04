@@ -139,67 +139,66 @@ impl Db {
         info_hash: &str,
     ) {
         let conn = self.conn.lock().expect("db lock");
-        let _ = conn.execute(
+        if let Err(e) = conn.execute(
             "INSERT INTO tasks (gid, name, url, dir, downloaded, total, speed, connections, status, added_at, info_hash)
              VALUES (?1, ?2, ?3, ?4, 0, 0, 0, 0, ?5, ?6, ?7)
              ON CONFLICT(gid) DO UPDATE SET
                 name=excluded.name, url=excluded.url, dir=excluded.dir, status=excluded.status, info_hash=excluded.info_hash",
             rusqlite::params![gid, name, url, dir, status, added_at, info_hash],
-        );
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn upsert_progress(
-        &self,
-        gid: &str,
-        downloaded: u64,
-        total: u64,
-        speed: u64,
-        upload_speed: u64,
-        connections: u64,
-        status: &str,
-    ) {
-        let conn = self.conn.lock().expect("db lock");
-        let _ = conn.execute(
-            "UPDATE tasks SET downloaded=?1, total=?2, speed=?3, upload_speed=?4, connections=?5, status=?6 WHERE gid=?7",
-            rusqlite::params![downloaded, total, speed, upload_speed, connections, status, gid],
-        );
+        ) {
+            tracing::error!(?gid, error = %e, "db upsert_meta failed");
+        }
     }
 
     pub fn flush(&self, dirty: &[(String, u64, u64, u64, u64, u64, String)]) {
         let conn = self.conn.lock().expect("db lock");
-        let _ = conn.execute_batch("BEGIN");
+        if let Err(e) = conn.execute_batch("BEGIN") {
+            tracing::error!(error = %e, "db flush begin failed");
+            return;
+        }
         for (gid, downloaded, total, speed, upload_speed, connections, status) in dirty {
-            let _ = conn.execute(
+            if let Err(e) = conn.execute(
                 "UPDATE tasks SET downloaded=?1, total=?2, speed=?3, upload_speed=?4, connections=?5, status=?6 WHERE gid=?7",
                 rusqlite::params![downloaded, total, speed, upload_speed, connections, status, gid],
-            );
+            ) {
+                tracing::error!(?gid, error = %e, "db flush update failed");
+            }
         }
-        let _ = conn.execute_batch("COMMIT");
+        if let Err(e) = conn.execute_batch("COMMIT") {
+            tracing::error!(error = %e, "db flush commit failed");
+        }
     }
 
     pub fn update_name(&self, gid: &str, name: &str) {
         let conn = self.conn.lock().expect("db lock");
-        let _ = conn.execute(
+        if let Err(e) = conn.execute(
             "UPDATE tasks SET name=?1 WHERE gid=?2",
             rusqlite::params![name, gid],
-        );
+        ) {
+            tracing::error!(?gid, error = %e, "db update_name failed");
+        }
     }
 
     pub fn delete(&self, gid: &str) {
         let conn = self.conn.lock().expect("db lock");
-        let _ = conn.execute("DELETE FROM tasks WHERE gid=?1", rusqlite::params![gid]);
+        if let Err(e) = conn.execute("DELETE FROM tasks WHERE gid=?1", rusqlite::params![gid]) {
+            tracing::error!(?gid, error = %e, "db delete failed");
+        }
     }
 
     pub fn delete_all(&self) {
         let conn = self.conn.lock().expect("db lock");
-        let _ = conn.execute_batch("DELETE FROM tasks");
+        if let Err(e) = conn.execute_batch("DELETE FROM tasks") {
+            tracing::error!(error = %e, "db delete_all failed");
+        }
     }
 
     pub fn clear_completed(&self, gids: &[String]) {
         let conn = self.conn.lock().expect("db lock");
         for gid in gids {
-            let _ = conn.execute("DELETE FROM tasks WHERE gid=?1", rusqlite::params![gid]);
+            if let Err(e) = conn.execute("DELETE FROM tasks WHERE gid=?1", rusqlite::params![gid]) {
+                tracing::error!(?gid, error = %e, "db clear_completed failed");
+            }
         }
     }
 }

@@ -11,17 +11,16 @@ path = "src/main.rs"
 
 [dependencies]
 aria2-ws = "0.5"
-iced = { version = "0.14", features = ["tokio", "advanced", "image", "canvas", "svg"] }
+iced = { version = "0.14", features = ["tokio", "advanced", "canvas", "svg"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 directories = "5"
 rfd = "0.15"
-image = "0.24"
+image = { version = "0.24", default-features = false, features = ["png"] }
 dark-light = "1.1"
 fluent-templates = "0.14.0"
 futures = "0.3"

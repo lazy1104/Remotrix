@@ -3,9 +3,7 @@ use std::path::PathBuf;
 use crate::clipboard_watch::ClipboardPayload;
 use crate::engine::EngineEvent;
 use crate::i18n::Locale;
-use crate::task::TaskStatus;
 use crate::ui::components::path_picker::PathPickerEvent;
-use crate::ui::components::toast::Toast;
 use crate::ui::theme::ThemeMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,9 +58,28 @@ pub enum ConfirmAction {
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    Nav(NavMsg),
+    Add(AddMsg),
+    Task(TaskMsg),
+    Settings(SettingsMsg),
+    Engine(EngineMsg),
+    Window(WindowMsg),
+    Sort(SortMsg),
+    Dialog(DialogMsg),
+    Toast(ToastMsg),
+    Noop,
+}
+
+#[derive(Debug, Clone)]
+pub enum NavMsg {
     NavigatePage(Page),
     SetTaskFilter(TaskFilter),
     SetSettingsCategory(SettingsCategory),
+    SelectDetailsTab(DetailsTab),
+}
+
+#[derive(Debug, Clone)]
+pub enum AddMsg {
     PathPicker(PathPickerId, PathPickerEvent),
     PathPicked(PathPickerId, Option<PathBuf>),
     SelectAddTab(AddTab),
@@ -71,24 +88,22 @@ pub enum Message {
     TorrentTreeToggle(String),
     TorrentFilesSelectAll,
     TorrentFilesSelectNone,
-    DetailsTreeExpand(String),
-    DetailsTreeToggle(String),
-    DetailsFilesSelectAll,
-    DetailsFilesSelectNone,
     TorrentFilesScroll(f32),
     TorrentFilesTogglePanel,
-    DetailsFilesScroll(f32),
-    DetailsFilesFlush(u64),
-    FileHovered(PathBuf),
+    FileHovered,
     FileDropped(PathBuf),
     FilesHoveredLeft,
-    CopyPath(String),
     SplitChanged(String),
     AddDownload,
     AddFieldChanged(AddField, String),
     ToggleAdvanced(bool),
     CancelAdd,
     OpenAddDialog,
+    UrlEditor(iced::widget::text_editor::Action),
+}
+
+#[derive(Debug, Clone)]
+pub enum TaskMsg {
     PauseTask(String),
     ResumeTask(String),
     RedownloadTask(String),
@@ -100,64 +115,33 @@ pub enum Message {
     RemoveAllRecords,
     ClearCompleted,
     Refresh,
-    SortSelected(SortField),
-    ToggleSortMenu,
-    CloseSortMenu,
-    ToggleSortOrder,
-    SearchChanged(String),
-    SettingChanged(SettingKey, String),
+    OpenTaskDetails(String),
+    CloseTaskDetails,
+    RefreshTaskDetails,
+    OpenTaskFolder(String),
+    OpenTaskFile(String),
+    CopyTaskLink(String),
+    DetailsTreeExpand(String),
+    DetailsTreeToggle(String),
+    DetailsFilesSelectAll,
+    DetailsFilesSelectNone,
+    DetailsFilesScroll(f32),
+    DetailsFilesFlush(u64),
+    CopyPath(String),
+}
+
+#[derive(Debug, Clone)]
+pub enum SettingsMsg {
+    SettingChanged(SettingKey, SettingValue),
     ApplySettings,
     ResetSettings,
-    OpenAbout,
-    CloseAbout,
-    Engine(EngineEvent),
-
-    WindowOpened(iced::window::Id),
-    WindowFocused(iced::window::Id),
-    ClipboardRead(Option<String>),
-    ClipboardParsed(Option<ClipboardPayload>, String),
-    DroppedFileParsed(Option<ClipboardPayload>),
-    DragWindow,
-    ResizeWindow(iced::window::Direction),
-    WindowAction(WindowCmd),
-    CloseRequested,
-    CloseDialog(CloseDialogChoice),
-    ShutdownRequested,
-    ShutdownTimeout,
-
+    ApplyAndLeaveSettings,
+    DiscardAndLeaveSettings,
     ThemeModeChanged(ThemeMode),
     ThemeColorChanged(iced::Color),
     LocaleChanged(Locale),
     FontFamilyChanged(String),
     RestartApp,
-
-    CheckAria2Update,
-    RetryAria2Fetch,
-    RestartEngine,
-    SetAutoCheck(bool),
-    ClearLogs,
-    ToggleScheduleStartPicker,
-    ToggleScheduleEndPicker,
-    ToggleScheduleDaysMenu,
-    ScheduleDayToggled {
-        day: u8,
-        enabled: bool,
-    },
-
-    OpenTaskDetails(String),
-    CloseTaskDetails,
-    RefreshTaskDetails,
-    FlushDirty,
-    WindowResized(iced::Size),
-    WindowMaximized(bool),
-    PersistWindowGeometry,
-    SelectDetailsTab(DetailsTab),
-    OpenTaskFolder(String),
-    OpenTaskFile(String),
-    CopyTaskLink(String),
-    Noop,
-
-    UrlEditor(iced::widget::text_editor::Action),
     UaEditor(iced::widget::text_editor::Action),
     BtTrackerEditor(iced::widget::text_editor::Action),
     SyncTrackers,
@@ -176,20 +160,80 @@ pub enum Message {
     CheckTrackerAutoSync {
         startup: bool,
     },
+    SpeedUnitChanged(SettingKey, SpeedUnit),
+    ToggleScheduleStartPicker,
+    ToggleScheduleEndPicker,
+    ToggleScheduleDaysMenu,
+    ScheduleDayToggled {
+        day: u8,
+        enabled: bool,
+    },
+    SetAutoCheck(bool),
+    ClearLogs,
+}
 
-    RequestConfirm(ConfirmAction),
-    ConfirmCancel,
-    ApplyAndLeaveSettings,
-    DiscardAndLeaveSettings,
+#[derive(Debug, Clone)]
+pub enum EngineMsg {
+    Event(EngineEvent),
+    CheckAria2Update,
+    RetryAria2Fetch,
+    RestartEngine,
     ConfirmRestartEngine,
     EngineRestartCooldownFinished,
     EngineRestartSafetyTimeout,
-    SpeedUnitChanged(SettingKey, SpeedUnit),
-    ShowToast(Toast),
+}
+
+#[derive(Debug, Clone)]
+pub enum WindowMsg {
+    WindowOpened(iced::window::Id),
+    WindowFocused(iced::window::Id),
+    WindowResized(iced::Size),
+    WindowMaximized(bool),
+    ClipboardRead(Option<String>),
+    ClipboardParsed(Option<ClipboardPayload>, String),
+    DroppedFileParsed(Option<ClipboardPayload>),
+    DragWindow,
+    ResizeWindow(iced::window::Direction),
+    WindowAction(WindowCmd),
+    CloseRequested,
+    CloseDialog(CloseDialogChoice),
+    ShutdownRequested,
+    ShutdownTimeout,
+    PersistWindowGeometry,
+    FlushDirty,
+}
+
+#[derive(Debug, Clone)]
+pub enum SortMsg {
+    SortSelected(SortField),
+    ToggleSortMenu,
+    CloseSortMenu,
+    ToggleSortOrder,
+    SearchChanged(String),
+}
+
+#[derive(Debug, Clone)]
+pub enum DialogMsg {
+    RequestConfirm(ConfirmAction),
+    ConfirmCancel,
+    OpenAbout,
+    CloseAbout,
+}
+
+#[derive(Debug, Clone)]
+pub enum ToastMsg {
     DismissToast(u64),
     ToastHovered(u64),
     ToastUnhovered(u64),
     ToastTick,
+}
+
+#[derive(Debug, Clone)]
+pub enum SettingValue {
+    Num(u64),
+    NumF(f64),
+    Bool(bool),
+    Text(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -208,7 +252,6 @@ pub enum WindowCmd {
 pub enum CloseDialogChoice {
     Close,
     Cancel,
-    MinimizeToTray,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -275,8 +318,6 @@ pub enum SettingKey {
     DownloadLimit,
     UploadLimit,
     Split,
-    ThemeMode,
-    Locale,
     MaxConnectionPerServer,
     MinSplitSize,
     AutoFileRenaming,
@@ -286,7 +327,6 @@ pub enum SettingKey {
     MaxDownloadLimit,
     MaxUploadLimit,
     LowestSpeedLimit,
-    UserAgent,
     ProxyServer,
     ProxyUsername,
     ProxyPassword,
@@ -325,18 +365,4 @@ pub enum SettingKey {
     ScheduleEnd,
     AppLogLevel,
     EngineLogLevel,
-}
-
-impl TaskStatus {
-    pub fn from_engine(status: &str) -> Self {
-        match status {
-            "waiting" => TaskStatus::Waiting,
-            "active" => TaskStatus::Active,
-            "paused" => TaskStatus::Paused,
-            "complete" => TaskStatus::Completed,
-            "error" => TaskStatus::Error,
-            "removed" => TaskStatus::Removed,
-            _ => TaskStatus::Waiting,
-        }
-    }
 }

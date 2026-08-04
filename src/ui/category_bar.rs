@@ -2,7 +2,7 @@ use iced::widget::{button, column, container, row, text};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
-use crate::message::{Message, Page, SettingsCategory, TaskFilter};
+use crate::message::{Message, NavMsg, Page, SettingsCategory, TaskFilter};
 use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
@@ -55,7 +55,7 @@ pub fn view<'a>(
                             .align_y(Alignment::Center)
                             .width(Length::Fill),
                     )
-                    .on_press(Message::SetTaskFilter(target))
+                    .on_press(Message::Nav(NavMsg::SetTaskFilter(target)))
                     .padding(PADDING_FILTER)
                     .width(Length::Fill)
                     .style(theme::style::button::text());
@@ -105,7 +105,7 @@ pub fn view<'a>(
                         .width(Length::Fill)
                         .align_y(Alignment::Center),
                 )
-                .on_press(Message::SetSettingsCategory(target))
+                .on_press(Message::Nav(NavMsg::SetSettingsCategory(target)))
                 .padding(PADDING_FILTER)
                 .width(Length::Fill)
                 .style(theme::style::button::text());

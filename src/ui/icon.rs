@@ -103,10 +103,6 @@ pub fn download_arrow<'a>() -> Text<'a> {
     icon("\u{E455}")
 }
 
-pub fn eraser<'a>() -> Text<'a> {
-    icon("\u{E28F}")
-}
-
 pub fn expand<'a>() -> Text<'a> {
     icon("\u{E211}")
 }
@@ -181,10 +177,6 @@ pub fn share<'a>() -> Text<'a> {
 
 pub fn sliders<'a>() -> Text<'a> {
     icon("\u{E29A}")
-}
-
-pub fn sort<'a>() -> Text<'a> {
-    icon("\u{E37D}")
 }
 
 pub fn square<'a>() -> Text<'a> {

@@ -476,7 +476,7 @@ pub mod style {
     pub mod button {
         use iced::widget::button::{Status, Style};
         use iced::Color;
-        use iced::{Background, Shadow, Vector};
+        use iced::{Background, Shadow};
 
         fn scale_alpha(c: Color, factor: f32) -> Color {
             Color {
@@ -799,48 +799,6 @@ pub mod style {
                         ..Default::default()
                     },
                     shadow: Shadow::default(),
-                    ..Default::default()
-                }
-            }
-        }
-
-        pub fn new_download<'a>() -> impl Fn(&iced::Theme, Status) -> Style + 'a {
-            move |t: &iced::Theme, status: Status| -> Style {
-                let pal = t.extended_palette().primary;
-                let accent = pal.base.color;
-                let bg_text = t.extended_palette().background.base.text;
-                let actual_bg = match status {
-                    Status::Hovered => pal.strong.color,
-                    Status::Pressed => super::darken(accent, 0.15),
-                    _ => accent,
-                };
-                let (shadow, alpha) = match status {
-                    Status::Pressed => (
-                        Shadow {
-                            color: Color::from_rgba(0.0, 0.0, 0.0, 0.25),
-                            offset: Vector::new(0.0, 0.0),
-                            blur_radius: 1.0,
-                        },
-                        1.0,
-                    ),
-                    Status::Disabled => (Shadow::default(), 0.5),
-                    _ => (
-                        Shadow {
-                            color: Color::from_rgba(0.0, 0.0, 0.0, 0.25),
-                            offset: Vector::new(0.0, 3.0),
-                            blur_radius: 6.0,
-                        },
-                        1.0,
-                    ),
-                };
-                Style {
-                    background: Some(Background::Color(Color {
-                        a: actual_bg.a * alpha,
-                        ..actual_bg
-                    })),
-                    text_color: scale_alpha(bg_text, alpha),
-                    border: iced::border::rounded(super::super::RADIUS_PILL),
-                    shadow,
                     ..Default::default()
                 }
             }

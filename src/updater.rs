@@ -8,20 +8,6 @@ pub struct ReleaseInfo {
     pub sha256: Option<String>,
 }
 
-#[derive(Debug, Clone)]
-pub enum CheckOutcome {
-    UpToDate {
-        version: String,
-    },
-    NewVersion {
-        current: String,
-        release: ReleaseInfo,
-    },
-    Error {
-        message: String,
-    },
-}
-
 pub async fn fetch_latest_release(repo: &str, slug: &str) -> Result<ReleaseInfo, String> {
     let api_url = format!("https://api.github.com/repos/{repo}/releases/latest");
     let client = reqwest::Client::builder()

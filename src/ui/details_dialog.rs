@@ -4,7 +4,7 @@ use iced::widget::{button, column, container, progress_bar, row, text};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
-use crate::message::{DetailsTab, Message};
+use crate::message::{DetailsTab, Message, NavMsg, TaskMsg};
 use crate::task::{
     completed_pieces, format_add_time, format_size, format_speed, DownloadTask, TaskDetails,
 };
@@ -24,6 +24,8 @@ pub struct DetailsDialogState {
     pub files_expanded: HashSet<String>,
     pub files_tree: Vec<file_tree::FileTreeNode>,
     pub files_scroll_offset: f32,
+    pub pending_select: Option<(String, Vec<u64>)>,
+    pub select_gen: u64,
 }
 
 impl DetailsDialogState {
@@ -37,6 +39,8 @@ impl DetailsDialogState {
             files_expanded: HashSet::new(),
             files_tree: Vec::new(),
             files_scroll_offset: 0.0,
+            pending_select: None,
+            select_gen: 0,
         }
     }
 
@@ -72,7 +76,7 @@ pub fn view<'a>(
     state: &'a DetailsDialogState,
 ) -> Element<'a, Message> {
     let close_btn = button(icon::x().size(FONT_HERO).line_height(1.0))
-        .on_press(Message::CloseTaskDetails)
+        .on_press(Message::Task(TaskMsg::CloseTaskDetails))
         .padding(PADDING_DROPDOWN)
         .style(theme::style::button::sidebar_icon(false));
 
@@ -95,7 +99,7 @@ pub fn view<'a>(
         for (tab, tr) in tabs {
             let active = state.active_tab == tab;
             let btn = button(text(fluent.get(tr)).size(FONT_MEDIUM))
-                .on_press(Message::SelectDetailsTab(tab))
+                .on_press(Message::Nav(NavMsg::SelectDetailsTab(tab)))
                 .padding(PADDING_TAB)
                 .style(theme::style::button::sidebar_icon(active));
             bar = bar.push(btn);
@@ -114,7 +118,7 @@ pub fn view<'a>(
                 )
                 .push(
                     button(text(fluent.get(Tr::CloseAbout)).size(FONT_MEDIUM))
-                        .on_press(Message::CloseTaskDetails)
+                        .on_press(Message::Task(TaskMsg::CloseTaskDetails))
                         .padding(PADDING_TAB)
                         .style(theme::style::button::secondary()),
                 )
@@ -378,8 +382,8 @@ fn files_tab<'a>(
             false,
             &details_tree_toggle,
             &details_tree_expand,
-            Message::DetailsFilesSelectAll,
-            Message::DetailsFilesSelectNone,
+            Message::Task(TaskMsg::DetailsFilesSelectAll),
+            Message::Task(TaskMsg::DetailsFilesSelectNone),
             None,
             state.files_scroll_offset,
             &details_files_scroll,
@@ -412,13 +416,13 @@ fn files_tab<'a>(
 }
 
 fn details_tree_toggle(path: String) -> Message {
-    Message::DetailsTreeToggle(path)
+    Message::Task(TaskMsg::DetailsTreeToggle(path))
 }
 
 fn details_tree_expand(path: String) -> Message {
-    Message::DetailsTreeExpand(path)
+    Message::Task(TaskMsg::DetailsTreeExpand(path))
 }
 
 fn details_files_scroll(y: f32) -> Message {
-    Message::DetailsFilesScroll(y)
+    Message::Task(TaskMsg::DetailsFilesScroll(y))
 }

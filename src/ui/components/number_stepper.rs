@@ -105,25 +105,17 @@ struct StepperState {
 }
 
 pub struct NumberStepper<'a, T, Message: 'a> {
-    value: &'a T,
+    value: T,
     min: T,
     max: T,
-    step: T,
     on_change: Rc<dyn Fn(T) -> Message + 'a>,
     read_only: bool,
     width: Length,
     child: Element<'a, Message, iced::Theme, iced::Renderer>,
 }
 
-impl<'a, T, Message: 'a> NumberStepper<'a, T, Message> {
-    pub fn width(mut self, width: impl Into<Length>) -> Self {
-        self.width = width.into();
-        self
-    }
-}
-
 fn build_row<'a, T, Message: Clone + 'a>(
-    value: &T,
+    value: T,
     min: T,
     max: T,
     step: T,
@@ -148,7 +140,7 @@ where
 
     if !read_only {
         let oc = on_change.clone();
-        let v = *value;
+        let v = value;
         input = input.on_input(move |s| {
             let current = v;
             let parsed = s.parse::<T>().ok();
@@ -168,8 +160,8 @@ where
         .style(theme::style::button::grouped_icon(false))
         .height(Length::Fill);
     if !read_only {
-        let minus_val = if *value >= min + step {
-            *value - step
+        let minus_val = if value >= min + step {
+            value - step
         } else {
             min
         };
@@ -185,8 +177,8 @@ where
         .style(theme::style::button::grouped_icon(true))
         .height(Length::Fill);
     if !read_only {
-        let plus_val = if *value <= max - step {
-            *value + step
+        let plus_val = if value <= max - step {
+            value + step
         } else {
             max
         };
@@ -218,7 +210,7 @@ where
 }
 
 pub fn number_stepper<'a, T, Message>(
-    value: &'a T,
+    value: T,
     bounds: impl std::ops::RangeBounds<T>,
     step: T,
     on_change: impl Fn(T) -> Message + 'a,
@@ -244,43 +236,8 @@ where
         value,
         min,
         max,
-        step,
         on_change,
         read_only: false,
-        width,
-        child,
-    })
-}
-
-pub fn number_stepper_read_only<'a, T, Message>(
-    value: &'a T,
-    width: Length,
-) -> Element<'a, Message, iced::Theme, iced::Renderer>
-where
-    T: num_traits::Num
-        + num_traits::NumAssignOps
-        + PartialOrd
-        + std::fmt::Display
-        + std::str::FromStr
-        + Clone
-        + Copy
-        + num_traits::Bounded
-        + 'static,
-    <T as std::str::FromStr>::Err: std::fmt::Debug,
-    Message: 'a + Clone,
-{
-    let min = T::min_value();
-    let max = T::max_value();
-    let on_change: Rc<dyn Fn(T) -> Message + 'a> =
-        Rc::new(move |_: T| -> Message { unreachable!() });
-    let child = build_row(value, min, max, T::one(), &on_change, true);
-    Element::new(NumberStepper {
-        value,
-        min,
-        max,
-        step: T::one(),
-        on_change,
-        read_only: true,
         width,
         child,
     })
@@ -466,7 +423,7 @@ where
                 .parse::<T>()
                 .ok()
                 .filter(|v| v >= &self.min && v <= &self.max);
-            let clamped = parsed.unwrap_or(*self.value);
+            let clamped = parsed.unwrap_or(self.value);
             state.buffer = clamped.to_string();
             shell.publish((self.on_change)(clamped));
         }

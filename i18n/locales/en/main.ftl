@@ -176,6 +176,7 @@ aria2-version = aria2-next version
 check-update = Check for Updates
 engine-data-dir = Engine data directory
 engine-session-file = Session file
+database-error = Failed to open database, download history will not be saved
 select-placeholder = Select...
 up-to-date = Already up to date
 updated-to = Updated to

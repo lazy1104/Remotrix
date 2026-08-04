@@ -1,7 +1,11 @@
 use crate::message::{SortField, SortOrder};
 use crate::task::DownloadTask;
 
-pub fn sort_tasks(tasks: &[DownloadTask], field: SortField, order: SortOrder) -> Vec<DownloadTask> {
+pub fn sort_tasks<'a>(
+    tasks: &[&'a DownloadTask],
+    field: SortField,
+    order: SortOrder,
+) -> Vec<&'a DownloadTask> {
     let mut sorted = tasks.to_vec();
     sorted.sort_by(|a, b| {
         let cmp = match field {

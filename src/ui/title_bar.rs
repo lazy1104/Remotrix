@@ -1,7 +1,7 @@
 use iced::widget::{button, container, mouse_area, row, text};
 use iced::{Alignment, Element, Length};
 
-use crate::message::{Message, WindowCmd};
+use crate::message::{Message, WindowCmd, WindowMsg};
 use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::icons::{CATEGORY_W, SIDEBAR_W};
@@ -16,7 +16,7 @@ pub fn view<'a>(_theme: &iced::Theme, maximized: bool) -> Element<'a, Message> {
                 .width(Length::Fill)
                 .height(Length::Fill),
         )
-        .on_press(Message::DragWindow),
+        .on_press(Message::Window(WindowMsg::DragWindow)),
     )
     .width(Length::Fixed(SIDEBAR_W))
     .height(Length::Fill)
@@ -28,7 +28,7 @@ pub fn view<'a>(_theme: &iced::Theme, maximized: bool) -> Element<'a, Message> {
                 .width(Length::Fill)
                 .height(Length::Fill),
         )
-        .on_press(Message::DragWindow),
+        .on_press(Message::Window(WindowMsg::DragWindow)),
     )
     .width(Length::Fixed(CATEGORY_W))
     .height(Length::Fill)
@@ -41,7 +41,9 @@ pub fn view<'a>(_theme: &iced::Theme, maximized: bool) -> Element<'a, Message> {
             .width(Length::Fill)
             .height(Length::Fill),
     )
-    .on_press(Message::WindowAction(WindowCmd::Minimize))
+    .on_press(Message::Window(WindowMsg::WindowAction(
+        WindowCmd::Minimize,
+    )))
     .padding(PADDING_NONE)
     .width(Length::Fixed(46.0))
     .height(Length::Fill)
@@ -59,7 +61,9 @@ pub fn view<'a>(_theme: &iced::Theme, maximized: bool) -> Element<'a, Message> {
             .width(Length::Fill)
             .height(Length::Fill),
     )
-    .on_press(Message::WindowAction(WindowCmd::ToggleMaximize))
+    .on_press(Message::Window(WindowMsg::WindowAction(
+        WindowCmd::ToggleMaximize,
+    )))
     .padding(PADDING_NONE)
     .width(Length::Fixed(46.0))
     .height(Length::Fill)
@@ -72,7 +76,7 @@ pub fn view<'a>(_theme: &iced::Theme, maximized: bool) -> Element<'a, Message> {
             .width(Length::Fill)
             .height(Length::Fill),
     )
-    .on_press(Message::CloseRequested)
+    .on_press(Message::Window(WindowMsg::CloseRequested))
     .padding(PADDING_NONE)
     .width(Length::Fixed(46.0))
     .height(Length::Fill)
@@ -87,7 +91,7 @@ pub fn view<'a>(_theme: &iced::Theme, maximized: bool) -> Element<'a, Message> {
                             .width(Length::Fill)
                             .height(Length::Fill),
                     )
-                    .on_press(Message::DragWindow),
+                    .on_press(Message::Window(WindowMsg::DragWindow)),
                 )
                 .width(Length::Fill)
                 .height(Length::Fill),

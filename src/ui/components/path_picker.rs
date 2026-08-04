@@ -95,10 +95,6 @@ impl PathPicker {
         self.history_open = false;
     }
 
-    pub fn is_history_open(&self) -> bool {
-        self.history_open
-    }
-
     pub fn update(&mut self, event: PathPickerEvent) -> Option<PathPickerAction> {
         match event {
             PathPickerEvent::ToggleHistory if self.mode != PickerMode::ReadOnly => {

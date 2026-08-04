@@ -2,7 +2,7 @@ use iced::widget::{button, column, text};
 use iced::Element;
 
 use crate::i18n::{Fluent, Tr};
-use crate::message::Message;
+use crate::message::{DialogMsg, Message};
 use crate::ui::components::dialog::{overlay, Dialog};
 use crate::ui::dims::*;
 use crate::ui::theme;
@@ -36,7 +36,7 @@ pub fn view<'a>(
         );
 
     let close_btn = button(text(fluent.get(Tr::CloseAbout)).size(FONT_BODY))
-        .on_press(Message::CloseAbout)
+        .on_press(Message::Dialog(DialogMsg::CloseAbout))
         .padding(PADDING_BUTTON_LG)
         .style(theme::style::button::secondary());
 
@@ -44,7 +44,7 @@ pub fn view<'a>(
         Dialog::new()
             .width(380.0)
             .title(fluent.get(Tr::AboutTitle))
-            .with_close(Message::CloseAbout)
+            .with_close(Message::Dialog(DialogMsg::CloseAbout))
             .body(body)
             .footer(close_btn)
             .build(),

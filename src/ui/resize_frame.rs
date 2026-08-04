@@ -1,7 +1,7 @@
 use iced::widget::{column, container, mouse_area, row, text};
 use iced::{mouse, Element, Length};
 
-use crate::message::Message;
+use crate::message::{Message, WindowMsg};
 use crate::ui::dims::*;
 
 pub const BORDER: f32 = 6.0;
@@ -17,7 +17,7 @@ fn strip(
             .width(width)
             .height(height),
     )
-    .on_press(Message::ResizeWindow(direction))
+    .on_press(Message::Window(WindowMsg::ResizeWindow(direction)))
     .interaction(interaction)
     .into()
 }

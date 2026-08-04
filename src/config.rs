@@ -517,7 +517,7 @@ impl Settings {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
     pub download_dir: PathBuf,
     pub max_concurrent: u32,
@@ -567,25 +567,6 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn apply_fields_equal(&self, other: &Settings) -> bool {
-        self.download_dir == other.download_dir
-            && self.font_family == other.font_family
-            && self.max_concurrent == other.max_concurrent
-            && self.download_limit_kb == other.download_limit_kb
-            && self.upload_limit_kb == other.upload_limit_kb
-            && self.split == other.split
-            && self.nav_to_tasks_after_add == other.nav_to_tasks_after_add
-            && self.delete_torrent_after_complete == other.delete_torrent_after_complete
-            && self.cleanup_completed_on_close == other.cleanup_completed_on_close
-            && self.remove_task_if_files_missing == other.remove_task_if_files_missing
-            && self.detect_clipboard_on_start == other.detect_clipboard_on_start
-            && self.clipboard_types == other.clipboard_types
-            && self.aria2 == other.aria2
-            && self.speed_limit_schedule == other.speed_limit_schedule
-            && self.log == other.log
-            && self.tracker == other.tracker
-    }
-
     pub fn record_path(&mut self, key: &str, path: &str) {
         let e = self.path_history.entry(key.to_string()).or_default();
         e.retain(|p| p != path);
@@ -631,13 +612,13 @@ impl Default for Settings {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct UpdatePrefs {
     #[serde(default)]
     pub components: HashMap<String, ComponentUpdatePrefs>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ComponentUpdatePrefs {
     #[serde(default)]
     pub ignored: bool,
@@ -658,14 +639,6 @@ impl UpdatePrefs {
             .get(component)
             .map(|c| c.skipped.contains(&version.to_string()))
             .unwrap_or(false)
-    }
-
-    pub fn skip_version(&mut self, component: &str, version: &str) {
-        self.components
-            .entry(component.to_string())
-            .or_default()
-            .skipped
-            .push(version.to_string());
     }
 
     pub fn set_ignored(&mut self, component: &str, ignored: bool) {

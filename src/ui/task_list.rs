@@ -5,7 +5,9 @@ use iced::widget::{
 use iced::{mouse, Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
-use crate::message::{ConfirmAction, Message, SortField, SortOrder};
+use crate::message::{
+    AddMsg, ConfirmAction, DialogMsg, Message, SortField, SortMsg, SortOrder, TaskMsg,
+};
 use crate::task::{format_duration, format_size, format_speed, DownloadTask, TaskStatus};
 use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::components::tooltip as tip;
@@ -17,7 +19,7 @@ use crate::ui::theme;
 pub fn view<'a>(
     fluent: &'a Fluent,
     theme: &iced::Theme,
-    tasks: &[DownloadTask],
+    tasks: &[&DownloadTask],
     sort_field: SortField,
     sort_order: SortOrder,
     sort_menu_open: bool,
@@ -54,7 +56,7 @@ pub fn view<'a>(
             glyph
         };
         button(glyph)
-            .on_press(Message::ToggleSortMenu)
+            .on_press(Message::Sort(SortMsg::ToggleSortMenu))
             .padding(PADDING_BUTTON_XS)
             .style(theme::style::button::toolbar_icon(sort_active))
     };
@@ -66,7 +68,7 @@ pub fn view<'a>(
             Tr::SortAsc
         });
         let asc_desc_btn = button(text(asc_desc_label).size(FONT_MEDIUM))
-            .on_press(Message::ToggleSortOrder)
+            .on_press(Message::Sort(SortMsg::ToggleSortOrder))
             .width(Length::Fill)
             .padding(PADDING_BUTTON_XS)
             .style(theme::style::button::text());
@@ -85,7 +87,7 @@ pub fn view<'a>(
         for (field, tr) in fields {
             let selected = field == sort_field;
             let btn = button(text(fluent.get(tr)).size(FONT_MEDIUM))
-                .on_press(Message::SortSelected(field))
+                .on_press(Message::Sort(SortMsg::SortSelected(field)))
                 .width(Length::Fill)
                 .padding(PADDING_BUTTON_XS)
                 .style(theme::style::button::sidebar_icon(selected));
@@ -125,7 +127,7 @@ pub fn view<'a>(
         sort_overlay,
         sort_menu_open,
     )
-    .on_dismiss(Message::CloseSortMenu)
+    .on_dismiss(Message::Sort(SortMsg::CloseSortMenu))
     .width(Length::Fixed(170.0));
 
     let new_btn: Element<'a, Message> = {
@@ -133,7 +135,7 @@ pub fn view<'a>(
             .font(lucide_font)
             .size(FONT_ICON);
         let btn = button(glyph)
-            .on_press(Message::OpenAddDialog)
+            .on_press(Message::Add(AddMsg::OpenAddDialog))
             .padding(PADDING_BUTTON_XS)
             .style(theme::style::button::toolbar_icon(true));
         tip::standard(
@@ -147,7 +149,7 @@ pub fn view<'a>(
 
     let search_input = theme::input_layout(
         text_input(&fluent.get(Tr::Search), search_query)
-            .on_input(Message::SearchChanged)
+            .on_input(|s| Message::Sort(SortMsg::SearchChanged(s)))
             .width(Length::Fixed(220.0))
             .style(theme::style::input::standard),
     );
@@ -158,7 +160,7 @@ pub fn view<'a>(
     if has_query {
         search_group = search_group.push(
             button(icon::x().size(FONT_ICON))
-                .on_press(Message::SearchChanged(String::new()))
+                .on_press(Message::Sort(SortMsg::SearchChanged(String::new())))
                 .padding(PADDING_BUTTON_XS)
                 .style(theme::style::button::toolbar_icon(false)),
         );
@@ -173,32 +175,32 @@ pub fn view<'a>(
                 .push(toolbar_btn(
                     '\u{E145}',
                     fluent.get(Tr::Refresh),
-                    Message::Refresh,
+                    Message::Task(TaskMsg::Refresh),
                     false,
                 ))
                 .push(sort_dropdown)
                 .push(toolbar_btn(
                     '\u{E13C}',
                     fluent.get(Tr::StartAll),
-                    Message::StartAll,
+                    Message::Task(TaskMsg::StartAll),
                     false,
                 ))
                 .push(toolbar_btn(
                     '\u{E12E}',
                     fluent.get(Tr::PauseAll),
-                    Message::PauseAll,
+                    Message::Task(TaskMsg::PauseAll),
                     false,
                 ))
                 .push(toolbar_btn(
                     '\u{E18E}',
                     fluent.get(Tr::DeleteAll),
-                    Message::RequestConfirm(ConfirmAction::DeleteAll),
+                    Message::Dialog(DialogMsg::RequestConfirm(ConfirmAction::DeleteAll)),
                     false,
                 ))
                 .push(toolbar_btn(
                     '\u{E28F}',
                     fluent.get(Tr::ClearList),
-                    Message::RequestConfirm(ConfirmAction::ClearCompleted),
+                    Message::Dialog(DialogMsg::RequestConfirm(ConfirmAction::ClearCompleted)),
                     false,
                 ))
                 .align_y(Alignment::Center)
@@ -274,7 +276,7 @@ fn task_card<'a>(
         text(t.name.clone()).size(FONT_SMALL),
         tooltip::Position::Bottom,
     ))
-    .on_double_click(Message::OpenTaskFile(t.gid.clone()))
+    .on_double_click(Message::Task(TaskMsg::OpenTaskFile(t.gid.clone())))
     .interaction(mouse::Interaction::Pointer);
 
     let toolbar_icon = |glyph: iced::widget::Text<'a>,
@@ -301,7 +303,7 @@ fn task_card<'a>(
         let glyph = icon::external_link().size(FONT_ICON).color(text_secondary);
         tip::standard(
             button(glyph)
-                .on_press(Message::OpenTaskFile(t.gid.clone()))
+                .on_press(Message::Task(TaskMsg::OpenTaskFile(t.gid.clone())))
                 .padding(PADDING_ICON_BTN)
                 .style(theme::style::button::toolbar_icon(false)),
             text(fluent.get(Tr::Open)).size(FONT_SMALL),
@@ -312,12 +314,12 @@ fn task_card<'a>(
     let pause_resume_btn: Element<'a, Message> = match t.status {
         TaskStatus::Active | TaskStatus::Waiting => toolbar_icon(
             icon::pause().size(FONT_ICON).color(text_secondary),
-            Some(Message::PauseTask(t.gid.clone())),
+            Some(Message::Task(TaskMsg::PauseTask(t.gid.clone()))),
             fluent.get(Tr::Pause),
         ),
         TaskStatus::Paused => toolbar_icon(
             icon::play().size(FONT_ICON).color(text_secondary),
-            Some(Message::ResumeTask(t.gid.clone())),
+            Some(Message::Task(TaskMsg::ResumeTask(t.gid.clone()))),
             fluent.get(Tr::Resume),
         ),
         TaskStatus::Completed => {
@@ -326,7 +328,7 @@ fn task_card<'a>(
                 .padding(PADDING_ICON_BTN)
                 .style(theme::style::button::toolbar_icon(false));
             let btn = if can_redownload {
-                btn.on_press(Message::RedownloadTask(t.gid.clone()))
+                btn.on_press(Message::Task(TaskMsg::RedownloadTask(t.gid.clone())))
             } else {
                 btn
             };
@@ -347,7 +349,7 @@ fn task_card<'a>(
         let glyph = icon::folder_open().size(FONT_ICON).color(text_secondary);
         tip::standard(
             button(glyph)
-                .on_press(Message::OpenTaskFolder(t.gid.clone()))
+                .on_press(Message::Task(TaskMsg::OpenTaskFolder(t.gid.clone())))
                 .padding(PADDING_ICON_BTN)
                 .style(theme::style::button::toolbar_icon(false)),
             text(fluent.get(Tr::ShowInFolder)).size(FONT_SMALL),
@@ -368,7 +370,7 @@ fn task_card<'a>(
         let glyph = icon::copy().size(FONT_ICON).color(text_secondary);
         tip::standard(
             button(glyph)
-                .on_press(Message::CopyTaskLink(t.gid.clone()))
+                .on_press(Message::Task(TaskMsg::CopyTaskLink(t.gid.clone())))
                 .padding(PADDING_ICON_BTN)
                 .style(theme::style::button::toolbar_icon(false)),
             text(fluent.get(Tr::CopyLink)).size(FONT_SMALL),
@@ -389,7 +391,7 @@ fn task_card<'a>(
         let glyph = icon::circle_alert().size(FONT_ICON).color(text_secondary);
         tip::standard(
             button(glyph)
-                .on_press(Message::OpenTaskDetails(t.gid.clone()))
+                .on_press(Message::Task(TaskMsg::OpenTaskDetails(t.gid.clone())))
                 .padding(PADDING_ICON_BTN)
                 .style(theme::style::button::toolbar_icon(false)),
             text(fluent.get(Tr::Details)).size(FONT_SMALL),
@@ -401,8 +403,8 @@ fn task_card<'a>(
         let glyph = icon::trash().size(FONT_ICON).color(text_secondary);
         tip::standard(
             button(glyph)
-                .on_press(Message::RequestConfirm(ConfirmAction::DeleteTask(
-                    t.gid.clone(),
+                .on_press(Message::Dialog(DialogMsg::RequestConfirm(
+                    ConfirmAction::DeleteTask(t.gid.clone()),
                 )))
                 .padding(PADDING_ICON_BTN)
                 .style(theme::style::button::toolbar_icon(false)),

@@ -5,7 +5,7 @@ use iced::widget::{button, column, row, rule, text, text_editor, text_input};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
-use crate::message::{AddField, AddTab, Message, PathPickerId};
+use crate::message::{AddField, AddMsg, AddTab, Message, PathPickerId};
 use crate::task::format_size;
 use crate::ui::components::dialog::{overlay, Dialog};
 use crate::ui::components::file_tree::{self, FileTreeNode};
@@ -20,7 +20,6 @@ use crate::ui::theme;
 #[derive(Debug, Clone)]
 pub struct TorrentFileEntry {
     pub index: u64,
-    pub path: String,
     pub length: u64,
     pub selected: bool,
 }
@@ -172,7 +171,6 @@ impl AddDialogState {
                     .iter()
                     .map(|f| TorrentFileEntry {
                         index: f.index,
-                        path: f.path.clone(),
                         length: f.length,
                         selected: true,
                     })
@@ -288,7 +286,7 @@ pub fn view<'a>(
     let placeholder = fluent.get(Tr::UrlPlaceholder);
     let url_input = text_editor(&state.url_editor)
         .placeholder(placeholder)
-        .on_action(Message::UrlEditor)
+        .on_action(|a| Message::Add(AddMsg::UrlEditor(a)))
         .height(Length::Fixed(120.0))
         .padding(PADDING_EDITOR)
         .size(FONT_BODY)
@@ -306,7 +304,7 @@ pub fn view<'a>(
                 .style(theme::style::text::secondary),
         )
         .push(state.save_picker.view(fluent, theme, hist_save, |e| {
-            Message::PathPicker(PathPickerId::SaveDir, e)
+            Message::Add(AddMsg::PathPicker(PathPickerId::SaveDir, e))
         }));
 
     let split_input = row![]
@@ -317,10 +315,10 @@ pub fn view<'a>(
         )
         .push(iced::widget::Space::new().width(Length::Fill))
         .push(number_stepper(
-            &state.split,
+            state.split,
             1..=128u16,
             1,
-            |v| Message::SplitChanged(v.to_string()),
+            |v| Message::Add(AddMsg::SplitChanged(v.to_string())),
             Length::Fixed(120.0),
         ))
         .align_y(Alignment::Center)
@@ -328,7 +326,7 @@ pub fn view<'a>(
 
     let rename_input = theme::input_layout(
         text_input("", &state.out)
-            .on_input(move |s| Message::AddFieldChanged(AddField::Out, s))
+            .on_input(move |s| Message::Add(AddMsg::AddFieldChanged(AddField::Out, s)))
             .width(Length::Fill)
             .style(theme::style::input::standard),
     );
@@ -360,7 +358,7 @@ pub fn view<'a>(
 
     let advanced_checkbox = iced::widget::checkbox(state.advanced_open)
         .label(fluent.get(Tr::AdvancedOptions))
-        .on_toggle(Message::ToggleAdvanced);
+        .on_toggle(|v| Message::Add(AddMsg::ToggleAdvanced(v)));
 
     let tab_bar = {
         let tabs = [(AddTab::Url, Tr::TabUrl), (AddTab::Torrent, Tr::TabTorrent)];
@@ -368,7 +366,7 @@ pub fn view<'a>(
         for (tab, tr) in tabs {
             let active = state.active_tab == tab;
             let btn = button(text(fluent.get(tr)).size(FONT_MEDIUM))
-                .on_press(Message::SelectAddTab(tab))
+                .on_press(Message::Add(AddMsg::SelectAddTab(tab)))
                 .padding(PADDING_TAB)
                 .style(theme::style::button::sidebar_icon(active));
             bar = bar.push(btn);
@@ -386,7 +384,7 @@ pub fn view<'a>(
             body_items.push(
                 state
                     .torrent_upload
-                    .view(fluent, theme, Message::TorrentUpload),
+                    .view(fluent, theme, |ev| Message::Add(AddMsg::TorrentUpload(ev))),
             );
             if state.torrent_parse_failed {
                 body_items.push(
@@ -437,9 +435,9 @@ pub fn view<'a>(
                     state.torrent_panel_collapsed,
                     &torrent_tree_toggle,
                     &torrent_tree_expand,
-                    Message::TorrentFilesSelectAll,
-                    Message::TorrentFilesSelectNone,
-                    Some(Message::TorrentFilesTogglePanel),
+                    Message::Add(AddMsg::TorrentFilesSelectAll),
+                    Message::Add(AddMsg::TorrentFilesSelectNone),
+                    Some(Message::Add(AddMsg::TorrentFilesTogglePanel)),
                     state.torrent_scroll_offset,
                     &torrent_files_scroll,
                 ));
@@ -467,7 +465,7 @@ pub fn view<'a>(
     let buttons = row![]
         .push(
             button(text(fluent.get(Tr::Cancel)).size(FONT_BODY))
-                .on_press(Message::CancelAdd)
+                .on_press(Message::Add(AddMsg::CancelAdd))
                 .padding(PADDING_BUTTON_MD)
                 .style(theme::style::button::secondary()),
         )
@@ -476,7 +474,7 @@ pub fn view<'a>(
                 .padding(PADDING_BUTTON_MD)
                 .style(theme::style::button::primary());
             if state.can_submit() {
-                btn = btn.on_press(Message::AddDownload);
+                btn = btn.on_press(Message::Add(AddMsg::AddDownload));
             }
             btn
         })
@@ -488,7 +486,7 @@ pub fn view<'a>(
             .width(520.0)
             .spacing(SPACE_3XL)
             .title(fluent.get(Tr::NewDownload))
-            .with_close(Message::CancelAdd)
+            .with_close(Message::Add(AddMsg::CancelAdd))
             .body(content)
             .footer(buttons)
             .build(),
@@ -504,7 +502,7 @@ fn advanced_field<'a>(
 ) -> Element<'a, Message> {
     let mut input = theme::input_layout(
         text_input("", value)
-            .on_input(move |s| Message::AddFieldChanged(field, s))
+            .on_input(move |s| Message::Add(AddMsg::AddFieldChanged(field, s)))
             .width(Length::Fill)
             .style(theme::style::input::standard),
     );
@@ -590,13 +588,13 @@ fn advanced_form<'a>(
 }
 
 fn torrent_tree_toggle(path: String) -> Message {
-    Message::TorrentTreeToggle(path)
+    Message::Add(AddMsg::TorrentTreeToggle(path))
 }
 
 fn torrent_tree_expand(path: String) -> Message {
-    Message::TorrentTreeExpand(path)
+    Message::Add(AddMsg::TorrentTreeExpand(path))
 }
 
 fn torrent_files_scroll(y: f32) -> Message {
-    Message::TorrentFilesScroll(y)
+    Message::Add(AddMsg::TorrentFilesScroll(y))
 }

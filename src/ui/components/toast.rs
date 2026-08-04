@@ -4,7 +4,7 @@ use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{button, column, container, mouse_area, row, stack, text};
 use iced::{Element, Length};
 
-use crate::message::Message;
+use crate::message::{Message, ToastMsg};
 use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
@@ -96,11 +96,6 @@ impl Toast {
         }
     }
 
-    pub fn position(mut self, position: ToastPosition) -> Self {
-        self.position = position;
-        self
-    }
-
     pub fn group(mut self, group: ToastGroup) -> Self {
         self.group = group;
         self
@@ -164,7 +159,7 @@ fn card<'a>(theme: &'a iced::Theme, toast: &'a Toast) -> Element<'a, Message> {
 
     if toast.show_close {
         let close_btn = button(icon::x().size(FONT_BODY).line_height(1.0))
-            .on_press(Message::DismissToast(toast.id))
+            .on_press(Message::Toast(ToastMsg::DismissToast(toast.id)))
             .padding(PADDING_XS)
             .style(theme::style::button::text());
         content = content.push(close_btn);
@@ -176,8 +171,8 @@ fn card<'a>(theme: &'a iced::Theme, toast: &'a Toast) -> Element<'a, Message> {
             .padding(PADDING_TOAST)
             .style(theme::style::toast),
     )
-    .on_enter(Message::ToastHovered(toast.id))
-    .on_exit(Message::ToastUnhovered(toast.id))
+    .on_enter(Message::Toast(ToastMsg::ToastHovered(toast.id)))
+    .on_exit(Message::Toast(ToastMsg::ToastUnhovered(toast.id)))
     .into()
 }
 

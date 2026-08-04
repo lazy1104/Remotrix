@@ -29,18 +29,6 @@ pub struct TaskAdvancedOptions {
 }
 
 impl TaskAdvancedOptions {
-    pub fn is_empty(&self) -> bool {
-        self.out.is_empty()
-            && self.user_agent.is_empty()
-            && self.http_user.is_empty()
-            && self.http_passwd.is_empty()
-            && self.referer.is_empty()
-            && self.cookie.is_empty()
-            && self.proxy_server.is_empty()
-            && self.proxy_username.is_empty()
-            && self.proxy_password.is_empty()
-    }
-
     pub fn apply(&self, opts: &mut TaskOptions) {
         if !self.out.is_empty() {
             opts.out = Some(self.out.clone());
@@ -185,7 +173,6 @@ pub enum EngineEvent {
     },
     Aria2CheckResult {
         current: String,
-        latest: Option<String>,
     },
     Aria2UpdateApplied {
         version: String,
@@ -233,8 +220,6 @@ pub fn spawn_engine() -> (EngineHandle, EventRx) {
 struct Sidecar {
     client: Client,
     child: Option<Child>,
-    port: u16,
-    secret: String,
 }
 
 struct SidecarConfig {
@@ -345,8 +330,6 @@ impl Sidecar {
                     return Ok(Sidecar {
                         client,
                         child: Some(child),
-                        port,
-                        secret,
                     });
                 }
                 Err(e) => {
@@ -617,6 +600,15 @@ fn select_file_csv(files: &[u64]) -> Option<String> {
     )
 }
 
+fn base_task_options(dir: &Path, split: u16) -> TaskOptions {
+    TaskOptions {
+        dir: Some(dir.to_string_lossy().to_string()),
+        split: Some(split as i32),
+        max_connection_per_server: Some((split as i32).max(1)),
+        ..Default::default()
+    }
+}
+
 async fn add_torrent_and_emit(
     client: &Client,
     path: &Path,
@@ -630,12 +622,7 @@ async fn add_torrent_and_emit(
     let bytes = tokio::fs::read(path)
         .await
         .map_err(|e| format!("read torrent: {e}"))?;
-    let mut options = TaskOptions {
-        dir: Some(save_dir.to_string_lossy().to_string()),
-        split: Some(split as i32),
-        max_connection_per_server: Some((split as i32).max(1)),
-        ..Default::default()
-    };
+    let mut options = base_task_options(save_dir, split);
     advanced.apply(&mut options);
     if let Some(csv) = select_file_csv(select_files.unwrap_or(&[])) {
         options
@@ -671,6 +658,53 @@ async fn add_torrent_and_emit(
     Ok(gid)
 }
 
+async fn resume_staggered(client: &Client, gids: Option<HashSet<String>>, event_tx: &EventTx) {
+    let tasks = fetch_all_tasks(client).await;
+    let mut groups: Vec<(Option<String>, Vec<aria2_ws::response::Status>)> = Vec::new();
+    for s in tasks {
+        if s.status != Aria2TaskStatus::Paused {
+            continue;
+        }
+        if let Some(gids) = &gids {
+            if !gids.contains(&s.gid) {
+                continue;
+            }
+        }
+        let url = s
+            .files
+            .first()
+            .and_then(|f| f.uris.first())
+            .map(|u| u.uri.clone())
+            .unwrap_or_default();
+        let host = url_host(&url);
+        match groups.iter_mut().find(|(h, _)| *h == host) {
+            Some((_, v)) => v.push(s),
+            None => groups.push((host, vec![s])),
+        }
+    }
+    if groups.is_empty() {
+        return;
+    }
+    const RESUME_GROUP_INTERVAL: Duration = Duration::from_millis(500);
+    tracing::info!(groups = groups.len(), "resume staggered groups");
+    for (host, group) in groups {
+        tracing::info!(?host, count = group.len(), "resuming group");
+        let client = client.clone();
+        let tx = event_tx.clone();
+        tokio::spawn(async move {
+            for (i, s) in group.iter().enumerate() {
+                if i > 0 {
+                    tokio::time::sleep(RESUME_GROUP_INTERVAL).await;
+                }
+                let _ = client.unpause(&s.gid).await;
+                if let Ok(st) = client.tell_status(&s.gid).await {
+                    emit_progress(&tx, &st).await;
+                }
+            }
+        });
+    }
+}
+
 async fn handle_client_cmd(
     client: &Client,
     cmd: EngineCmd,
@@ -688,12 +722,7 @@ async fn handle_client_cmd(
             if urls.is_empty() {
                 return Err("no URLs provided".into());
             }
-            let mut options = TaskOptions {
-                dir: Some(save_dir.to_string_lossy().to_string()),
-                split: Some(split as i32),
-                max_connection_per_server: Some((split as i32).max(1)),
-                ..Default::default()
-            };
+            let mut options = base_task_options(&save_dir, split);
             advanced.apply(&mut options);
             let dir = save_dir.to_string_lossy().to_string();
             let mut added = 0;
@@ -773,45 +802,7 @@ async fn handle_client_cmd(
         }
         EngineCmd::ResumeAll => {
             tracing::info!("resume all (staggered by host)");
-            let tasks = fetch_all_tasks(client).await;
-            let mut groups: Vec<(Option<String>, Vec<aria2_ws::response::Status>)> = Vec::new();
-            for s in tasks {
-                if s.status != Aria2TaskStatus::Paused {
-                    continue;
-                }
-                let url = s
-                    .files
-                    .first()
-                    .and_then(|f| f.uris.first())
-                    .map(|u| u.uri.clone())
-                    .unwrap_or_default();
-                let host = url_host(&url);
-                match groups.iter_mut().find(|(h, _)| *h == host) {
-                    Some((_, v)) => v.push(s),
-                    None => groups.push((host, vec![s])),
-                }
-            }
-            if groups.is_empty() {
-                return Ok(());
-            }
-            const RESUME_GROUP_INTERVAL: Duration = Duration::from_millis(500);
-            tracing::info!(groups = groups.len(), "resume all staggered groups");
-            for (host, group) in groups {
-                tracing::info!(?host, count = group.len(), "resuming group");
-                let client = client.clone();
-                let tx = event_tx.clone();
-                tokio::spawn(async move {
-                    for (i, s) in group.iter().enumerate() {
-                        if i > 0 {
-                            tokio::time::sleep(RESUME_GROUP_INTERVAL).await;
-                        }
-                        let _ = client.unpause(&s.gid).await;
-                        if let Ok(st) = client.tell_status(&s.gid).await {
-                            emit_progress(&tx, &st).await;
-                        }
-                    }
-                });
-            }
+            resume_staggered(client, None, event_tx).await;
         }
         EngineCmd::ResumeGids(gids) => {
             if gids.is_empty() {
@@ -819,45 +810,7 @@ async fn handle_client_cmd(
             }
             tracing::info!(count = gids.len(), "resume gids (staggered by host)");
             let gids: HashSet<String> = gids.into_iter().collect();
-            let tasks = fetch_all_tasks(client).await;
-            let mut groups: Vec<(Option<String>, Vec<aria2_ws::response::Status>)> = Vec::new();
-            for s in tasks {
-                if !gids.contains(&s.gid) || s.status != Aria2TaskStatus::Paused {
-                    continue;
-                }
-                let url = s
-                    .files
-                    .first()
-                    .and_then(|f| f.uris.first())
-                    .map(|u| u.uri.clone())
-                    .unwrap_or_default();
-                let host = url_host(&url);
-                match groups.iter_mut().find(|(h, _)| *h == host) {
-                    Some((_, v)) => v.push(s),
-                    None => groups.push((host, vec![s])),
-                }
-            }
-            if groups.is_empty() {
-                return Ok(());
-            }
-            const RESUME_GROUP_INTERVAL: Duration = Duration::from_millis(500);
-            tracing::info!(groups = groups.len(), "resume gids staggered groups");
-            for (host, group) in groups {
-                tracing::info!(?host, count = group.len(), "resuming group");
-                let client = client.clone();
-                let tx = event_tx.clone();
-                tokio::spawn(async move {
-                    for (i, s) in group.iter().enumerate() {
-                        if i > 0 {
-                            tokio::time::sleep(RESUME_GROUP_INTERVAL).await;
-                        }
-                        let _ = client.unpause(&s.gid).await;
-                        if let Ok(st) = client.tell_status(&s.gid).await {
-                            emit_progress(&tx, &st).await;
-                        }
-                    }
-                });
-            }
+            resume_staggered(client, Some(gids), event_tx).await;
         }
         EngineCmd::RemoveAll { delete_files } => {
             tracing::info!(delete_files, "remove all");
@@ -964,11 +917,6 @@ async fn handle_client_cmd(
                         num_pieces: s.num_pieces,
                         piece_length: s.piece_length,
                         files,
-                        upload_speed: s.upload_speed,
-                        num_seeders: s.num_seeders,
-                        info_hash: s.info_hash,
-                        error_code: s.error_code,
-                        error_message: s.error_message,
                     };
                     let _ = event_tx.send(EngineEvent::TaskDetails { gid, details });
                 }
@@ -987,15 +935,10 @@ async fn handle_client_cmd(
             bt_metadata_only,
         } => {
             tracing::info!(?gid, ?url, ?save_dir, split, paused, "re-add ghost task");
-            let mut options = TaskOptions {
-                gid: Some(gid.clone()),
-                dir: Some(save_dir.to_string_lossy().to_string()),
-                split: Some(split as i32),
-                max_connection_per_server: Some((split as i32).max(1)),
-                r#continue: Some(true),
-                auto_file_renaming: Some(true),
-                ..Default::default()
-            };
+            let mut options = base_task_options(&save_dir, split);
+            options.gid = Some(gid.clone());
+            options.r#continue = Some(true);
+            options.auto_file_renaming = Some(true);
             apply_bt_url_options(&mut options, &url, bt_metadata_only);
             match client
                 .add_uri(vec![url.clone()], Some(options), None, None)
@@ -1033,15 +976,10 @@ async fn handle_client_cmd(
         } => {
             tracing::info!(?gid, ?url, ?save_dir, split, "re-download task");
             let _ = client.remove_download_result(&gid).await;
-            let mut options = TaskOptions {
-                gid: Some(gid.clone()),
-                dir: Some(save_dir.to_string_lossy().to_string()),
-                split: Some(split as i32),
-                max_connection_per_server: Some((split as i32).max(1)),
-                r#continue: Some(false),
-                auto_file_renaming: Some(true),
-                ..Default::default()
-            };
+            let mut options = base_task_options(&save_dir, split);
+            options.gid = Some(gid.clone());
+            options.r#continue = Some(false);
+            options.auto_file_renaming = Some(true);
             apply_bt_url_options(&mut options, &url, bt_metadata_only);
             match client
                 .add_uri(vec![url.clone()], Some(options), None, None)
@@ -1098,7 +1036,14 @@ async fn handle_client_cmd(
                 tracing::warn!("apply_global_options: {e}");
             }
         }
-        _ => {}
+        EngineCmd::Shutdown
+        | EngineCmd::ForceKill
+        | EngineCmd::CheckAria2Update
+        | EngineCmd::ReloadSchedules
+        | EngineCmd::RetryAria2Fetch
+        | EngineCmd::RestartEngine => {
+            tracing::debug!("cmd handled by supervisor, not dispatched here");
+        }
     }
     Ok(())
 }
@@ -1201,17 +1146,11 @@ async fn handle_check_update(event_tx: &EventTx) {
     match crate::updater::fetch_latest_release("AnInsomniacy/aria2-next", slug).await {
         Ok(release) => {
             if release.version == current {
-                let _ = event_tx.send(EngineEvent::Aria2CheckResult {
-                    current,
-                    latest: None,
-                });
+                let _ = event_tx.send(EngineEvent::Aria2CheckResult { current });
             } else {
                 let settings = crate::config::load();
                 if settings.update.is_skipped("aria2-next", &release.version) {
-                    let _ = event_tx.send(EngineEvent::Aria2CheckResult {
-                        current,
-                        latest: None,
-                    });
+                    let _ = event_tx.send(EngineEvent::Aria2CheckResult { current });
                 } else {
                     match crate::aria2_fetcher::stage_update_download(&release, event_tx).await {
                         Ok(version) => {
@@ -1226,10 +1165,7 @@ async fn handle_check_update(event_tx: &EventTx) {
         }
         Err(e) => {
             tracing::warn!("update check failed: {e}");
-            let _ = event_tx.send(EngineEvent::Aria2CheckResult {
-                current,
-                latest: None,
-            });
+            let _ = event_tx.send(EngineEvent::Aria2CheckResult { current });
         }
     }
 }
@@ -1478,6 +1414,64 @@ fn start_scheduler(sidecar: &Sidecar, event_tx: &EventTx) -> JoinHandle<()> {
     run_scheduler(sidecar.client.clone(), event_tx.clone())
 }
 
+async fn graceful_stop(client: &Client, event_tx: &EventTx, warn_msg: &str) {
+    if let Err(e) = client.pause_all().await {
+        tracing::warn!("pause_all failed: {e}");
+    }
+    let mut paused = false;
+    for _ in 0..10 {
+        match client.tell_active().await {
+            Ok(list) if list.is_empty() => {
+                paused = true;
+                break;
+            }
+            _ => {}
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    if !paused {
+        tracing::warn!("{warn_msg}");
+    }
+    for status in fetch_all_tasks(client).await {
+        emit_progress(event_tx, &status).await;
+    }
+    let _ = client.save_session().await;
+    let _ = client.shutdown().await;
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn install_sidecar(
+    config: &SidecarConfig,
+    restart_tx: &mpsc::UnboundedSender<u64>,
+    event_tx: &EventTx,
+    generation: u64,
+    sidecar: &mut Option<Sidecar>,
+    poll_handles: &mut Vec<JoinHandle<()>>,
+    scheduler_handle: &mut Option<JoinHandle<()>>,
+    retry_count: &mut u32,
+) -> Result<(), String> {
+    for h in poll_handles.drain(..) {
+        h.abort();
+    }
+    if let Some(h) = scheduler_handle.take() {
+        h.abort();
+    }
+    *sidecar = None;
+    match boot(config, restart_tx, generation, event_tx).await {
+        Ok((s, applied)) => {
+            *poll_handles = on_sidecar_ready(&s, event_tx);
+            *scheduler_handle = Some(start_scheduler(&s, event_tx));
+            *sidecar = Some(s);
+            *retry_count = 0;
+            if let Some(v) = applied {
+                let _ = event_tx.send(EngineEvent::Aria2UpdateApplied { version: v });
+            }
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
+
 async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
     let session_path = crate::config::session_dir().unwrap_or_else(|| PathBuf::from("."));
     let download_dir = crate::config::load().download_dir;
@@ -1495,16 +1489,19 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
     let mut generation: u64 = 0;
     const MAX_RETRIES: u32 = 3;
 
-    match boot(&config, &restart_tx, generation, &event_tx).await {
-        Ok((s, applied)) => {
-            poll_handles = on_sidecar_ready(&s, &event_tx);
-            scheduler_handle = Some(start_scheduler(&s, &event_tx));
-            sidecar = Some(s);
-            retry_count = 0;
-            if let Some(v) = applied {
-                let _ = event_tx.send(EngineEvent::Aria2UpdateApplied { version: v });
-            }
-        }
+    match install_sidecar(
+        &config,
+        &restart_tx,
+        &event_tx,
+        generation,
+        &mut sidecar,
+        &mut poll_handles,
+        &mut scheduler_handle,
+        &mut retry_count,
+    )
+    .await
+    {
+        Ok(()) => {}
         Err(e) => {
             tracing::error!("initial sidecar startup failed: {e}");
             let _ = event_tx.send(EngineEvent::Aria2FetchFailed { error: e });
@@ -1521,29 +1518,7 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                 match &cmd {
                     EngineCmd::Shutdown => {
                         if let Some(ref s) = sidecar {
-                            if let Err(e) = s.client.pause_all().await {
-                                tracing::warn!("pause_all failed before shutdown: {e}");
-                            }
-
-                            let mut paused = false;
-                            for _ in 0..10 {
-                                match s.client.tell_active().await {
-                                    Ok(list) if list.is_empty() => {
-                                        paused = true;
-                                        break;
-                                    }
-                                    _ => {}
-                                }
-                                tokio::time::sleep(Duration::from_millis(200)).await;
-                            }
-                            if !paused {
-                                tracing::warn!("tasks did not fully pause before session save");
-                            }
-                            for status in fetch_all_tasks(&s.client).await {
-                                emit_progress(&event_tx, &status).await;
-                            }
-                            let _ = s.client.save_session().await;
-                            let _ = s.client.shutdown().await;
+                            graceful_stop(&s.client, &event_tx, "tasks did not fully pause before session save").await;
                         }
                         let _ = event_tx.send(EngineEvent::EngineStopped);
                         if let Some(h) = scheduler_handle.take() {
@@ -1586,20 +1561,20 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                         }
                     }
                     EngineCmd::RetryAria2Fetch => {
-                        for h in poll_handles.drain(..) { h.abort(); }
-                        if let Some(h) = scheduler_handle.take() { h.abort(); }
-                        sidecar = None;
                         generation += 1;
-                        match boot(&config, &restart_tx, generation, &event_tx).await {
-                            Ok((s, applied)) => {
-                                poll_handles = on_sidecar_ready(&s, &event_tx);
-                                scheduler_handle = Some(start_scheduler(&s, &event_tx));
-                                sidecar = Some(s);
-                                retry_count = 0;
-                                if let Some(v) = applied {
-                                    let _ = event_tx.send(EngineEvent::Aria2UpdateApplied { version: v });
-                                }
-                            }
+                        match install_sidecar(
+                            &config,
+                            &restart_tx,
+                            &event_tx,
+                            generation,
+                            &mut sidecar,
+                            &mut poll_handles,
+                            &mut scheduler_handle,
+                            &mut retry_count,
+                        )
+                        .await
+                        {
+                            Ok(()) => {}
                             Err(e) => {
                                 let _ = event_tx.send(EngineEvent::Aria2FetchFailed { error: e });
                             }
@@ -1607,40 +1582,23 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                     }
                     EngineCmd::RestartEngine => {
                         if let Some(ref s) = sidecar {
-                            let _ = s.client.pause_all().await;
-                            let mut paused = false;
-                            for _ in 0..10 {
-                                match s.client.tell_active().await {
-                                    Ok(list) if list.is_empty() => {
-                                        paused = true;
-                                        break;
-                                    }
-                                    _ => tokio::time::sleep(Duration::from_millis(200)).await,
-                                }
-                            }
-                            if !paused {
-                                tracing::warn!("tasks did not fully pause before engine restart");
-                            }
-                            for status in fetch_all_tasks(&s.client).await {
-                                emit_progress(&event_tx, &status).await;
-                            }
-                            let _ = s.client.save_session().await;
-                            let _ = s.client.shutdown().await;
+                            graceful_stop(&s.client, &event_tx, "tasks did not fully pause before engine restart").await;
                             sidecar = None;
                         }
-                        for h in poll_handles.drain(..) { h.abort(); }
-                        if let Some(h) = scheduler_handle.take() { h.abort(); }
                         generation += 1;
-                        match boot(&config, &restart_tx, generation, &event_tx).await {
-                            Ok((s, applied)) => {
-                                poll_handles = on_sidecar_ready(&s, &event_tx);
-                                scheduler_handle = Some(start_scheduler(&s, &event_tx));
-                                sidecar = Some(s);
-                                retry_count = 0;
-                                if let Some(v) = applied {
-                                    let _ = event_tx.send(EngineEvent::Aria2UpdateApplied { version: v });
-                                }
-                            }
+                        match install_sidecar(
+                            &config,
+                            &restart_tx,
+                            &event_tx,
+                            generation,
+                            &mut sidecar,
+                            &mut poll_handles,
+                            &mut scheduler_handle,
+                            &mut retry_count,
+                        )
+                        .await
+                        {
+                            Ok(()) => {}
                             Err(e) => {
                                 let _ = event_tx.send(EngineEvent::EngineDegraded { reason: e });
                             }
@@ -1669,26 +1627,30 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                     continue;
                 }
                 tracing::warn!("aria2-next exited, restarting...");
-                for h in poll_handles.drain(..) { h.abort(); }
-                if let Some(h) = scheduler_handle.take() { h.abort(); }
-                sidecar = None;
                 retry_count += 1;
                 if retry_count > MAX_RETRIES {
                     tracing::error!("sidecar restart failed after {MAX_RETRIES} attempts");
+                    for h in poll_handles.drain(..) { h.abort(); }
+                    if let Some(h) = scheduler_handle.take() { h.abort(); }
+                    sidecar = None;
                     let _ = event_tx.send(EngineEvent::Aria2FetchFailed {
                         error: "aria2-next crashed repeatedly".to_string(),
                     });
                     continue;
                 }
-                match boot(&config, &restart_tx, generation, &event_tx).await {
-                    Ok((s, applied)) => {
-                        poll_handles = on_sidecar_ready(&s, &event_tx);
-                        scheduler_handle = Some(start_scheduler(&s, &event_tx));
-                        sidecar = Some(s);
-                        retry_count = 0;
-                        if let Some(v) = applied {
-                            let _ = event_tx.send(EngineEvent::Aria2UpdateApplied { version: v });
-                        }
+                match install_sidecar(
+                    &config,
+                    &restart_tx,
+                    &event_tx,
+                    generation,
+                    &mut sidecar,
+                    &mut poll_handles,
+                    &mut scheduler_handle,
+                    &mut retry_count,
+                )
+                .await
+                {
+                    Ok(()) => {
                         tracing::info!("aria2-next restarted successfully");
                     }
                     Err(e) => {

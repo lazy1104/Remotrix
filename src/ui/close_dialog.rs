@@ -2,7 +2,7 @@ use iced::widget::{button, column, row, text};
 use iced::{Alignment, Element};
 
 use crate::i18n::{Fluent, Tr};
-use crate::message::{CloseDialogChoice, Message};
+use crate::message::{CloseDialogChoice, Message, WindowMsg};
 use crate::ui::components::dialog::{overlay, Dialog};
 use crate::ui::dims::*;
 use crate::ui::theme;
@@ -17,12 +17,16 @@ pub fn view<'a>(fluent: &'a Fluent, _theme: &iced::Theme) -> Element<'a, Message
         .style(theme::style::text::secondary);
 
     let close_btn = button(text(fluent.get(Tr::CloseAction)).size(FONT_BODY))
-        .on_press(Message::CloseDialog(CloseDialogChoice::Close))
+        .on_press(Message::Window(WindowMsg::CloseDialog(
+            CloseDialogChoice::Close,
+        )))
         .padding(PADDING_BUTTON_LG)
         .style(theme::style::button::danger());
 
     let cancel_btn = button(text(fluent.get(Tr::Cancel)).size(FONT_BODY))
-        .on_press(Message::CloseDialog(CloseDialogChoice::Cancel))
+        .on_press(Message::Window(WindowMsg::CloseDialog(
+            CloseDialogChoice::Cancel,
+        )))
         .padding(PADDING_BUTTON_LG)
         .style(theme::style::button::secondary());
 
@@ -50,7 +54,9 @@ pub fn view<'a>(fluent: &'a Fluent, _theme: &iced::Theme) -> Element<'a, Message
     overlay(
         Dialog::new()
             .title(fluent.get(Tr::ConfirmCloseTitle))
-            .with_close(Message::CloseDialog(CloseDialogChoice::Cancel))
+            .with_close(Message::Window(WindowMsg::CloseDialog(
+                CloseDialogChoice::Cancel,
+            )))
             .body(body)
             .footer(buttons)
             .build(),

@@ -2,7 +2,7 @@ use iced::widget::{button, row, text};
 use iced::{Alignment, Element};
 
 use crate::i18n::{Fluent, Tr};
-use crate::message::{ConfirmAction, Message};
+use crate::message::{ConfirmAction, DialogMsg, EngineMsg, Message, SettingsMsg, TaskMsg};
 use crate::ui::components::dialog::{overlay, Dialog};
 use crate::ui::dims::*;
 use crate::ui::theme;
@@ -39,18 +39,18 @@ pub fn view<'a>(
         .style(theme::style::text::secondary);
 
     let cancel_btn = button(text(fluent.get(Tr::Cancel)).size(FONT_BODY))
-        .on_press(Message::ConfirmCancel)
+        .on_press(Message::Dialog(DialogMsg::ConfirmCancel))
         .padding(PADDING_BUTTON_LG)
         .style(theme::style::button::secondary());
 
     let buttons: Element<'a, Message> = match action {
         ConfirmAction::DeleteTask(gid) => {
             let remove_record_btn = button(text(fluent.get(Tr::RemoveRecord)).size(FONT_BODY))
-                .on_press(Message::RemoveTask(gid.clone()))
+                .on_press(Message::Task(TaskMsg::RemoveTask(gid.clone())))
                 .padding(PADDING_BUTTON_LG)
                 .style(theme::style::button::secondary());
             let delete_files_btn = button(text(fluent.get(Tr::DeleteFiles)).size(FONT_BODY))
-                .on_press(Message::DeleteTask(gid.clone()))
+                .on_press(Message::Task(TaskMsg::DeleteTask(gid.clone())))
                 .padding(PADDING_BUTTON_LG)
                 .style(theme::style::button::danger());
 
@@ -61,7 +61,7 @@ pub fn view<'a>(
         }
         ConfirmAction::RemoveMissingFileTask(gid) => {
             let remove_btn = button(text(fluent.get(Tr::RemoveRecord)).size(FONT_BODY))
-                .on_press(Message::RemoveTask(gid.clone()))
+                .on_press(Message::Task(TaskMsg::RemoveTask(gid.clone())))
                 .padding(PADDING_BUTTON_LG)
                 .style(theme::style::button::danger());
 
@@ -73,11 +73,11 @@ pub fn view<'a>(
         ConfirmAction::DeleteAll => {
             let remove_all_records_btn =
                 button(text(fluent.get(Tr::RemoveAllRecords)).size(FONT_BODY))
-                    .on_press(Message::RemoveAllRecords)
+                    .on_press(Message::Task(TaskMsg::RemoveAllRecords))
                     .padding(PADDING_BUTTON_LG)
                     .style(theme::style::button::secondary());
             let delete_all_files_btn = button(text(fluent.get(Tr::DeleteAllFiles)).size(FONT_BODY))
-                .on_press(Message::DeleteAll)
+                .on_press(Message::Task(TaskMsg::DeleteAll))
                 .padding(PADDING_BUTTON_LG)
                 .style(theme::style::button::danger());
 
@@ -88,7 +88,7 @@ pub fn view<'a>(
         }
         ConfirmAction::ClearCompleted => {
             let confirm_btn = button(text(fluent.get(Tr::Confirm)).size(FONT_BODY))
-                .on_press(Message::ClearCompleted)
+                .on_press(Message::Task(TaskMsg::ClearCompleted))
                 .padding(PADDING_BUTTON_LG)
                 .style(theme::style::button::danger());
 
@@ -99,11 +99,11 @@ pub fn view<'a>(
         }
         ConfirmAction::LeaveSettings { .. } => {
             let discard_btn = button(text(fluent.get(Tr::Discard)).size(FONT_BODY))
-                .on_press(Message::DiscardAndLeaveSettings)
+                .on_press(Message::Settings(SettingsMsg::DiscardAndLeaveSettings))
                 .padding(PADDING_BUTTON_LG)
                 .style(theme::style::button::danger());
             let apply_btn = button(text(fluent.get(Tr::Apply)).size(FONT_BODY))
-                .on_press(Message::ApplyAndLeaveSettings)
+                .on_press(Message::Settings(SettingsMsg::ApplyAndLeaveSettings))
                 .padding(PADDING_BUTTON_LG)
                 .style(theme::style::button::primary());
 
@@ -114,7 +114,7 @@ pub fn view<'a>(
         }
         ConfirmAction::RestartEngine { .. } => {
             let confirm_btn = button(text(fluent.get(Tr::Confirm)).size(FONT_BODY))
-                .on_press(Message::ConfirmRestartEngine)
+                .on_press(Message::Engine(EngineMsg::ConfirmRestartEngine))
                 .padding(PADDING_BUTTON_LG)
                 .style(theme::style::button::primary());
 
@@ -128,7 +128,7 @@ pub fn view<'a>(
     overlay(
         Dialog::new()
             .title(fluent.get(title_key))
-            .with_close(Message::ConfirmCancel)
+            .with_close(Message::Dialog(DialogMsg::ConfirmCancel))
             .body(body)
             .footer(buttons)
             .build(),

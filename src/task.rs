@@ -50,14 +50,15 @@ pub enum TaskStatus {
 }
 
 impl TaskStatus {
-    pub fn label(self) -> &'static str {
-        match self {
-            TaskStatus::Waiting => "Waiting",
-            TaskStatus::Active => "Downloading",
-            TaskStatus::Paused => "Paused",
-            TaskStatus::Completed => "Completed",
-            TaskStatus::Error => "Error",
-            TaskStatus::Removed => "Removed",
+    pub fn from_engine(status: &str) -> Self {
+        match status {
+            "waiting" => TaskStatus::Waiting,
+            "active" => TaskStatus::Active,
+            "paused" => TaskStatus::Paused,
+            "complete" => TaskStatus::Completed,
+            "error" => TaskStatus::Error,
+            "removed" => TaskStatus::Removed,
+            _ => TaskStatus::Waiting,
         }
     }
 }
@@ -77,11 +78,6 @@ pub struct TaskDetails {
     pub num_pieces: u64,
     pub piece_length: u64,
     pub files: Vec<TaskFile>,
-    pub upload_speed: u64,
-    pub num_seeders: Option<u64>,
-    pub info_hash: Option<String>,
-    pub error_code: Option<String>,
-    pub error_message: Option<String>,
 }
 
 pub fn format_size(bytes: u64) -> String {
