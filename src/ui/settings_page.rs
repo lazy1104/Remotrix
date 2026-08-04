@@ -54,7 +54,7 @@ impl SettingsUiState {
         Self {
             download_picker: PathPicker::folder(
                 settings.download_dir.to_string_lossy().into_owned(),
-                true,
+                false,
             ),
             ed2k_server_list_picker: PathPicker::file(settings.aria2.ed2k_server_list.clone()),
             ed2k_node_list_picker: PathPicker::file(settings.aria2.ed2k_node_list.clone()),

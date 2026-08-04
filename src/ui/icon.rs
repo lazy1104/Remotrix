@@ -1,6 +1,6 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// d7a24b2aee04c03007d4c5718c2bab34710324e25bbccde5f4d21a81dc0ff6d6
+// d44890d7a3cd342961b9a89f59db91af1debbb622c770722ef3f1208a73c6f17
 use iced::widget::{text, Text};
 use iced::Font;
 
@@ -17,20 +17,17 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("circle_check", "\u{E226}"),
     ("circle_help", "\u{E082}"),
     ("circle_x", "\u{E084}"),
-    ("clock", "\u{E087}"),
     ("collapse", "\u{E228}"),
     ("connections", "\u{E37F}"),
     ("copy", "\u{E09E}"),
     ("download", "\u{E0B2}"),
     ("download_arrow", "\u{E455}"),
-    ("eraser", "\u{E28F}"),
     ("expand", "\u{E211}"),
     ("external_link", "\u{E0B9}"),
     ("file", "\u{E0C0}"),
     ("folder", "\u{E0D7}"),
     ("folder_clock", "\u{E32F}"),
     ("folder_open", "\u{E247}"),
-    ("folder_search", "\u{E339}"),
     ("globe", "\u{E0E8}"),
     ("info", "\u{E0F9}"),
     ("layers", "\u{E529}"),
@@ -44,7 +41,6 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("settings", "\u{E154}"),
     ("share", "\u{E156}"),
     ("sliders", "\u{E29A}"),
-    ("sort", "\u{E37D}"),
     ("square", "\u{E167}"),
     ("trash", "\u{E18E}"),
     ("triangle_alert", "\u{E193}"),
@@ -122,10 +118,6 @@ pub fn folder_clock<'a>() -> Text<'a> {
 
 pub fn folder_open<'a>() -> Text<'a> {
     icon("\u{E247}")
-}
-
-pub fn folder_search<'a>() -> Text<'a> {
-    icon("\u{E339}")
 }
 
 pub fn globe<'a>() -> Text<'a> {

@@ -207,7 +207,7 @@ impl PathPicker {
 
         let reveal_btn: Element<'a, M> = {
             let mut btn = button(Self::icon_content(
-                icon::folder_search().size(FONT_ICON).color(text_secondary),
+                icon::folder_open().size(FONT_ICON).color(text_secondary),
             ))
             .style(theme::style::button::grouped_icon(false, false))
             .height(Length::Fill);
@@ -228,7 +228,7 @@ impl PathPicker {
 
             let browse_btn: Element<'a, M> = tooltip::standard(
                 button(Self::icon_content(
-                    icon::folder_open().size(FONT_ICON).color(text_secondary),
+                    icon::folder().size(FONT_ICON).color(text_secondary),
                 ))
                 .on_press(browse_msg)
                 .style(theme::style::button::grouped_icon(false, false))
