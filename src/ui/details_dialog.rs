@@ -130,7 +130,7 @@ pub fn view<'a>(
         .center_y(Length::Fill)
         .into(),
         Some(task) => match state.active_tab {
-            DetailsTab::Summary => summary_tab(fluent, theme, task),
+            DetailsTab::Summary => summary_tab(fluent, theme, task, state.details.as_ref()),
             DetailsTab::Activity => activity_tab(fluent, theme, task, state),
             DetailsTab::Files => files_tab(fluent, theme, task, state),
         },
@@ -158,6 +158,7 @@ fn summary_tab<'a>(
     fluent: &'a Fluent,
     _theme: &'a iced::Theme,
     task: &'a DownloadTask,
+    details: Option<&'a TaskDetails>,
 ) -> Element<'a, Message> {
     let status_val = match task.status {
         crate::task::TaskStatus::Waiting => fluent.get(Tr::Waiting),
@@ -168,7 +169,7 @@ fn summary_tab<'a>(
         crate::task::TaskStatus::Removed => fluent.get(Tr::Removed),
     };
 
-    let rows = [
+    let mut rows = vec![
         (fluent.get(Tr::FieldGid), task.gid.clone()),
         (fluent.get(Tr::FieldFileName), task.name.clone()),
         (
@@ -181,6 +182,37 @@ fn summary_tab<'a>(
             format_add_time(task.added_at),
         ),
     ];
+
+    if task.info_hash.is_some() {
+        if let Some(hash) = task.info_hash.as_ref() {
+            rows.push((fluent.get(Tr::FieldInfoHash), hash.to_uppercase()));
+        }
+        if let Some(details) = details {
+            if details.num_pieces > 0 {
+                rows.push((fluent.get(Tr::PieceSize), format_size(details.piece_length)));
+                rows.push((
+                    fluent.get(Tr::FieldPieceCount),
+                    details.num_pieces.to_string(),
+                ));
+            }
+            if let Some(date) = details.creation_date {
+                rows.push((fluent.get(Tr::FieldCreationDate), format_add_time(date)));
+            }
+            if let Some(mode) = details.mode.as_deref() {
+                let mode_val = if mode == "single" {
+                    fluent.get(Tr::TorrentModeSingle)
+                } else {
+                    fluent.get(Tr::TorrentModeMulti)
+                };
+                rows.push((fluent.get(Tr::FieldTorrentMode), mode_val));
+            }
+            if let Some(comment) = details.comment.as_deref() {
+                if !comment.is_empty() {
+                    rows.push((fluent.get(Tr::FieldComment), comment.to_string()));
+                }
+            }
+        }
+    }
 
     key_value_list(rows)
 }

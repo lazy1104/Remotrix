@@ -78,6 +78,9 @@ pub struct TaskDetails {
     pub num_pieces: u64,
     pub piece_length: u64,
     pub files: Vec<TaskFile>,
+    pub creation_date: Option<i64>,
+    pub comment: Option<String>,
+    pub mode: Option<String>,
 }
 
 pub fn format_size(bytes: u64) -> String {

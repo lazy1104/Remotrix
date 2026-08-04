@@ -18,12 +18,6 @@ pub fn key_value_row<'a, Message: 'a>(
                 .width(Length::Fixed(140.0)),
         )
         .push(
-            container(Space::new())
-                .width(Length::Fixed(1.0))
-                .height(Length::Fill)
-                .style(theme::style::separator),
-        )
-        .push(
             truncated_text(value.into())
                 .size(FONT_MEDIUM)
                 .max_lines(2)
