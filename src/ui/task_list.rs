@@ -427,12 +427,7 @@ fn task_card<'a>(
     .padding(PADDING_TOOLBAR_CAPSULE)
     .style(theme::style::toolbar_capsule);
 
-    let bar_color = match t.status {
-        TaskStatus::Paused => theme::primary_weak(theme),
-        TaskStatus::Error => theme::danger(theme),
-        TaskStatus::Completed => theme::success(theme),
-        _ => theme::primary(theme),
-    };
+    let bar_color = theme::task_bar_color(theme, t.status);
     let bar = progress_bar(0.0..=100.0, pct)
         .girth(Length::Fixed(8.0))
         .style(theme::style::progress::task(bar_color));
@@ -484,7 +479,7 @@ fn task_card<'a>(
         .push(
             text(speed_text)
                 .size(FONT_SMALL)
-                .color(theme::success(theme)),
+                .color(theme::primary(theme)),
         )
         .push(sep())
         .push(icon::connections().size(FONT_SMALL).color(text_secondary))

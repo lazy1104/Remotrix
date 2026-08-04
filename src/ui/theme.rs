@@ -261,6 +261,15 @@ pub fn primary_weak(t: &Theme) -> Color {
     t.extended_palette().primary.weak.color
 }
 
+pub fn task_bar_color(t: &Theme, status: crate::task::TaskStatus) -> Color {
+    match status {
+        crate::task::TaskStatus::Paused => primary_weak(t),
+        crate::task::TaskStatus::Error => danger(t),
+        crate::task::TaskStatus::Completed => success(t),
+        _ => primary(t),
+    }
+}
+
 pub fn text_secondary(t: &Theme) -> Color {
     t.extended_palette().background.base.text
 }

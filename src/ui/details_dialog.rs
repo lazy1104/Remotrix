@@ -236,11 +236,7 @@ fn activity_tab<'a>(
         );
 
         let pct = task.progress_pct();
-        let bar_color = match task.status {
-            crate::task::TaskStatus::Paused => theme::warning(theme),
-            crate::task::TaskStatus::Error => theme::danger(theme),
-            _ => theme::success(theme),
-        };
+        let bar_color = theme::task_bar_color(theme, task.status);
         let bar = progress_bar(0.0..=100.0, pct)
             .girth(Length::Fixed(8.0))
             .style(theme::style::progress::task(bar_color));
@@ -285,7 +281,7 @@ fn activity_tab<'a>(
                         .push(
                             text(speed_str)
                                 .size(FONT_SMALL)
-                                .color(theme::success(theme)),
+                                .color(theme::primary(theme)),
                         )
                         .spacing(SPACE_SM)
                         .align_y(Alignment::Center),
@@ -334,11 +330,7 @@ fn files_tab<'a>(
     let text_secondary_fn = theme::style::text::secondary;
 
     let pct = task.progress_pct();
-    let bar_color = match task.status {
-        crate::task::TaskStatus::Paused => theme::warning(theme),
-        crate::task::TaskStatus::Error => theme::danger(theme),
-        _ => theme::success(theme),
-    };
+    let bar_color = theme::task_bar_color(theme, task.status);
     let overall_bar = progress_bar(0.0..=100.0, pct)
         .girth(Length::Fixed(8.0))
         .style(theme::style::progress::task(bar_color));
