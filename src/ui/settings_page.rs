@@ -17,6 +17,7 @@ use crate::message::{
 use chrono::TimeZone;
 use iced::Color;
 
+use crate::ui::components::copyable_text::copyable_text;
 use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::path_picker::{PathPicker, PathPickerEvent};
 use crate::ui::components::slim_scrollable::slim_scrollable;
@@ -103,6 +104,7 @@ pub struct SettingsPageContext<'a> {
     pub aria2_status: Option<(&'a str, &'a str)>,
     pub aria2_fetch_error: Option<&'a str>,
     pub update_pending: Option<&'a str>,
+    pub update_check_in_flight: bool,
     pub ua_editor: &'a text_editor::Content,
     pub bt_tracker_editor: &'a text_editor::Content,
     pub path_history: &'a HashMap<String, Vec<String>>,
@@ -124,6 +126,7 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
         aria2_status,
         aria2_fetch_error,
         update_pending,
+        update_check_in_flight,
         ua_editor,
         bt_tracker_editor,
         path_history,
@@ -132,7 +135,16 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
     let accent = theme::accent(theme);
     let dirty = settings != applied_settings;
     let content = match category {
-        SettingsCategory::General => general_view(fluent, theme, settings, *font_restart_required),
+        SettingsCategory::General => general_view(
+            fluent,
+            theme,
+            settings,
+            *font_restart_required,
+            *aria2_version,
+            *aria2_check_msg,
+            *update_pending,
+            *update_check_in_flight,
+        ),
         SettingsCategory::Download => {
             download_view(fluent, theme, settings, settings_ui, path_history)
         }
@@ -155,10 +167,8 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
             settings_ui,
             *engine_restart_pending,
             *aria2_version,
-            *aria2_check_msg,
             *aria2_status,
             *aria2_fetch_error,
-            *update_pending,
         ),
     };
 
@@ -227,11 +237,16 @@ fn settings_title(fluent: &Fluent, category: SettingsCategory) -> String {
     fluent.get(key)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn general_view<'a>(
     fluent: &'a Fluent,
     theme: &iced::Theme,
     settings: &'a Settings,
     font_restart_required: bool,
+    aria2_version: Option<&'a str>,
+    aria2_check_msg: Option<&'a str>,
+    update_pending: Option<&'a str>,
+    update_check_in_flight: bool,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
     let mode_opts = vec![
@@ -251,6 +266,33 @@ fn general_view<'a>(
 
     column![]
         .spacing(SPACE_SM)
+        .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
+        .push(group_title(fluent, Tr::SystemInfo, accent))
+        .push(setting_row_auto(
+            fluent.get(Tr::SystemPlatform),
+            copyable_text(
+                crate::updater::platform_display(),
+                Message::CopyText(crate::updater::platform_display()),
+            )
+            .into(),
+        ))
+        .push(setting_row_auto(
+            fluent.get(Tr::AppVersion),
+            copyable_text(
+                format!("v{}", env!("CARGO_PKG_VERSION")),
+                Message::CopyText(format!("v{}", env!("CARGO_PKG_VERSION"))),
+            )
+            .into(),
+        ))
+        .push(setting_row_auto(
+            fluent.get(Tr::Aria2Version),
+            copyable_text(
+                aria2_version.map_or("--".into(), |v| format!("v{v}")),
+                Message::CopyText(aria2_version.map_or("--".into(), |v| format!("v{v}"))),
+            )
+            .into(),
+        ))
+        .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::Appearance, accent))
         .push(theme_color_swatches(fluent, settings))
         .push(labeled_pick(
@@ -284,7 +326,159 @@ fn general_view<'a>(
             |opt| Message::Settings(SettingsMsg::LocaleChanged(opt.value)),
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
+        .push(group_title(fluent, Tr::AutoUpdate, accent))
+        .push(labeled_toggle(
+            fluent.get(Tr::AutoUpdate),
+            settings.update.enabled,
+            SettingKey::AutoUpdateEnabled,
+        ))
+        .push(if settings.update.enabled {
+            let freq_opts = vec![
+                Labeled {
+                    value: 0,
+                    label: fluent.get(Tr::IntervalEveryStartup),
+                },
+                Labeled {
+                    value: 6,
+                    label: fluent.get(Tr::Interval6Hours),
+                },
+                Labeled {
+                    value: 12,
+                    label: fluent.get(Tr::Interval12Hours),
+                },
+                Labeled {
+                    value: 24,
+                    label: fluent.get(Tr::IntervalDaily),
+                },
+                Labeled {
+                    value: 168,
+                    label: fluent.get(Tr::IntervalWeekly),
+                },
+            ];
+            labeled_pick(
+                fluent,
+                fluent.get(Tr::UpdateFrequency),
+                freq_opts,
+                Some(settings.update.interval_hours),
+                |opt| {
+                    Message::Settings(SettingsMsg::SettingChanged(
+                        SettingKey::UpdateCheckInterval,
+                        SettingValue::Num(opt.value as u64),
+                    ))
+                },
+            )
+        } else {
+            iced::widget::Space::new().height(Length::Fixed(0.0)).into()
+        })
+        .push(labeled_pick(
+            fluent,
+            fluent.get(Tr::UpdateScope),
+            vec![
+                Labeled {
+                    value: crate::config::UpdateScope::App,
+                    label: fluent.get(Tr::ScopeApp),
+                },
+                Labeled {
+                    value: crate::config::UpdateScope::Engine,
+                    label: fluent.get(Tr::ScopeEngine),
+                },
+                Labeled {
+                    value: crate::config::UpdateScope::Both,
+                    label: fluent.get(Tr::ScopeBoth),
+                },
+            ],
+            Some(settings.update.scope),
+            |opt| {
+                Message::Settings(SettingsMsg::SettingChanged(
+                    SettingKey::UpdateScope,
+                    SettingValue::Text(opt.value.as_str().into()),
+                ))
+            },
+        ))
+        .push(last_check_row(fluent, settings, update_check_in_flight))
+        .push(update_status_row(
+            fluent,
+            aria2_check_msg,
+            update_pending,
+            update_check_in_flight,
+        ))
         .into()
+}
+
+fn last_check_row<'a>(
+    fluent: &'a Fluent,
+    settings: &'a Settings,
+    update_check_in_flight: bool,
+) -> Element<'a, Message> {
+    let time_str = match settings.update.last_check_time {
+        Some(ms) => match chrono::Local.timestamp_millis_opt(ms) {
+            chrono::LocalResult::Single(t) => t.format("%Y-%m-%d %H:%M").to_string(),
+            _ => fluent.get(Tr::Never),
+        },
+        None => fluent.get(Tr::Never),
+    };
+    let last_check_str = fluent.get_args(Tr::LastCheckTime, &{
+        let mut a = std::collections::HashMap::new();
+        a.insert(std::borrow::Cow::from("time"), time_str.into());
+        a
+    });
+    setting_row_auto(
+        fluent.get(Tr::LastCheck),
+        row![
+            button(text(fluent.get(Tr::CheckNow)).size(FONT_SMALL))
+                .on_press_maybe(if update_check_in_flight {
+                    None
+                } else {
+                    Some(Message::Settings(SettingsMsg::CheckUpdatesNow))
+                })
+                .padding(PADDING_BUTTON_SM)
+                .style(theme::style::button::secondary()),
+            text(last_check_str)
+                .size(FONT_SMALL)
+                .style(theme::style::text::secondary),
+        ]
+        .spacing(SPACE_LG)
+        .align_y(Alignment::Center)
+        .into(),
+    )
+}
+
+fn update_status_row<'a>(
+    fluent: &'a Fluent,
+    aria2_check_msg: Option<&'a str>,
+    update_pending: Option<&'a str>,
+    update_check_in_flight: bool,
+) -> Element<'a, Message> {
+    let status = if let Some(pending) = update_pending {
+        row![
+            button(text(fluent.get(Tr::RestartToUpdate)).size(FONT_SMALL))
+                .on_press(Message::Engine(EngineMsg::RestartEngine))
+                .padding(PADDING_BUTTON_SM)
+                .style(theme::style::button::primary()),
+            text(format!(
+                "v{pending} - {}",
+                fluent.get(Tr::PendingUpdateHint)
+            ))
+            .size(FONT_SMALL)
+            .style(theme::style::text::secondary),
+        ]
+        .spacing(SPACE_LG)
+        .align_y(Alignment::Center)
+        .into()
+    } else if update_check_in_flight {
+        text(fluent.get(Tr::CheckingUpdate))
+            .size(FONT_SMALL)
+            .style(theme::style::text::secondary)
+            .into()
+    } else if let Some(msg) = aria2_check_msg {
+        text(msg)
+            .size(FONT_SMALL)
+            .style(theme::style::text::secondary)
+            .into()
+    } else {
+        iced::widget::Space::new().height(Length::Fixed(0.0)).into()
+    };
+    setting_row_auto(String::new(), status)
 }
 
 fn theme_color_swatches<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, Message> {
@@ -1141,22 +1335,11 @@ fn advanced_view<'a>(
     settings_ui: &'a SettingsUiState,
     engine_restart_pending: bool,
     aria2_version: Option<&'a str>,
-    aria2_check_msg: Option<&'a str>,
     aria2_status: Option<(&'a str, &'a str)>,
     aria2_fetch_error: Option<&'a str>,
-    update_pending: Option<&'a str>,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
     let text_secondary = theme::text_secondary(theme);
-
-    let auto_check_enabled = settings.update.should_auto_check("aria2-next");
-    let update_toggle = setting_row(
-        fluent.get(Tr::AutoCheckUpdate),
-        toggler(auto_check_enabled)
-            .on_toggle(|v| Message::Settings(SettingsMsg::SetAutoCheck(v)))
-            .width(Length::Fixed(50.0))
-            .into(),
-    );
 
     let mut engine_rows: Vec<Element<Message>> = Vec::new();
 
@@ -1238,42 +1421,12 @@ fn advanced_view<'a>(
 
     let mut btn_row = row![].spacing(SPACE_2XL);
 
-    if let Some(pending) = update_pending {
-        btn_row = btn_row.push(
-            button(text(fluent.get(Tr::RestartToUpdate)).size(FONT_SMALL))
-                .on_press(Message::Engine(EngineMsg::RestartEngine))
-                .padding(PADDING_BUTTON_SM)
-                .style(theme::style::button::primary()),
-        );
-        btn_row = btn_row.push(
-            text(format!(
-                "v{pending} - {}",
-                fluent.get(Tr::PendingUpdateHint)
-            ))
-            .size(FONT_SMALL)
-            .style(theme::style::text::secondary),
-        );
-    } else if aria2_fetch_error.is_some() {
+    if let Some(_err) = aria2_fetch_error {
         btn_row = btn_row.push(
             button(text(fluent.get(Tr::Retry)).size(FONT_SMALL))
                 .on_press(Message::Engine(EngineMsg::RetryAria2Fetch))
                 .padding(PADDING_BUTTON_SM)
                 .style(theme::style::button::secondary()),
-        );
-    } else {
-        btn_row = btn_row.push(
-            button(text(fluent.get(Tr::CheckUpdate)).size(FONT_SMALL))
-                .on_press(Message::Engine(EngineMsg::CheckAria2Update))
-                .padding(PADDING_BUTTON_SM)
-                .style(theme::style::button::secondary()),
-        );
-    }
-
-    if let Some(msg) = aria2_check_msg {
-        btn_row = btn_row.push(
-            text(msg)
-                .size(FONT_SMALL)
-                .style(theme::style::text::secondary),
         );
     }
 
@@ -1328,7 +1481,6 @@ fn advanced_view<'a>(
 
     column![]
         .spacing(SPACE_2XL)
-        .push(update_toggle)
         .push(clipboard_col)
         .push(group_title(fluent, Tr::Performance, accent))
         .push({

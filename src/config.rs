@@ -619,26 +619,88 @@ impl Default for Settings {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum UpdateScope {
+    #[serde(rename = "app")]
+    App,
+    #[serde(rename = "engine")]
+    Engine,
+    #[default]
+    #[serde(rename = "both")]
+    Both,
+}
+
+impl UpdateScope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::App => "app",
+            Self::Engine => "engine",
+            Self::Both => "both",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "app" => Some(Self::App),
+            "engine" => Some(Self::Engine),
+            "both" => Some(Self::Both),
+            _ => None,
+        }
+    }
+
+    pub fn covers(self, component: &str) -> bool {
+        matches!(
+            (component, self),
+            ("aria2-next", Self::Engine | Self::Both) | ("remotrix", Self::App | Self::Both)
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UpdatePrefs {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub scope: UpdateScope,
+    #[serde(default)]
+    pub interval_hours: u32,
+    #[serde(default)]
+    pub last_check_time: Option<i64>,
     #[serde(default)]
     pub components: HashMap<String, ComponentUpdatePrefs>,
+}
+
+impl Default for UpdatePrefs {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            scope: UpdateScope::Both,
+            interval_hours: 0,
+            last_check_time: None,
+            components: HashMap::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ComponentUpdatePrefs {
     #[serde(default)]
-    pub ignored: bool,
-    #[serde(default)]
     pub skipped: Vec<String>,
 }
 
 impl UpdatePrefs {
-    pub fn should_auto_check(&self, component: &str) -> bool {
-        self.components
-            .get(component)
-            .map(|c| !c.ignored)
-            .unwrap_or(true)
+    pub fn check_due(&self, startup: bool, now_ms: i64) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        if self.interval_hours == 0 {
+            return startup;
+        }
+        let last = self.last_check_time.unwrap_or(0);
+        if last <= 0 {
+            return true;
+        }
+        now_ms - last >= self.interval_hours as i64 * 3600 * 1000
     }
 
     pub fn is_skipped(&self, component: &str, version: &str) -> bool {
@@ -646,13 +708,6 @@ impl UpdatePrefs {
             .get(component)
             .map(|c| c.skipped.contains(&version.to_string()))
             .unwrap_or(false)
-    }
-
-    pub fn set_ignored(&mut self, component: &str, ignored: bool) {
-        self.components
-            .entry(component.to_string())
-            .or_default()
-            .ignored = ignored;
     }
 }
 

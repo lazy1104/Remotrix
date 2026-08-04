@@ -130,3 +130,18 @@ pub fn platform_slug() -> &'static str {
         ),
     }
 }
+
+pub fn platform_display() -> String {
+    let os = match std::env::consts::OS {
+        "linux" => "Linux",
+        "macos" => "macOS",
+        "windows" => "Windows",
+        other => other,
+    };
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "x86_64",
+        "aarch64" => "arm64",
+        other => other,
+    };
+    format!("{os} {arch}")
+}

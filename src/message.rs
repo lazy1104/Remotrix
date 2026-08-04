@@ -163,13 +163,16 @@ pub enum SettingsMsg {
     CheckTrackerAutoSync {
         startup: bool,
     },
+    CheckUpdatesNow,
+    CheckAutoUpdate {
+        startup: bool,
+    },
     SpeedUnitChanged(SettingKey, SpeedUnit),
     ToggleScheduleDaysMenu,
     ScheduleDayToggled {
         day: u8,
         enabled: bool,
     },
-    SetAutoCheck(bool),
     ClearLogs,
     ReadOnlyHover {
         path: String,
@@ -180,7 +183,6 @@ pub enum SettingsMsg {
 #[derive(Debug, Clone)]
 pub enum EngineMsg {
     Event(EngineEvent),
-    CheckAria2Update,
     RetryAria2Fetch,
     RestartEngine,
     ConfirmRestartEngine,
@@ -368,6 +370,9 @@ pub enum SettingKey {
     SpeedLimitScheduleEnabled,
     ScheduleStart,
     ScheduleEnd,
+    AutoUpdateEnabled,
+    UpdateCheckInterval,
+    UpdateScope,
     AppLogLevel,
     EngineLogLevel,
 }

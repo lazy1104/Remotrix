@@ -133,6 +133,7 @@ struct EngineUiState {
     aria2_version: Option<String>,
     aria2_check_msg: Option<String>,
     update_pending: Option<String>,
+    update_check_in_flight: bool,
     aria2_status: Option<(String, String)>,
     aria2_fetch_error: Option<String>,
     downloading_toast_id: Option<u64>,
@@ -146,6 +147,7 @@ impl EngineUiState {
             aria2_version: None,
             aria2_check_msg: None,
             update_pending: None,
+            update_check_in_flight: false,
             aria2_status: None,
             aria2_fetch_error: None,
             downloading_toast_id: None,
@@ -1309,6 +1311,23 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     state.settings.tracker.sync_interval_hours = n as u32;
                 }
             }
+            SettingKey::AutoUpdateEnabled => {
+                if let SettingValue::Bool(b) = value {
+                    state.settings.update.enabled = b;
+                }
+            }
+            SettingKey::UpdateCheckInterval => {
+                if let SettingValue::Num(n) = value {
+                    state.settings.update.interval_hours = n as u32;
+                }
+            }
+            SettingKey::UpdateScope => {
+                if let SettingValue::Text(s) = value {
+                    if let Some(scope) = crate::config::UpdateScope::from_str(&s) {
+                        state.settings.update.scope = scope;
+                    }
+                }
+            }
             SettingKey::SeedRatio => {
                 if let SettingValue::NumF(n) = value {
                     state.settings.aria2.seed_ratio = n.max(0.0);
@@ -1917,23 +1936,17 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 tracing::info!(?version, "aria2 version received");
                 state.engine_ui.aria2_version = Some(version.clone());
                 state.engine_ui.aria2_check_msg = None;
-                if state.settings.update.should_auto_check("aria2-next")
-                    && state
-                        .handle
-                        .cmd_tx
-                        .send(EngineCmd::CheckAria2Update)
-                        .is_err()
-                {
-                    tracing::warn!("auto-check update cmd send failed");
-                }
+                return maybe_auto_check_updates(state, true);
             }
             EngineEvent::Aria2CheckResult { current } => {
+                state.engine_ui.update_check_in_flight = false;
                 state.engine_ui.aria2_check_msg = Some(format!(
                     "{} v{current}",
                     state.fluent.get(crate::i18n::Tr::UpToDate)
                 ));
             }
             EngineEvent::Aria2UpdateApplied { version } => {
+                state.engine_ui.update_check_in_flight = false;
                 state.engine_ui.update_pending = None;
                 state.engine_ui.aria2_version = Some(version.clone());
                 state.engine_ui.aria2_check_msg = Some(format!(
@@ -1942,9 +1955,11 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 ));
             }
             EngineEvent::Aria2UpdateFailed { error } => {
+                state.engine_ui.update_check_in_flight = false;
                 state.engine_ui.aria2_check_msg = Some(error);
             }
             EngineEvent::Aria2UpdateStaged { version } => {
+                state.engine_ui.update_check_in_flight = false;
                 state.engine_ui.update_pending = Some(version);
                 state.engine_ui.aria2_check_msg = None;
             }
@@ -2348,16 +2363,43 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             return start_tracker_fetch(state, urls);
         }
-        Message::Engine(EngineMsg::CheckAria2Update) => {
-            state.engine_ui.aria2_check_msg = None;
-            if state
-                .handle
-                .cmd_tx
-                .send(EngineCmd::CheckAria2Update)
-                .is_err()
-            {
-                tracing::warn!("check update cmd send failed");
+        Message::Settings(SettingsMsg::CheckUpdatesNow) => {
+            if state.engine_ui.update_check_in_flight {
+                return Task::none();
             }
+            let now_ms = chrono::Local::now().timestamp_millis();
+            if state.settings.update.scope.covers("aria2-next") {
+                state.engine_ui.update_check_in_flight = true;
+                state.engine_ui.aria2_check_msg = None;
+                if state
+                    .handle
+                    .cmd_tx
+                    .send(EngineCmd::CheckAria2Update)
+                    .is_err()
+                {
+                    state.engine_ui.update_check_in_flight = false;
+                    tracing::warn!("check update cmd send failed");
+                } else {
+                    state.settings.update.last_check_time = Some(now_ms);
+                    state.applied_settings.update.last_check_time = Some(now_ms);
+                    config::save(&state.applied_settings);
+                }
+            } else {
+                state.settings.update.last_check_time = Some(now_ms);
+                state.applied_settings.update.last_check_time = Some(now_ms);
+                config::save(&state.applied_settings);
+                state.engine_ui.aria2_check_msg = None;
+                let toast = Toast::new(
+                    ToastKind::Warning,
+                    state.fluent.get(Tr::AppUpdateUnavailable),
+                )
+                .group(ToastGroup::General)
+                .close_after(Some(Duration::from_secs(4)));
+                state.toasts.push(toast);
+            }
+        }
+        Message::Settings(SettingsMsg::CheckAutoUpdate { startup }) => {
+            return maybe_auto_check_updates(state, startup);
         }
         Message::Engine(EngineMsg::RetryAria2Fetch) => {
             state.engine_ui.aria2_fetch_error = None;
@@ -2400,10 +2442,6 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 state.restart.engine_restart_in_progress = false;
                 state.restart.restart_resume_gids.clear();
             }
-        }
-        Message::Settings(SettingsMsg::SetAutoCheck(enabled)) => {
-            state.settings.update.set_ignored("aria2-next", !enabled);
-            config::save(&state.settings);
         }
         Message::Settings(SettingsMsg::ToggleScheduleDaysMenu) => {
             state.settings_ui.schedule_days_menu_open = !state.settings_ui.schedule_days_menu_open;
@@ -2794,6 +2832,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                     .map(|(s, m)| (s.as_str(), m.as_str())),
                 aria2_fetch_error: state.engine_ui.aria2_fetch_error.as_deref(),
                 update_pending: state.engine_ui.update_pending.as_deref(),
+                update_check_in_flight: state.engine_ui.update_check_in_flight,
                 ua_editor: &state.ua_editor,
                 bt_tracker_editor: &state.bt_tracker_editor,
                 path_history: &state.settings.path_history,
@@ -3079,6 +3118,13 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         Subscription::none()
     };
 
+    let auto_update = if state.settings.update.enabled {
+        iced::time::every(Duration::from_secs(3600))
+            .map(|_| Message::Settings(SettingsMsg::CheckAutoUpdate { startup: false }))
+    } else {
+        Subscription::none()
+    };
+
     Subscription::batch(vec![
         engine,
         open,
@@ -3092,6 +3138,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         toast_tick,
         signals,
         tracker_auto_sync,
+        auto_update,
     ])
 }
 
@@ -3252,6 +3299,35 @@ fn copy_to_clipboard(state: &mut Remotrix, content: String) -> Task<Message> {
 
 fn dismiss_toast(state: &mut Remotrix, id: u64) {
     state.toasts.dismiss(id);
+}
+
+fn maybe_auto_check_updates(state: &mut Remotrix, startup: bool) -> Task<Message> {
+    if state.engine_ui.update_check_in_flight {
+        return Task::none();
+    }
+    let now_ms = chrono::Local::now().timestamp_millis();
+    if !state.settings.update.check_due(startup, now_ms) {
+        return Task::none();
+    }
+    if !state.settings.update.scope.covers("aria2-next") {
+        return Task::none();
+    }
+    state.engine_ui.update_check_in_flight = true;
+    state.engine_ui.aria2_check_msg = None;
+    if state
+        .handle
+        .cmd_tx
+        .send(EngineCmd::CheckAria2Update)
+        .is_err()
+    {
+        state.engine_ui.update_check_in_flight = false;
+        tracing::warn!("auto-check update cmd send failed");
+    } else {
+        state.settings.update.last_check_time = Some(now_ms);
+        state.applied_settings.update.last_check_time = Some(now_ms);
+        config::save(&state.applied_settings);
+    }
+    Task::none()
 }
 
 fn start_tracker_fetch(state: &mut Remotrix, urls: Vec<String>) -> Task<Message> {
