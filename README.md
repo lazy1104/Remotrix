@@ -188,6 +188,10 @@ DHT, and more).
 - [ ] Drag-and-drop file / task support
 - [ ] Polished app icon
 
+## Acknowledgements
+
+- [aria2-next](https://github.com/AnInsomniacy/aria2-next) by AnInsomniacy — the download engine at the core. It is a separate, independently licensed program (GPL-2.0-or-later) that is **not bundled** with Remotrix; it is downloaded from its GitHub Releases at runtime.
+
 ## License
 
-GPL-2.0-or-later. See the `LICENSE` file for the full license text.
+MIT. See the `LICENSE` file for the full license text.

@@ -68,6 +68,7 @@ pub enum Message {
     Dialog(DialogMsg),
     Toast(ToastMsg),
     CopyText(String),
+    OpenLink(String),
     Noop,
 }
 

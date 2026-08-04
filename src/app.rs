@@ -2682,6 +2682,14 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.toasts.tick();
         }
         Message::CopyText(s) => return copy_to_clipboard(state, s),
+        Message::OpenLink(url) => {
+            return Task::perform(
+                async move {
+                    let _ = open::that(&url);
+                },
+                |_| Message::Noop,
+            );
+        }
         Message::Noop => {}
     }
     Task::none()

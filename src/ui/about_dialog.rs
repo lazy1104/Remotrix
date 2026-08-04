@@ -1,5 +1,5 @@
 use iced::alignment::Alignment;
-use iced::widget::{column, container, row, text};
+use iced::widget::{button, column, container, row, text};
 use iced::{Element, Length};
 
 use crate::i18n::{Fluent, Tr};
@@ -8,7 +8,19 @@ use crate::ui::components::copyable_text::copyable_text;
 use crate::ui::components::dialog::{overlay, Dialog};
 use crate::ui::components::logo;
 use crate::ui::dims::*;
+use crate::ui::icon;
 use crate::ui::theme;
+
+const ICED_REPO_URL: &str = "https://github.com/iced-rs/iced";
+const ARIA2_NEXT_REPO_URL: &str = "https://github.com/AnInsomniacy/aria2-next";
+
+fn repo_link<'a>(url: String) -> Element<'a, Message, iced::Theme, iced::Renderer> {
+    button(icon::link().size(FONT_MEDIUM))
+        .on_press(Message::OpenLink(url))
+        .padding(PADDING_BUTTON_SM)
+        .style(theme::style::button::copyable())
+        .into()
+}
 
 pub fn view<'a>(
     fluent: &'a Fluent,
@@ -25,6 +37,22 @@ pub fn view<'a>(
         a.insert(std::borrow::Cow::from("version"), "0.14".into());
         a
     });
+
+    let iced_row = row![
+        copyable_text(iced_text.clone(), Message::CopyText(iced_text)).width(Length::Fill),
+        repo_link(ICED_REPO_URL.to_string()),
+    ]
+    .spacing(SPACE_MD)
+    .align_y(Alignment::Center)
+    .width(Length::Fill);
+
+    let engine_row = row![
+        copyable_text(engine_text.clone(), Message::CopyText(engine_text)).width(Length::Fill),
+        repo_link(ARIA2_NEXT_REPO_URL.to_string()),
+    ]
+    .spacing(SPACE_MD)
+    .align_y(Alignment::Center)
+    .width(Length::Fill);
 
     let body = column![]
         .spacing(SPACE_4XL)
@@ -54,10 +82,8 @@ pub fn view<'a>(
                 .size(FONT_SMALL)
                 .style(theme::style::text::secondary),
         )
-        .push(copyable_text(iced_text.clone(), Message::CopyText(iced_text)).width(Length::Fill))
-        .push(
-            copyable_text(engine_text.clone(), Message::CopyText(engine_text)).width(Length::Fill),
-        )
+        .push(iced_row)
+        .push(engine_row)
         .push(
             text(fluent.get(Tr::LicenseNotice))
                 .size(FONT_SMALL)
