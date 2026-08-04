@@ -912,11 +912,22 @@ async fn handle_client_cmd(
                             selected: f.selected,
                         })
                         .collect();
+                    let mode = s.bittorrent.as_ref().and_then(|b| b.mode.map(|m| match m {
+                        aria2_ws::response::BitTorrentFileMode::Single => "single".to_string(),
+                        aria2_ws::response::BitTorrentFileMode::Multi => "multi".to_string(),
+                    }));
                     let details = crate::task::TaskDetails {
                         bitfield: s.bitfield,
                         num_pieces: s.num_pieces,
                         piece_length: s.piece_length,
                         files,
+                        info_hash: s.info_hash.clone(),
+                        creation_date: s
+                            .bittorrent
+                            .as_ref()
+                            .and_then(|b| b.creation_date.map(|d| d.timestamp())),
+                        comment: s.bittorrent.as_ref().and_then(|b| b.comment.clone()),
+                        mode,
                     };
                     let _ = event_tx.send(EngineEvent::TaskDetails { gid, details });
                 }
