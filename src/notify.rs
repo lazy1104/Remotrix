@@ -135,10 +135,8 @@ pub fn build_notify_stream(slot: &NotifySlot) -> impl iced::futures::Stream<Item
                     let mut s = sender.clone();
                     handle
                         .wait_for_action_async(move |action: &NotificationResponse| {
-                            if let NotificationResponse::Action(action) = action {
-                                if action == "open" {
-                                    let _ = s.try_send(Message::ActivateWindow);
-                                }
+                            if matches!(action, NotificationResponse::Default) {
+                                let _ = s.try_send(Message::ActivateWindow);
                             }
                         })
                         .await;

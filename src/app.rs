@@ -2786,12 +2786,12 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::ActivateWindow => {
             let mut task = Task::none();
             if let Some(id) = state.window.window_id {
-                task = iced::window::set_mode::<Message>(id, iced::window::Mode::Windowed).chain(
-                    iced::window::request_user_attention(
+                task = iced::window::set_mode::<Message>(id, iced::window::Mode::Windowed)
+                    .chain(iced::window::gain_focus(id))
+                    .chain(iced::window::request_user_attention(
                         id,
                         Some(iced::window::UserAttention::Critical),
-                    ),
-                );
+                    ));
             }
             return task;
         }
