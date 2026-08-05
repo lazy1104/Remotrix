@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 
 use crate::config::aria2_bin_dir;
 use crate::engine::{EngineEvent, EventTx};
-use crate::updater::{self, ReleaseInfo};
+use crate::updater;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct InstalledInfo {
@@ -104,7 +104,8 @@ pub async fn ensure_aria2_next(event_tx: &EventTx) -> Result<(PathBuf, Option<St
 
     emit_status(event_tx, "downloading", "Looking up latest release...");
 
-    let release = updater::fetch_latest_release("AnInsomniacy/aria2-next", slug).await?;
+    let release =
+        updater::fetch_latest_release("AnInsomniacy/aria2-next", "aria2-next", slug).await?;
     let bin_name = format!("aria2-next-{}-{}", release.version, slug);
     let part_path = dir.join(format!("{bin_name}.part"));
     let bin_path = dir.join(&bin_name);
@@ -147,25 +148,27 @@ pub async fn ensure_aria2_next(event_tx: &EventTx) -> Result<(PathBuf, Option<St
     Ok((bin_path, applied))
 }
 
-pub async fn stage_update_download(
-    release: &ReleaseInfo,
+pub async fn stage_update_from(
+    version: &str,
+    slug: &str,
+    download_url: &str,
+    sha256: Option<&str>,
     event_tx: &EventTx,
 ) -> Result<String, String> {
     let dir = aria2_bin_dir().ok_or("cannot determine data directory")?;
-    let slug = updater::platform_slug();
-    let bin_name = format!("aria2-next-{}-{}", release.version, slug);
+    let bin_name = format!("aria2-next-{version}-{slug}");
     let part_path = dir.join(format!("{bin_name}.part"));
     let bin_path = dir.join(&bin_name);
 
     emit_status(
         event_tx,
         "update-downloading",
-        &format!("Downloading aria2-next {}...", release.version),
+        &format!("Downloading aria2-next {version}..."),
     );
 
-    download_file(&release.download_url, &part_path).await?;
+    download_file(download_url, &part_path).await?;
 
-    if let Some(expected) = &release.sha256 {
+    if let Some(expected) = sha256 {
         emit_status(event_tx, "update-verifying", "Verifying checksum...");
         let digest = sha256_file(&part_path).map_err(|e| format!("sha256: {e}"))?;
         if digest != *expected {
@@ -180,16 +183,16 @@ pub async fn stage_update_download(
     set_perms(&bin_path)?;
 
     let pending = PendingInfo {
-        version: release.version.clone(),
+        version: version.to_string(),
         slug: slug.to_string(),
-        sha256: release.sha256.clone().unwrap_or_default(),
+        sha256: sha256.unwrap_or("").to_string(),
     };
     let json =
         serde_json::to_string_pretty(&pending).map_err(|e| format!("serialize pending: {e}"))?;
     std::fs::write(dir.join(".pending-update"), &json)
         .map_err(|e| format!("write .pending-update: {e}"))?;
 
-    Ok(release.version.clone())
+    Ok(version.to_string())
 }
 
 pub fn installed_version() -> Option<String> {
@@ -231,14 +234,10 @@ fn parse_version_from_filename(filename: &str, slug: &str) -> Option<String> {
     if version.is_empty() {
         return None;
     }
-    if version_tuple(version).is_empty() {
+    if updater::version_tuple(version).is_empty() {
         return None;
     }
     Some(version.to_string())
-}
-
-fn version_tuple(v: &str) -> Vec<u64> {
-    v.split('.').filter_map(|p| p.parse::<u64>().ok()).collect()
 }
 
 fn scan_for_binary(dir: &Path, slug: &str) -> Option<(PathBuf, String)> {
@@ -275,7 +274,7 @@ fn scan_for_binary(dir: &Path, slug: &str) -> Option<(PathBuf, String)> {
                 continue;
             }
         }
-        let tuple = version_tuple(&version);
+        let tuple = updater::version_tuple(&version);
         if best.as_ref().is_none_or(|(_, _, bt)| tuple > *bt) {
             best = Some((path, version, tuple));
         }
@@ -298,14 +297,14 @@ fn self_heal_installed(
     write_installed(dir, &info)
 }
 
-fn sha256_file(path: &Path) -> Result<String, String> {
+pub(crate) fn sha256_file(path: &Path) -> Result<String, String> {
     let data = std::fs::read(path).map_err(|e| format!("read file for sha256: {e}"))?;
     let mut hasher = Sha256::new();
     hasher.update(&data);
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-async fn download_file(url: &str, dest: &Path) -> Result<(), String> {
+pub(crate) async fn download_file(url: &str, dest: &Path) -> Result<(), String> {
     let client = reqwest::Client::builder()
         .user_agent("remotrix-updater")
         .build()
@@ -332,7 +331,7 @@ async fn download_file(url: &str, dest: &Path) -> Result<(), String> {
     std::fs::write(dest, &bytes).map_err(|e| format!("write to {dest:?}: {e}"))
 }
 
-fn set_perms(path: &Path) -> Result<(), String> {
+pub(crate) fn set_perms(path: &Path) -> Result<(), String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

@@ -22,7 +22,7 @@ Rust-native desktop download manager inspired by Motrix.app. Built with `iced` G
 - **Engine → GUI**: `EngineEvent` via `mpsc::Receiver`, consumed by `iced::Subscription`
 - `aria2_fetcher::ensure_aria2_next()` fetches the aria2-next binary at runtime from GitHub Releases (first launch), caches in `<data_dir>/aria2/`
 - Engine degrades gracefully on fetch/spawn failure (no exit), retryable via `RetryAria2Fetch`
-- Update check → background stage download → write `.pending-update` → next restart/engine restart applies pending update
+- Update check is **app-layer orchestrated** (`app.rs check_updates`): fetch releases via `updater` → non-silent/app updates open a dialog; silent aria2 auto-stages via `DownloadAria2Update` → `.pending-update` → next restart/engine restart applies pending update. App self-update stages a raw binary (`app_updater`) and swaps on relaunch.
 - Task persistence via aria2 `--save-session`/`--input-file`
 - `src/updater.rs` provides reusable `fetch_latest_release` / `ReleaseInfo` for both aria2 and future app updates
 
@@ -45,7 +45,7 @@ enum EngineCmd {
     Redownload { gid: String, url: String, save_dir: PathBuf, split: u16, bt_metadata_only: bool },
     Shutdown,
     ForceKill,
-    CheckAria2Update,
+    DownloadAria2Update { version: String, asset_name: String, download_url: String, sha256: Option<String> },
     RetryAria2Fetch,
     RestartEngine,
     ResumeGids(Vec<String>),
@@ -63,7 +63,6 @@ enum EngineEvent {
     EngineReady, SyncComplete, EngineStopped,
     Aria2Status { stage: String, message: String },
     Aria2Version { version: String },
-    Aria2CheckResult { current: String },
     Aria2UpdateApplied { version: String },
     Aria2UpdateFailed { error: String },
     Aria2FetchFailed { error: String },
@@ -181,7 +180,7 @@ Run `/check-docs` (Kilo command) to audit README.md and this file against the co
   - First launch: downloads from GitHub Releases (`AnInsomniacy/aria2-next`) to `<data_dir>/aria2/`
   - Cached across runs with `.installed` version/sha256 tracking
   - Supports `ARIA2_BIN` env var to skip download entirely
-- Update workflow: `updater::fetch_latest_release()` → background stage download → write `.pending-update` → next restart/engine restart applies pending update
+- Update workflow: app layer fetches releases (`updater::fetch_releases_since`) → non-silent/dialog selects → `EngineCmd::DownloadAria2Update` → `aria2_fetcher::stage_update_from` writes `.pending-update` → next engine restart applies. App self-update: `app_updater::stage_app_update` → `.pending-update` → `apply_pending_app_update` swaps on relaunch.
 
 ## Risks to Watch
 - `aria2-next` GitHub Releases may be temporarily unavailable → `ensure_aria2_next()` error at runtime with clear message; `ARIA2_BIN` env var fallback or manual binary placement

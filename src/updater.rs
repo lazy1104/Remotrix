@@ -8,14 +8,24 @@ pub struct ReleaseInfo {
     pub sha256: Option<String>,
 }
 
-pub async fn fetch_latest_release(repo: &str, slug: &str) -> Result<ReleaseInfo, String> {
-    let api_url = format!("https://api.github.com/repos/{repo}/releases/latest");
-    let client = reqwest::Client::builder()
+pub const APP_REPO: &str = "lazy1104/Remotrix";
+pub const APP_ASSET_PREFIX: &str = "remotrix";
+
+fn http_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
         .user_agent("remotrix-updater")
         .timeout(std::time::Duration::from_secs(30))
         .build()
-        .map_err(|e| format!("create reqwest client: {e}"))?;
+        .map_err(|e| format!("create reqwest client: {e}"))
+}
 
+pub async fn fetch_latest_release(
+    repo: &str,
+    asset_prefix: &str,
+    slug: &str,
+) -> Result<ReleaseInfo, String> {
+    let client = http_client()?;
+    let api_url = format!("https://api.github.com/repos/{repo}/releases/latest");
     let resp = client
         .get(&api_url)
         .send()
@@ -33,41 +43,76 @@ pub async fn fetch_latest_release(repo: &str, slug: &str) -> Result<ReleaseInfo,
         .await
         .map_err(|e| format!("parse release json: {e}"))?;
 
-    let tag = body["tag_name"]
-        .as_str()
-        .ok_or_else(|| "missing tag_name".to_string())?
-        .to_string();
+    release_from_json(&client, &body, asset_prefix, slug)
+        .await
+        .ok_or_else(|| format!("no matching asset '{asset_prefix}-*-{slug}' in latest release"))
+}
+
+pub async fn fetch_releases_since(
+    repo: &str,
+    asset_prefix: &str,
+    slug: &str,
+    current: &str,
+) -> Result<Vec<ReleaseInfo>, String> {
+    let client = http_client()?;
+    let api_url = format!("https://api.github.com/repos/{repo}/releases?per_page=30");
+    let resp = client
+        .get(&api_url)
+        .send()
+        .await
+        .map_err(|e| format!("fetch releases: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("GitHub API HTTP {status}: {body}"));
+    }
+
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("parse releases json: {e}"))?;
+    let releases = body
+        .as_array()
+        .ok_or_else(|| "expected releases array".to_string())?;
+
+    let mut out = Vec::new();
+    for rel in releases {
+        let Some(info) = release_from_json(&client, rel, asset_prefix, slug).await else {
+            continue;
+        };
+        if version_gt(&info.version, current) {
+            out.push(info);
+        }
+    }
+    Ok(out)
+}
+
+pub async fn fetch_app_releases_since(current: &str) -> Result<Vec<ReleaseInfo>, String> {
+    fetch_releases_since(APP_REPO, APP_ASSET_PREFIX, platform_slug(), current).await
+}
+
+async fn release_from_json(
+    client: &reqwest::Client,
+    body: &serde_json::Value,
+    asset_prefix: &str,
+    slug: &str,
+) -> Option<ReleaseInfo> {
+    let tag = body["tag_name"].as_str()?.to_string();
     let version = tag.strip_prefix('v').unwrap_or(&tag).to_string();
     let notes = body["body"].as_str().unwrap_or("").to_string();
 
-    let expected_name = format!("aria2-next-{version}-{slug}");
-    let assets = body["assets"]
-        .as_array()
-        .ok_or_else(|| "missing assets".to_string())?;
-
+    let expected_name = format!("{asset_prefix}-{version}-{slug}");
+    let assets = body["assets"].as_array()?;
     let asset = assets
         .iter()
-        .find(|a| a["name"].as_str() == Some(&expected_name))
-        .ok_or_else(|| {
-            let names: Vec<&str> = assets.iter().filter_map(|a| a["name"].as_str()).collect();
-            format!(
-                "asset '{expected_name}' not found among: {}",
-                names.join(", ")
-            )
-        })?;
+        .find(|a| a["name"].as_str() == Some(&expected_name))?;
 
-    let download_url = asset["browser_download_url"]
-        .as_str()
-        .ok_or_else(|| "missing download_url".to_string())?
-        .to_string();
-    let asset_name = asset["name"]
-        .as_str()
-        .ok_or_else(|| "missing asset name".to_string())?
-        .to_string();
+    let download_url = asset["browser_download_url"].as_str()?.to_string();
+    let asset_name = asset["name"].as_str()?.to_string();
+    let sha256 = try_fetch_checksum(client, &asset_name, assets).await;
 
-    let sha256 = try_fetch_checksum(&client, &asset_name, assets).await;
-
-    Ok(ReleaseInfo {
+    Some(ReleaseInfo {
         tag,
         version,
         notes,
@@ -144,4 +189,22 @@ pub fn platform_display() -> String {
         other => other,
     };
     format!("{os} {arch}")
+}
+
+pub fn version_tuple(v: &str) -> Vec<u64> {
+    v.split('.').filter_map(|p| p.parse::<u64>().ok()).collect()
+}
+
+pub fn version_gt(a: &str, b: &str) -> bool {
+    let ta = version_tuple(a);
+    let tb = version_tuple(b);
+    let len = ta.len().max(tb.len());
+    for i in 0..len {
+        let x = ta.get(i).copied().unwrap_or(0);
+        let y = tb.get(i).copied().unwrap_or(0);
+        if x != y {
+            return x > y;
+        }
+    }
+    false
 }

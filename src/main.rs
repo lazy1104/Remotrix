@@ -1,4 +1,5 @@
 mod app;
+mod app_updater;
 mod aria2_fetcher;
 mod clipboard_watch;
 mod config;
@@ -35,6 +36,13 @@ fn main() -> iced::Result {
         app_log_level = %cfg.log.app_level,
         "remotrix starting"
     );
+
+    if let Ok(Some(version)) = crate::app_updater::apply_pending_app_update() {
+        tracing::info!(%version, "app self-update applied, relaunching");
+        crate::app_updater::relaunch_after_update();
+        return Ok(());
+    }
+
     let w = cfg.window_width.max(800.0);
     let h = cfg.window_height.max(560.0);
 

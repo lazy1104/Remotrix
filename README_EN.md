@@ -2,7 +2,7 @@
 > **[中文](README.md) | [English](README_EN.md)**
 
 
-A Rust-native desktop download manager inspired by [Motrix](https://motrix.app/), built with the
+A Rust-native desktop download manager inspired by [Motrix-next](https://motrix-next.pages.dev/), built with the
 [`iced`](https://github.com/iced-rs/iced) GUI framework and an [`aria2-next`](https://github.com/AnInsomniacy/aria2-next)
 sidecar engine driven over WebSocket JSON-RPC ([`aria2-ws`](https://crates.io/crates/aria2-ws)).
 
@@ -213,7 +213,6 @@ DHT, and more).
 - [ ] System tray integration (currently stubbed: "Minimize to tray" is coming soon)
 - [ ] Magnet link support
 - [ ] Drag-and-drop file / task support
-- [ ] Polished app icon
 
 ## Acknowledgements
 

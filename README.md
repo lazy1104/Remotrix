@@ -2,7 +2,7 @@
 
 > **[中文](README.md) | [English](README_EN.md)**
 
-基于 Rust 的原生桌面下载管理器，灵感来自 [Motrix](https://motrix.app/)，采用 [`iced`](https://github.com/iced-rs/iced) GUI 框架，并通过 WebSocket JSON-RPC 驱动 [`aria2-next`](https://github.com/AnInsomniacy/aria2-next) 侧车引擎（[`aria2-ws`](https://crates.io/crates/aria2-ws)）。
+基于 Rust 的原生桌面下载管理器，灵感来自 [Motrix-next](https://motrix-next.pages.dev/)，采用 [`iced`](https://github.com/iced-rs/iced) GUI 框架，并通过 WebSocket JSON-RPC 驱动 [`aria2-next`](https://github.com/AnInsomniacy/aria2-next) 侧车引擎（[`aria2-ws`](https://crates.io/crates/aria2-ws)）。
 
 > 名称 "Remotrix" 是 **Rust** 与 **Motrix** 的合成词。
 
@@ -186,7 +186,6 @@ cargo fmt --check          # 格式检查
 - [ ] 系统托盘集成（当前为占位："最小化到托盘"敬请期待）
 - [ ] Magnet 磁力链接支持
 - [ ] 拖拽文件 / 任务支持
-- [ ] 打磨应用图标
 
 ## 致谢
 

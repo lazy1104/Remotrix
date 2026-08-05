@@ -170,6 +170,15 @@ pub enum SettingsMsg {
     CheckAutoUpdate {
         startup: bool,
     },
+    UpdateDialogTab(usize),
+    UpdateDialogCancel,
+    UpdateDialogApply,
+    UpdateDownloadStarted(Result<String, String>),
+    UpdateResult {
+        offers: Vec<crate::ui::update_dialog::UpdateOffer>,
+        silent_applied: Vec<crate::ui::update_dialog::UpdateOffer>,
+        errors: Vec<String>,
+    },
     SpeedUnitChanged(SettingKey, SpeedUnit),
     ToggleScheduleDaysMenu,
     ScheduleDayToggled {
@@ -379,6 +388,7 @@ pub enum SettingKey {
     AutoUpdateEnabled,
     UpdateCheckInterval,
     UpdateScope,
+    Aria2SilentUpdate,
     AppLogLevel,
     EngineLogLevel,
 }

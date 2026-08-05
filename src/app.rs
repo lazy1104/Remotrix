@@ -131,8 +131,6 @@ impl ToastManager {
 
 struct EngineUiState {
     aria2_version: Option<String>,
-    aria2_check_msg: Option<String>,
-    update_pending: Option<String>,
     update_check_in_flight: bool,
     aria2_status: Option<(String, String)>,
     aria2_fetch_error: Option<String>,
@@ -146,8 +144,6 @@ impl EngineUiState {
     fn new() -> Self {
         Self {
             aria2_version: None,
-            aria2_check_msg: None,
-            update_pending: None,
             update_check_in_flight: false,
             aria2_status: None,
             aria2_fetch_error: None,
@@ -157,6 +153,11 @@ impl EngineUiState {
             degraded_notified: false,
         }
     }
+}
+
+struct UpdateDialogState {
+    offers: Vec<crate::ui::update_dialog::UpdateOffer>,
+    active_tab: usize,
 }
 
 struct WindowState {
@@ -270,6 +271,8 @@ pub struct Remotrix {
     window: WindowState,
     restart: EngineRestartState,
     tracking: TaskTracking,
+    update_dialog: Option<UpdateDialogState>,
+    app_update_in_flight: bool,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
@@ -371,6 +374,8 @@ pub fn init() -> (Remotrix, Task<Message>) {
         window: WindowState::new(iced::Size::new(window_w, window_h), window_maximized),
         restart: EngineRestartState::new(),
         tracking: TaskTracking::new(active_count),
+        update_dialog: None,
+        app_update_in_flight: false,
     };
 
     if db_open_failed {
@@ -834,6 +839,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             if state.window.show_close_dialog
                 || state.about_dialog_visible
                 || state.confirm.is_some()
+                || state.update_dialog.is_some()
             {
                 return Task::none();
             }
@@ -848,6 +854,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             if state.window.show_close_dialog
                 || state.about_dialog_visible
                 || state.confirm.is_some()
+                || state.update_dialog.is_some()
             {
                 return Task::none();
             }
@@ -1359,6 +1366,11 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     if let Some(scope) = crate::config::UpdateScope::from_str(&s) {
                         state.settings.update.scope = scope;
                     }
+                }
+            }
+            SettingKey::Aria2SilentUpdate => {
+                if let SettingValue::Bool(b) = value {
+                    state.settings.update.aria2_silent_update = b;
                 }
             }
             SettingKey::SeedRatio => {
@@ -2031,33 +2043,47 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             EngineEvent::Aria2Version { version } => {
                 tracing::info!(?version, "aria2 version received");
                 state.engine_ui.aria2_version = Some(version.clone());
-                state.engine_ui.aria2_check_msg = None;
-                return maybe_auto_check_updates(state, true);
-            }
-            EngineEvent::Aria2CheckResult { current } => {
-                state.engine_ui.update_check_in_flight = false;
-                state.engine_ui.aria2_check_msg = Some(format!(
-                    "{} v{current}",
-                    state.fluent.get(crate::i18n::Tr::UpToDate)
-                ));
+                return check_updates(state, true, false);
             }
             EngineEvent::Aria2UpdateApplied { version } => {
                 state.engine_ui.update_check_in_flight = false;
-                state.engine_ui.update_pending = None;
                 state.engine_ui.aria2_version = Some(version.clone());
-                state.engine_ui.aria2_check_msg = Some(format!(
-                    "{} v{version}",
-                    state.fluent.get(crate::i18n::Tr::UpdatedTo)
-                ));
+                spawn_toast(
+                    state,
+                    ToastGroup::Engine,
+                    ToastKind::Success,
+                    format!(
+                        "{} v{version}",
+                        state.fluent.get(crate::i18n::Tr::UpdatedTo)
+                    ),
+                    Some(Duration::from_secs(4)),
+                    false,
+                );
             }
             EngineEvent::Aria2UpdateFailed { error } => {
                 state.engine_ui.update_check_in_flight = false;
-                state.engine_ui.aria2_check_msg = Some(error);
+                spawn_toast(
+                    state,
+                    ToastGroup::Engine,
+                    ToastKind::Error,
+                    format!("{}: {error}", state.fluent.get(Tr::UpdateFailed)),
+                    Some(Duration::from_secs(6)),
+                    true,
+                );
             }
             EngineEvent::Aria2UpdateStaged { version } => {
                 state.engine_ui.update_check_in_flight = false;
-                state.engine_ui.update_pending = Some(version);
-                state.engine_ui.aria2_check_msg = None;
+                spawn_toast(
+                    state,
+                    ToastGroup::Engine,
+                    ToastKind::Normal,
+                    format!(
+                        "aria2-next v{version} - {}",
+                        state.fluent.get(crate::i18n::Tr::UpdateEngineRestart)
+                    ),
+                    Some(Duration::from_secs(5)),
+                    false,
+                );
             }
             EngineEvent::Aria2FetchFailed { error } => {
                 let msg = format!("{}: {error}", state.fluent.get(Tr::EngineStartFailed));
@@ -2485,42 +2511,124 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             return start_tracker_fetch(state, urls);
         }
         Message::Settings(SettingsMsg::CheckUpdatesNow) => {
-            if state.engine_ui.update_check_in_flight {
-                return Task::none();
-            }
-            let now_ms = chrono::Local::now().timestamp_millis();
-            if state.settings.update.scope.covers("aria2-next") {
-                state.engine_ui.update_check_in_flight = true;
-                state.engine_ui.aria2_check_msg = None;
-                if state
-                    .handle
-                    .cmd_tx
-                    .send(EngineCmd::CheckAria2Update)
-                    .is_err()
-                {
-                    state.engine_ui.update_check_in_flight = false;
-                    tracing::warn!("check update cmd send failed");
-                } else {
-                    state.settings.update.last_check_time = Some(now_ms);
-                    state.applied_settings.update.last_check_time = Some(now_ms);
-                    config::save(&state.applied_settings);
-                }
-            } else {
-                state.settings.update.last_check_time = Some(now_ms);
-                state.applied_settings.update.last_check_time = Some(now_ms);
-                config::save(&state.applied_settings);
-                state.engine_ui.aria2_check_msg = None;
-                let toast = Toast::new(
-                    ToastKind::Warning,
-                    state.fluent.get(Tr::AppUpdateUnavailable),
-                )
-                .group(ToastGroup::General)
-                .close_after(Some(Duration::from_secs(4)));
-                state.toasts.push(toast);
-            }
+            return check_updates(state, false, true);
         }
         Message::Settings(SettingsMsg::CheckAutoUpdate { startup }) => {
-            return maybe_auto_check_updates(state, startup);
+            return check_updates(state, startup, false);
+        }
+        Message::Settings(SettingsMsg::UpdateDialogTab(i)) => {
+            if let Some(dialog) = &mut state.update_dialog {
+                dialog.active_tab = i;
+            }
+        }
+        Message::Settings(SettingsMsg::UpdateDialogCancel) => {
+            state.update_dialog = None;
+        }
+        Message::Settings(SettingsMsg::UpdateDownloadStarted(result)) => {
+            state.app_update_in_flight = false;
+            match result {
+                Ok(version) => {
+                    spawn_toast(
+                        state,
+                        ToastGroup::General,
+                        ToastKind::Success,
+                        format!("{} v{version}", state.fluent.get(Tr::UpdateAppRestart)),
+                        Some(Duration::from_secs(5)),
+                        false,
+                    );
+                    state.restart_pending = true;
+                    return begin_close(state);
+                }
+                Err(e) => {
+                    spawn_toast(
+                        state,
+                        ToastGroup::General,
+                        ToastKind::Error,
+                        format!("{}: {e}", state.fluent.get(Tr::UpdateFailed)),
+                        Some(Duration::from_secs(6)),
+                        true,
+                    );
+                }
+            }
+        }
+        Message::Settings(SettingsMsg::UpdateResult {
+            offers,
+            silent_applied,
+            errors,
+        }) => {
+            state.engine_ui.update_check_in_flight = false;
+            let checked_any = state.settings.update.scope.covers("aria2-next")
+                || state.settings.update.scope.covers("remotrix");
+            for e in errors.iter() {
+                spawn_toast(
+                    state,
+                    ToastGroup::General,
+                    ToastKind::Error,
+                    format!("{}: {e}", state.fluent.get(Tr::UpdateFailed)),
+                    Some(Duration::from_secs(6)),
+                    true,
+                );
+            }
+            for silent in &silent_applied {
+                send_download_aria2_update(state, silent);
+            }
+            if !offers.is_empty() {
+                state.update_dialog = Some(UpdateDialogState {
+                    offers,
+                    active_tab: 0,
+                });
+            } else if checked_any && errors.is_empty() {
+                spawn_toast(
+                    state,
+                    ToastGroup::General,
+                    ToastKind::Success,
+                    state.fluent.get(Tr::UpToDate),
+                    Some(Duration::from_secs(3)),
+                    false,
+                );
+            }
+        }
+        Message::Settings(SettingsMsg::UpdateDialogApply) => {
+            if state.app_update_in_flight {
+                return Task::none();
+            }
+            let Some(mut dialog) = state.update_dialog.take() else {
+                return Task::none();
+            };
+            let offers = std::mem::take(&mut dialog.offers);
+            let mut tasks = Vec::new();
+            for offer in offers {
+                match offer.component {
+                    crate::ui::update_dialog::UpdateComponent::Aria2 => {
+                        send_download_aria2_update(state, &offer);
+                    }
+                    crate::ui::update_dialog::UpdateComponent::App => {
+                        if state.app_update_in_flight {
+                            continue;
+                        }
+                        state.app_update_in_flight = true;
+                        let download = crate::app_updater::AppUpdateDownload {
+                            version: offer.latest.clone(),
+                            slug: crate::updater::platform_slug().to_string(),
+                            download_url: offer.download_url.clone(),
+                            sha256: offer.sha256.clone(),
+                        };
+                        spawn_toast(
+                            state,
+                            ToastGroup::General,
+                            ToastKind::Normal,
+                            state.fluent.get(Tr::UpdateDownloading),
+                            None,
+                            true,
+                        );
+                        tasks.push(Task::perform(
+                            async move { crate::app_updater::stage_app_update(&download).await },
+                            |result| Message::Settings(SettingsMsg::UpdateDownloadStarted(result)),
+                        ));
+                    }
+                }
+            }
+            return Task::batch(tasks);
         }
         Message::Engine(EngineMsg::RetryAria2Fetch) => {
             state.engine_ui.aria2_fetch_error = None;
@@ -2980,14 +3088,12 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                 engine_restart_pending: state.restart.engine_restart_pending,
                 engine_restart_in_progress: state.restart.engine_restart_in_progress,
                 aria2_version: state.engine_ui.aria2_version.as_deref(),
-                aria2_check_msg: state.engine_ui.aria2_check_msg.as_deref(),
                 aria2_status: state
                     .engine_ui
                     .aria2_status
                     .as_ref()
                     .map(|(s, m)| (s.as_str(), m.as_str())),
                 aria2_fetch_error: state.engine_ui.aria2_fetch_error.as_deref(),
-                update_pending: state.engine_ui.update_pending.as_deref(),
                 update_check_in_flight: state.engine_ui.update_check_in_flight,
                 ua_editor: &state.ua_editor,
                 bt_tracker_editor: &state.bt_tracker_editor,
@@ -3105,10 +3211,17 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         iced::widget::Space::new().into()
     };
 
+    let update_layer: iced::Element<'_, Message> = if let Some(dialog) = &state.update_dialog {
+        crate::ui::update_dialog::view(&state.fluent, t, &dialog.offers, dialog.active_tab)
+    } else {
+        iced::widget::Space::new().into()
+    };
+
     let drop_overlay_layer: iced::Element<'_, Message> = if state.drop_hover
         && !(state.window.show_close_dialog
             || state.about_dialog_visible
-            || state.confirm.is_some())
+            || state.confirm.is_some()
+            || state.update_dialog.is_some())
     {
         crate::ui::components::drop_overlay::view(&state.fluent, t)
     } else {
@@ -3128,6 +3241,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         close_layer,
         details_layer,
         confirm_layer,
+        update_layer,
         drop_overlay_layer,
         toast_layer,
     ]
@@ -3519,33 +3633,119 @@ fn send_system_notification(
     }
 }
 
-fn maybe_auto_check_updates(state: &mut Remotrix, startup: bool) -> Task<Message> {
+fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -> Task<Message> {
     if state.engine_ui.update_check_in_flight {
         return Task::none();
     }
     let now_ms = chrono::Local::now().timestamp_millis();
-    if !state.settings.update.check_due(startup, now_ms) {
-        return Task::none();
-    }
-    if !state.settings.update.scope.covers("aria2-next") {
-        return Task::none();
+    if !manual {
+        if !state.settings.update.enabled {
+            return Task::none();
+        }
+        if !state.settings.update.check_due(startup, now_ms) {
+            return Task::none();
+        }
     }
     state.engine_ui.update_check_in_flight = true;
-    state.engine_ui.aria2_check_msg = None;
-    if state
-        .handle
-        .cmd_tx
-        .send(EngineCmd::CheckAria2Update)
-        .is_err()
-    {
-        state.engine_ui.update_check_in_flight = false;
-        tracing::warn!("auto-check update cmd send failed");
-    } else {
-        state.settings.update.last_check_time = Some(now_ms);
-        state.applied_settings.update.last_check_time = Some(now_ms);
-        config::save(&state.applied_settings);
+    state.settings.update.last_check_time = Some(now_ms);
+    state.applied_settings.update.last_check_time = Some(now_ms);
+    config::save(&state.applied_settings);
+
+    let scope = state.settings.update.scope;
+    let silent = state.settings.update.aria2_silent_update;
+    let app_current = crate::app_updater::current_app_version().to_string();
+    let engine_current = crate::aria2_fetcher::installed_version().unwrap_or_default();
+    let slug = crate::updater::platform_slug();
+
+    Task::perform(
+        async move {
+            let mut offers = Vec::new();
+            let mut silent_applied = Vec::new();
+            let mut errors = Vec::new();
+
+            if scope.covers("aria2-next") {
+                match crate::updater::fetch_releases_since(
+                    "AnInsomniacy/aria2-next",
+                    "aria2-next",
+                    slug,
+                    &engine_current,
+                )
+                .await
+                {
+                    Ok(rels) => {
+                        if let Some(latest) = rels.first() {
+                            let settings = crate::config::load();
+                            if !settings.update.is_skipped("aria2-next", &latest.version) {
+                                let offer = crate::ui::update_dialog::UpdateOffer {
+                                    component: crate::ui::update_dialog::UpdateComponent::Aria2,
+                                    current: engine_current.clone(),
+                                    latest: latest.version.clone(),
+                                    changelog: concat_changelog(&rels),
+                                    download_url: latest.download_url.clone(),
+                                    sha256: latest.sha256.clone(),
+                                    asset_name: latest.asset_name.clone(),
+                                };
+                                if silent {
+                                    silent_applied.push(offer);
+                                } else {
+                                    offers.push(offer);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => errors.push(format!("aria2-next: {e}")),
+                }
+            }
+
+            if scope.covers("remotrix") {
+                match crate::updater::fetch_app_releases_since(&app_current).await {
+                    Ok(rels) => {
+                        if let Some(latest) = rels.first() {
+                            offers.push(crate::ui::update_dialog::UpdateOffer {
+                                component: crate::ui::update_dialog::UpdateComponent::App,
+                                current: app_current.clone(),
+                                latest: latest.version.clone(),
+                                changelog: concat_changelog(&rels),
+                                download_url: latest.download_url.clone(),
+                                sha256: latest.sha256.clone(),
+                                asset_name: latest.asset_name.clone(),
+                            });
+                        }
+                    }
+                    Err(e) => errors.push(format!("remotrix: {e}")),
+                }
+            }
+
+            Message::Settings(SettingsMsg::UpdateResult {
+                offers,
+                silent_applied,
+                errors,
+            })
+        },
+        std::convert::identity,
+    )
+}
+
+fn concat_changelog(rels: &[crate::updater::ReleaseInfo]) -> String {
+    let mut parts = Vec::new();
+    for rel in rels {
+        let mut block = format!("v{}", rel.version);
+        if !rel.notes.trim().is_empty() {
+            block.push_str("\n\n");
+            block.push_str(rel.notes.trim_end());
+        }
+        parts.push(block);
     }
-    Task::none()
+    parts.join("\n\n---\n\n")
+}
+
+fn send_download_aria2_update(state: &Remotrix, offer: &crate::ui::update_dialog::UpdateOffer) {
+    let _ = state.handle.cmd_tx.send(EngineCmd::DownloadAria2Update {
+        version: offer.latest.clone(),
+        asset_name: offer.asset_name.clone(),
+        download_url: offer.download_url.clone(),
+        sha256: offer.sha256.clone(),
+    });
 }
 
 fn start_tracker_fetch(state: &mut Remotrix, urls: Vec<String>) -> Task<Message> {

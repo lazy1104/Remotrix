@@ -15,3 +15,4 @@ pub mod sort;
 pub mod task_list;
 pub mod theme;
 pub mod title_bar;
+pub mod update_dialog;

@@ -102,10 +102,8 @@ pub struct SettingsPageContext<'a> {
     pub engine_restart_pending: bool,
     pub engine_restart_in_progress: bool,
     pub aria2_version: Option<&'a str>,
-    pub aria2_check_msg: Option<&'a str>,
     pub aria2_status: Option<(&'a str, &'a str)>,
     pub aria2_fetch_error: Option<&'a str>,
-    pub update_pending: Option<&'a str>,
     pub update_check_in_flight: bool,
     pub ua_editor: &'a text_editor::Content,
     pub bt_tracker_editor: &'a text_editor::Content,
@@ -124,10 +122,8 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
         engine_restart_pending,
         engine_restart_in_progress,
         aria2_version,
-        aria2_check_msg,
         aria2_status,
         aria2_fetch_error,
-        update_pending,
         update_check_in_flight,
         ua_editor,
         bt_tracker_editor,
@@ -143,8 +139,6 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
             settings,
             *font_restart_required,
             *aria2_version,
-            *aria2_check_msg,
-            *update_pending,
             *update_check_in_flight,
         ),
         SettingsCategory::Download => {
@@ -256,8 +250,6 @@ fn general_view<'a>(
     settings: &'a Settings,
     font_restart_required: bool,
     aria2_version: Option<&'a str>,
-    aria2_check_msg: Option<&'a str>,
-    update_pending: Option<&'a str>,
     update_check_in_flight: bool,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
@@ -403,13 +395,21 @@ fn general_view<'a>(
                 ))
             },
         ))
-        .push(last_check_row(fluent, settings, update_check_in_flight))
-        .push(update_status_row(
-            fluent,
-            aria2_check_msg,
-            update_pending,
-            update_check_in_flight,
+        .push(labeled_toggle(
+            fluent.get(Tr::Aria2SilentUpdate),
+            settings.update.aria2_silent_update,
+            SettingKey::Aria2SilentUpdate,
         ))
+        .push(
+            row![
+                iced::widget::Space::new().width(Length::Fixed(200.0)),
+                text(fluent.get(Tr::Aria2SilentUpdateHint))
+                    .size(FONT_TINY)
+                    .style(theme::style::text::secondary),
+            ]
+            .align_y(Alignment::Center),
+        )
+        .push(last_check_row(fluent, settings, update_check_in_flight))
         .into()
 }
 
@@ -430,17 +430,35 @@ fn last_check_row<'a>(
         a.insert(std::borrow::Cow::from("time"), time_str.into());
         a
     });
-    setting_row_auto(
+    let check_btn = if update_check_in_flight {
+        button(
+            row![
+                icon::hourglass().size(FONT_ICON),
+                text(fluent.get(Tr::CheckingUpdate)).size(FONT_SMALL),
+            ]
+            .spacing(SPACE_SM)
+            .align_y(Alignment::Center),
+        )
+        .on_press_maybe(None)
+        .padding(PADDING_BUTTON_SM)
+        .style(theme::style::button::secondary())
+    } else {
+        button(
+            row![
+                icon::refresh().size(FONT_ICON),
+                text(fluent.get(Tr::CheckNow)).size(FONT_SMALL),
+            ]
+            .spacing(SPACE_SM)
+            .align_y(Alignment::Center),
+        )
+        .on_press(Message::Settings(SettingsMsg::CheckUpdatesNow))
+        .padding(PADDING_BUTTON_SM)
+        .style(theme::style::button::secondary())
+    };
+    setting_row(
         fluent.get(Tr::LastCheck),
         row![
-            button(text(fluent.get(Tr::CheckNow)).size(FONT_SMALL))
-                .on_press_maybe(if update_check_in_flight {
-                    None
-                } else {
-                    Some(Message::Settings(SettingsMsg::CheckUpdatesNow))
-                })
-                .padding(PADDING_BUTTON_SM)
-                .style(theme::style::button::secondary()),
+            check_btn,
             text(last_check_str)
                 .size(FONT_SMALL)
                 .style(theme::style::text::secondary),
@@ -449,44 +467,6 @@ fn last_check_row<'a>(
         .align_y(Alignment::Center)
         .into(),
     )
-}
-
-fn update_status_row<'a>(
-    fluent: &'a Fluent,
-    aria2_check_msg: Option<&'a str>,
-    update_pending: Option<&'a str>,
-    update_check_in_flight: bool,
-) -> Element<'a, Message> {
-    let status = if let Some(pending) = update_pending {
-        row![
-            button(text(fluent.get(Tr::RestartToUpdate)).size(FONT_SMALL))
-                .on_press(Message::Engine(EngineMsg::RestartEngine))
-                .padding(PADDING_BUTTON_SM)
-                .style(theme::style::button::primary()),
-            text(format!(
-                "v{pending} - {}",
-                fluent.get(Tr::PendingUpdateHint)
-            ))
-            .size(FONT_SMALL)
-            .style(theme::style::text::secondary),
-        ]
-        .spacing(SPACE_LG)
-        .align_y(Alignment::Center)
-        .into()
-    } else if update_check_in_flight {
-        text(fluent.get(Tr::CheckingUpdate))
-            .size(FONT_SMALL)
-            .style(theme::style::text::secondary)
-            .into()
-    } else if let Some(msg) = aria2_check_msg {
-        text(msg)
-            .size(FONT_SMALL)
-            .style(theme::style::text::secondary)
-            .into()
-    } else {
-        iced::widget::Space::new().height(Length::Fixed(0.0)).into()
-    };
-    setting_row_auto(String::new(), status)
 }
 
 fn theme_color_swatches<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, Message> {

@@ -118,7 +118,12 @@ pub enum EngineCmd {
     },
     Shutdown,
     ForceKill,
-    CheckAria2Update,
+    DownloadAria2Update {
+        version: String,
+        asset_name: String,
+        download_url: String,
+        sha256: Option<String>,
+    },
     RetryAria2Fetch,
     RestartEngine,
     ResumeGids(Vec<String>),
@@ -170,9 +175,6 @@ pub enum EngineEvent {
     },
     Aria2Version {
         version: String,
-    },
-    Aria2CheckResult {
-        current: String,
     },
     Aria2UpdateApplied {
         version: String,
@@ -1050,7 +1052,7 @@ async fn handle_client_cmd(
         }
         EngineCmd::Shutdown
         | EngineCmd::ForceKill
-        | EngineCmd::CheckAria2Update
+        | EngineCmd::DownloadAria2Update { .. }
         | EngineCmd::ReloadSchedules
         | EngineCmd::RetryAria2Fetch
         | EngineCmd::RestartEngine => {
@@ -1151,33 +1153,35 @@ fn installed_version() -> String {
     aria2_fetcher::installed_version().unwrap_or_default()
 }
 
-async fn handle_check_update(event_tx: &EventTx) {
-    tracing::info!("check aria2 update");
-    let current = installed_version();
-    let slug = crate::updater::platform_slug();
-    match crate::updater::fetch_latest_release("AnInsomniacy/aria2-next", slug).await {
-        Ok(release) => {
-            if release.version == current {
-                let _ = event_tx.send(EngineEvent::Aria2CheckResult { current });
-            } else {
-                let settings = crate::config::load();
-                if settings.update.is_skipped("aria2-next", &release.version) {
-                    let _ = event_tx.send(EngineEvent::Aria2CheckResult { current });
-                } else {
-                    match crate::aria2_fetcher::stage_update_download(&release, event_tx).await {
-                        Ok(version) => {
-                            let _ = event_tx.send(EngineEvent::Aria2UpdateStaged { version });
-                        }
-                        Err(e) => {
-                            let _ = event_tx.send(EngineEvent::Aria2UpdateFailed { error: e });
-                        }
-                    }
-                }
-            }
+async fn handle_download_aria2_update(cmd: EngineCmd, event_tx: &EventTx) {
+    let EngineCmd::DownloadAria2Update {
+        version,
+        asset_name,
+        download_url,
+        sha256,
+    } = cmd
+    else {
+        return;
+    };
+    tracing::info!(?version, "download aria2 update");
+    let fallback_slug = crate::updater::platform_slug();
+    let slug = asset_name
+        .strip_prefix(&format!("aria2-next-{version}-"))
+        .unwrap_or(fallback_slug);
+    match crate::aria2_fetcher::stage_update_from(
+        &version,
+        slug,
+        &download_url,
+        sha256.as_deref(),
+        event_tx,
+    )
+    .await
+    {
+        Ok(v) => {
+            let _ = event_tx.send(EngineEvent::Aria2UpdateStaged { version: v });
         }
         Err(e) => {
-            tracing::warn!("update check failed: {e}");
-            let _ = event_tx.send(EngineEvent::Aria2CheckResult { current });
+            let _ = event_tx.send(EngineEvent::Aria2UpdateFailed { error: e });
         }
     }
 }
@@ -1557,10 +1561,11 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                         let _ = event_tx.send(EngineEvent::EngineStopped);
                         break;
                     }
-                    EngineCmd::CheckAria2Update => {
+                    EngineCmd::DownloadAria2Update { .. } => {
                         let tx = event_tx.clone();
+                        let cmd = cmd.clone();
                         tokio::spawn(async move {
-                            handle_check_update(&tx).await;
+                            handle_download_aria2_update(cmd, &tx).await;
                         });
                     }
                     EngineCmd::ReloadSchedules => {

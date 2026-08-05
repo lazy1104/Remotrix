@@ -45,6 +45,17 @@ jobs:
       - name: Build release binary
         run: cargo build --release --locked
 
+      - name: Stage raw binary asset
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p target/release/bundle
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp target/release/remotrix.exe "target/release/bundle/remotrix-${VERSION}-windows-x86_64.exe"
+          else
+            cp target/release/remotrix "target/release/bundle/remotrix-${VERSION}-linux-x86_64"
+          fi
+
       - name: Package installers
         run: cargo packager --release --config packager.toml --formats ${{ matrix.formats }}
 
@@ -62,3 +73,5 @@ jobs:
             target/release/bundle/*.deb
             target/release/bundle/*.AppImage
             target/release/bundle/*.exe
+            target/release/bundle/remotrix-*-linux-x86_64
+            target/release/bundle/remotrix-*-windows-x86_64.exe
