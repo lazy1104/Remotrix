@@ -1,51 +1,45 @@
 # Remotrix
 
-A Rust-native desktop download manager inspired by [Motrix](https://motrix.app/), built with the
-[`iced`](https://github.com/iced-rs/iced) GUI framework and an [`aria2-next`](https://github.com/AnInsomniacy/aria2-next)
-sidecar engine driven over WebSocket JSON-RPC ([`aria2-ws`](https://crates.io/crates/aria2-ws)).
+> **[中文](README.md) | [English](README_EN.md)**
 
-> The name "Remotrix" is a portmanteau of **Rust** + **Motrix**.
+基于 Rust 的原生桌面下载管理器，灵感来自 [Motrix](https://motrix.app/)，采用 [`iced`](https://github.com/iced-rs/iced) GUI 框架，并通过 WebSocket JSON-RPC 驱动 [`aria2-next`](https://github.com/AnInsomniacy/aria2-next) 侧车引擎（[`aria2-ws`](https://crates.io/crates/aria2-ws)）。
 
-## Why Remotrix?
+> 名称 "Remotrix" 是 **Rust** 与 **Motrix** 的合成词。
 
-Remotrix started as a learning project. I liked Motrix / Motrix-next's design, but the Tauri-based
-Motrix-next did not run properly on my Windows 10 machine and had severe performance problems on my
-Linux machine. I wanted to learn Rust and the `iced` GUI framework, so I decided to build a native
-Rust download manager from scratch, using Motrix-next as the design reference. The app is developed
-with AI assistance.
+## 为什么做 Remotrix？
 
-## Features
+Remotrix 最初是一个学习项目。我喜欢 Motrix / Motrix-next 的设计，但基于 Tauri 的 Motrix-next 在我的 Windows 10 机器上无法正常运行，在 Linux 机器上又有严重的性能问题。我想学习 Rust 和 `iced` GUI 框架，于是决定从零开始做一个原生的 Rust 下载管理器，以 Motrix-next 作为设计参考。本项目由 AI 辅助开发。
 
-- **Native Rust UI** — pure-Rust rendering via `iced 0.14`, no Electron / browser stack
-- **Multi-protocol downloads** — HTTP/HTTPS/FTP and BitTorrent (`.torrent` files) through aria2-next
-- **Parallel segments** — configurable split / max-connections per server
-- **Global & per-task speed limits** — separate download / upload caps, persisted to disk
-- **Embedded persistence** — task metadata and progress are stored in a local SQLite database and survive restarts
-- **Self-managing engine** — aria2-next is fetched at runtime from GitHub Releases (sha256-verified, cached, self-healing), with automatic update checks and staged background updates applied on the next restart
-- **Frameless window** — custom title bar with minimize / maximize / close controls and a close-confirmation dialog
-- **Theming** — pick an accent color (a wrapping row of swatches); iced auto-generates the full light / dark palette from it, including a M3-style surface background derived from the accent hue, and the app can follow the system appearance (`dark-light` detection)
-- **Internationalization** — auto-detects `zh_CN` / `en_US` from the system locale, switchable in Settings
-- **Task details** — summary / activity / files tabs with a BitTorrent piece-completion map
-- **Sorting & filters** — sort by added time, name, size, progress, or status; filter by All / Downloading / Completed
-- **File logging** — daily rolling logs written under the data directory
+## 功能特性
 
-## Screenshots
+- **原生 Rust UI** —— 通过 `iced 0.14` 纯 Rust 渲染，无 Electron / 浏览器内核
+- **多协议下载** —— 支持 HTTP/HTTPS/FTP 与 BitTorrent（`.torrent` 文件），由 aria2-next 驱动
+- **并行分段** —— 可配置每台服务器的分段数 / 最大连接数
+- **全局与任务级限速** —— 下载 / 上传限速独立设置，持久化到磁盘
+- **内嵌持久化** —— 任务元数据与进度存储在本地 SQLite 数据库，重启后保留
+- **自管理引擎** —— aria2-next 在运行时从 GitHub Releases 自动获取（sha256 校验、缓存、自愈），支持自动更新检查与后台暂存更新，下次重启时应用
+- **无边框窗口** —— 自定义标题栏，含最小化 / 最大化 / 关闭按钮与关闭确认对话框
+- **主题系统** —— 选择强调色（一排色块）；iced 自动生成完整的浅色 / 深色调色板，包括由强调色派生出的 M3 风格表面背景；应用可跟随系统外观（`dark-light` 检测）
+- **国际化** —— 自动从系统区域设置检测 `zh_CN` / `en_US`，可在设置中切换
+- **任务详情** —— 摘要 / 活动 / 文件三个标签页，含 BitTorrent 分片完成度图
+- **排序与筛选** —— 按添加时间、名称、大小、进度或状态排序；按全部 / 下载中 / 已完成筛选
+- **文件日志** —— 数据目录下按天滚动的日志文件
 
-Screenshots pending — see `assets/icon.png` for the app logo.
+## 截图
 
-## Architecture
+截图待补充——应用图标见 `assets/icon.png`。
 
-Remotrix uses a **dual event loop** design:
+## 架构
 
-- The **iced UI loop** runs on the main thread
-- A **tokio runtime** drives an engine **supervisor** on a background thread, which spawns the
-  `aria2-next` subprocess and talks to it over a `aria2-ws` WebSocket client (random local port + per-session RPC secret)
-- The two halves communicate over `tokio::sync::mpsc` channels:
-  - GUI -> Engine: `EngineCmd` via `mpsc::Sender`
-  - Engine -> GUI: `EngineEvent` polled by an `iced::Subscription`
-- Progress arrives both from aria2 WebSocket **notifications** and a 1 Hz **polling** loop; the UI
-  batches dirty tasks and flushes them to SQLite every second
-- aria2 session state is persisted via `--save-session` / `--input-file` so in-flight tasks resume across restarts
+Remotrix 采用**双事件循环**设计：
+
+- **iced UI 循环**运行在主线程
+- **tokio 运行时**在后台线程驱动一个引擎**监管者**，负责派生 `aria2-next` 子进程，并通过 `aria2-ws` WebSocket 客户端与之通信（随机本地端口 + 每次会话独立的 RPC 密钥）
+- 两半通过 `tokio::sync::mpsc` 通道通信：
+  - GUI → 引擎：通过 `mpsc::Sender` 发送 `EngineCmd`
+  - 引擎 → GUI：由 `iced::Subscription` 轮询 `EngineEvent`
+- 进度既来自 aria2 WebSocket **通知**，也来自 1 Hz 的**轮询**循环；UI 对脏任务做批处理，每秒刷新一次 SQLite
+- aria2 会话状态通过 `--save-session` / `--input-file` 持久化，使进行中的任务跨重启恢复
 
 ```
 ┌──────────────┐  EngineCmd   ┌──────────────────────────┐
@@ -59,164 +53,145 @@ Remotrix uses a **dual event loop** design:
                                └──────────────────────────┘
 ```
 
-### aria2-next lifecycle
+### aria2-next 生命周期
 
-- **First launch** — `aria2_fetcher::ensure_aria2_next()` downloads the matching platform asset from
-  `AnInsomniacy/aria2-next` GitHub Releases into `<data_dir>/aria2/`, verifies its sha256, records
-  `.installed`, and marks it executable. Subsequent launches hit the cache.
-- **Override** — set `ARIA2_BIN=/path/to/aria2-next` to skip the download entirely (useful for development).
-- **Self-healing** — if `.installed` is missing/corrupt, the directory is scanned for a cached binary
-  and `.installed` is rebuilt.
-- **Updates** — `updater::fetch_latest_release()` compares versions; a newer release is downloaded in
-  the background and a `.pending-update` marker is written. The pending binary replaces the active one
-  on the next app / engine restart.
-- **Degraded mode** — if fetch or spawn fails, the engine does not exit; the UI surfaces the error and
-  offers retry (`RetryAria2Fetch`) / restart (`RestartEngine`).
+- **首次启动** —— `aria2_fetcher::ensure_aria2_next()` 从 `AnInsomniacy/aria2-next` 的 GitHub Releases 下载匹配平台的资源到 `<data_dir>/aria2/`，校验 sha256，记录 `.installed` 并赋予可执行权限。后续启动直接命中缓存。
+- **覆盖** —— 设置 `ARIA2_BIN=/path/to/aria2-next` 可完全跳过下载（便于开发）。
+- **自愈** —— 若 `.installed` 缺失 / 损坏，会扫描目录中缓存的二进制并重建 `.installed`。
+- **更新** —— `updater::fetch_latest_release()` 比较版本；发现新版本后在后台下载并写入 `.pending-update` 标记。待更新的二进制在下次应用 / 引擎重启时替换当前版本。
+- **降级模式** —— 若获取或派生失败，引擎不会退出；UI 会显示错误并提供重试（`RetryAria2Fetch`）/ 重启（`RestartEngine`）。
 
-### Code layout
+### 代码结构
 
 ```
 src/
-├── main.rs               # entry, logging init, window settings
-├── app.rs                # Remotrix state, update(), view(), subscription()
-├── config.rs             # Settings (serde) load/save, aria2 option mapping, path helpers
-├── db.rs                 # SQLite persistence (rusqlite): task meta + progress flush
-├── engine.rs             # EngineBridge: spawn tokio supervisor + aria2-next sidecar, mpsc channels
-├── aria2_fetcher.rs      # runtime fetch / cache / verify aria2-next binary, staged updates
-├── updater.rs            # GitHub Releases lookup, ReleaseInfo, platform slug
-├── message.rs            # Message enum + page / filter / sort / setting enums
-├── task.rs               # DownloadTask model, formatters, TaskDetails / TaskFile
-├── i18n.rs               # Locale detection + Fluent translations
-├── clipboard_watch.rs    # clipboard link detection (http/ftp/magnet/ed2k/bt) for auto-add
-├── logging.rs            # tracing init, daily rolling file logs, runtime log levels
-├── scheduler.rs          # speed-limit schedule window + weekday helpers
-├── torrent_meta.rs       # .torrent metadata parsing (name, files, size)
-├── trackers.rs           # BT tracker list parse / reduce / merge
+├── main.rs               # 入口、日志初始化、窗口设置
+├── app.rs                # Remotrix 状态、update()、view()、subscription()
+├── config.rs             # 设置（serde）加载/保存、aria2 选项映射、路径辅助
+├── db.rs                 # SQLite 持久化（rusqlite）：任务元数据 + 进度刷新
+├── engine.rs             # EngineBridge：派生 tokio 监管者 + aria2-next 侧车、mpsc 通道
+├── aria2_fetcher.rs      # 运行时获取 / 缓存 / 校验 aria2-next 二进制、暂存更新
+├── updater.rs            # GitHub Releases 查询、ReleaseInfo、平台 slug
+├── message.rs            # Message 枚举 + 页面 / 筛选 / 排序 / 设置枚举
+├── task.rs               # DownloadTask 模型、格式化器、TaskDetails / TaskFile
+├── i18n.rs               # 区域设置检测 + Fluent 翻译
+├── clipboard_watch.rs    # 剪贴板链接检测（http/ftp/magnet/ed2k/bt）用于自动添加
+├── logging.rs            # tracing 初始化、按天滚动日志、运行时日志级别
+├── scheduler.rs          # 限速时间段 + 星期辅助
+├── torrent_meta.rs       # .torrent 元数据解析（名称、文件、大小）
+├── trackers.rs           # BT tracker 列表解析 / 精简 / 合并
 └── ui/
-    ├── mod.rs            # ui module re-exports
-    ├── theme.rs          # accent-color → iced palette generation, ThemeMode, widget styles
-    ├── icon.rs           # iced_lucide icon font module (build-generated)
-    ├── icons.rs          # icon glyph constants + layout widths
-    ├── dims.rs           # shared dimension constants
-    ├── title_bar.rs      # custom frameless title bar + window controls
-    ├── resize_frame.rs   # custom resize handles for the frameless window
-    ├── close_dialog.rs   # close-confirmation overlay
-    ├── confirm_dialog.rs # generic confirm overlay
-    ├── sidebar.rs        # nav: Tasks / New / About / Settings
-    ├── category_bar.rs   # task filters (All / Downloading / Completed) + settings categories
-    ├── task_list.rs      # download cards with progress, actions, sort menu
-    ├── add_dialog.rs     # new-download overlay (url / torrent / split / advanced)
-    ├── details_dialog.rs # task details: summary / activity / files tabs
-    ├── sort.rs           # task sorting comparators
-    ├── about_dialog.rs   # about / engine info overlay
-    ├── settings_page.rs  # general, download, bittorrent, ed2k, network, advanced, appearance
-    └── components/       # reusable widgets (piece_map, path_picker, time_picker, toast, ...)
+    ├── mod.rs            # ui 模块重导出
+    ├── theme.rs          # 强调色 → iced 调色板生成、ThemeMode、控件样式
+    ├── icon.rs           # iced_lucide 图标字体模块（构建期生成）
+    ├── icons.rs          # 图标字形常量 + 布局宽度
+    ├── dims.rs           # 共享尺寸常量
+    ├── title_bar.rs      # 自定义无边框标题栏 + 窗口控制
+    ├── resize_frame.rs   # 无边框窗口的自定义缩放手柄
+    ├── close_dialog.rs   # 关闭确认遮罩
+    ├── confirm_dialog.rs # 通用确认遮罩
+    ├── sidebar.rs        # 导航：任务 / 新建 / 关于 / 设置
+    ├── category_bar.rs   # 任务筛选（全部 / 下载中 / 已完成）+ 设置分类
+    ├── task_list.rs      # 下载卡片：进度、操作、排序菜单
+    ├── add_dialog.rs     # 新建下载遮罩（url / 种子 / 分段 / 高级）
+    ├── details_dialog.rs # 任务详情：摘要 / 活动 / 文件标签页
+    ├── sort.rs           # 任务排序比较器
+    ├── about_dialog.rs   # 关于 / 引擎信息遮罩
+    ├── settings_page.rs  # 常规、下载、BitTorrent、ed2k、网络、高级、外观
+    └── components/       # 可复用控件（piece_map、path_picker、time_picker、toast、...）
 ```
 
-## Build & Run
+## 构建与运行
 
-Requirements: a recent stable Rust toolchain (`rustup` recommended). X11/Wayland dev packages may be
-needed on Linux. **No network access is required at build time** — `build.rs` only generates the icon
-module; the aria2-next binary is fetched on first run.
+要求：较新的稳定版 Rust 工具链（推荐 `rustup`）。Linux 上可能需要 X11/Wayland 开发包。**构建期无需网络访问** —— `build.rs` 只生成图标模块；aria2-next 二进制在首次运行时获取。
 
 ```bash
-cargo build                # debug build
-cargo run --               # launch app (fetches aria2-next on first launch)
-cargo build --release      # release build (aggressive: fat LTO, strip, panic=abort)
+cargo build                # 调试构建
+cargo run --               # 启动应用（首次启动获取 aria2-next）
+cargo build --release      # 发布构建（激进优化：fat LTO、strip、panic=abort）
 ```
 
-## Packaging
+## 打包
 
-Installers are produced with [cargo-packager](https://github.com/crabnebula-dev/cargo-packager)
-(`cargo install cargo-packager --locked`), configured by `packager.toml`. Release binaries are built
-per-platform on GitHub Actions (`.github/workflows/release.yml`) — Linux `.deb`/`.AppImage`, Windows
-NSIS `.exe` — and uploaded as build artifacts (attached to a GitHub Release on tag push).
+安装包由 [cargo-packager](https://github.com/crabnebula-dev/cargo-packager)（`cargo install cargo-packager --locked`）生成，由 `packager.toml` 配置。发布二进制在 GitHub Actions（`.github/workflows/release.yml`）上按平台构建——Linux `.deb` / `.AppImage`、Windows NSIS `.exe`——并作为构建产物上传（打 tag 时附加到 GitHub Release）。
 
 ```bash
 cargo packager --release --config packager.toml --formats deb,appimage   # Linux
 cargo packager --release --config packager.toml --formats nsis           # Windows
 ```
 
-Packages contain only the binary (fonts, icons, and i18n are compile-time embedded). **Vulkan is
-required at runtime** on Linux (iced/wgpu loads it via `dlopen`); the aria2-next binary is fetched at
-runtime and is intentionally not bundled. `deb.depends` is minimal because iced links only the C
-runtime — the deb cannot enforce the `dlopen`'d GTK/X11/Vulkan libraries.
+安装包只含二进制（字体、图标、i18n 均为编译期嵌入）。Linux 上运行时**需要 Vulkan**（iced/wgpu 通过 `dlopen` 加载）；aria2-next 二进制在运行时获取，刻意不打包进安装包。`deb.depends` 保持最小，因为 iced 只链接 C 运行时——deb 无法强制依赖 `dlopen` 的 GTK/X11/Vulkan 库。
 
-To use a local aria2-next binary instead of the auto-download:
+使用本地 aria2-next 二进制而非自动下载：
 
 ```bash
 ARIA2_BIN=/path/to/aria2-next cargo run --
 ```
 
-## Checks
+## 检查
 
 ```bash
-cargo test --workspace     # run tests
-cargo clippy --workspace   # lint (no warnings allowed)
-cargo fmt --check          # formatting check
+cargo test --workspace     # 运行测试
+cargo clippy --workspace   # 静态检查（不允许有警告）
+cargo fmt --check          # 格式检查
 ```
 
-## Configuration
+## 配置
 
-Settings are persisted as JSON under the platform config dir (`directories` crate,
-`ProjectDirs::from("dev", "remotrix", "Remotrix")`):
+设置以 JSON 持久化到平台配置目录（`directories` crate，`ProjectDirs::from("dev", "remotrix", "Remotrix")`）：
 
 - Linux: `~/.config/remotrix/settings.json`
 - macOS: `~/Library/Application Support/dev.remotrix.Remotrix/settings.json`
 - Windows: `%APPDATA%\remotrix\Remotrix\config\settings.json`
 
-Runtime data (SQLite database, aria2-next binary cache + session, log files) lives under the data dir:
+运行时数据（SQLite 数据库、aria2-next 二进制缓存 + 会话、日志文件）位于数据目录：
 
 - Linux: `~/.local/share/remotrix/`
 - macOS: `~/Library/Application Support/dev.remotrix.Remotrix/`
 - Windows: `%APPDATA%\remotrix\Remotrix\data\`
 
-Persisted settings include the download folder, max concurrent downloads, split, global & per-task
-speed limits, theme mode + selected light/dark themes, locale, auto-update preferences, and a full set
-of aria2 options (max-connection-per-server, min-split-size, auto-file-renaming, allow-overwrite,
-continue, check-integrity, user-agent, headers, proxy, retries, timeouts, bt-tracker, seed ratio/time,
-DHT, and more).
+持久化的设置包括下载文件夹、最大并发下载数、分段数、全局与任务级限速、主题模式 + 所选浅色 / 深色主题、区域设置、自动更新偏好，以及全套 aria2 选项（每服务器最大连接数、最小分段大小、自动重命名、允许覆盖、断点续传、校验完整性、User-Agent、请求头、代理、重试、超时、bt-tracker、做种比例 / 时长、DHT 等）。
 
-## Tech Stack
+## 技术栈
 
-| Component | Choice | Rationale |
+| 组件 | 选型 | 理由 |
 |---|---|---|
-| GUI | `iced 0.14` (+tokio, advanced, canvas, svg) | Pure Rust, widget-based, dark theme support |
-| Engine | `aria2-next` sidecar + `aria2-ws 0.5` | C++ aria2 fork, JSON-RPC over WebSocket, spawned as subprocess |
-| Async | `tokio 1.x` (full) | Shared runtime for engine + UI |
-| Persistence | `rusqlite 0.32` (bundled) | Embedded SQLite for task metadata / progress |
-| Themes | iced `Theme::custom` (built-in) | Accent-color swatches; iced auto-generates light/dark palettes |
-| i18n | `fluent-templates 0.14` | Fluent translations (zh / en) |
-| System theme | `dark-light 1.1` | Detect system dark / light preference |
-| File dialog | `rfd 0.15` | Native OS file picker |
-| HTTP client | `reqwest 0.12` (rustls, json) | GitHub Releases fetch / updater |
-| Hashing | `sha2 0.10` | aria2-next binary checksum verification |
-| Icons | `iced_lucide 0.1`, `iced_aw 0.14` | Icon font + time picker |
-| Image | `image 0.24` (png) | App icon loading |
-| Logging | `tracing` + `tracing-appender 0.2` | Rolling file logs |
-| Config dirs | `directories 5` | XDG / user data paths |
-| Fonts | `fontdb 0.23` | System font-family enumeration for Settings |
-| Process | `libc 0.2` | SIGTERM/SIGKILL stale aria2-next processes |
-| Time | `chrono 0.4` (clock) | Timestamp formatting |
+| GUI | `iced 0.14`（+tokio、advanced、canvas、svg） | 纯 Rust、基于控件、支持深色主题 |
+| 引擎 | `aria2-next` 侧车 + `aria2-ws 0.5` | C++ aria2 分支，WebSocket 上的 JSON-RPC，以子进程方式派生 |
+| 异步 | `tokio 1.x`（full） | 引擎 + UI 共享运行时 |
+| 持久化 | `rusqlite 0.32`（bundled） | 内嵌 SQLite，存储任务元数据 / 进度 |
+| 主题 | iced `Theme::custom`（内置） | 强调色色块；iced 自动生成浅 / 深色调色板 |
+| i18n | `fluent-templates 0.14` | Fluent 翻译（zh / en） |
+| 系统主题 | `dark-light 1.1` | 检测系统深色 / 浅色偏好 |
+| 文件对话框 | `rfd 0.15` | 原生文件选择器 |
+| HTTP 客户端 | `reqwest 0.12`（rustls、json） | GitHub Releases 获取 / 更新器 |
+| 哈希 | `sha2 0.10` | aria2-next 二进制校验和验证 |
+| 图标 | `iced_lucide 0.1`、`iced_aw 0.14` | 图标字体 + 时间选择器 |
+| 图像 | `image 0.24`（png） | 应用图标加载 |
+| 日志 | `tracing` + `tracing-appender 0.2` | 滚动文件日志 |
+| 配置目录 | `directories 5` | XDG / 用户数据路径 |
+| 字体 | `fontdb 0.23` | 设置中用到的系统字体枚举 |
+| 进程 | `libc 0.2` | 对残留 aria2-next 进程发送 SIGTERM/SIGKILL |
+| 时间 | `chrono 0.4`（clock） | 时间戳格式化 |
 
-## Roadmap
+## 路线图
 
-- [x] Dual-loop engine bridge + aria2-next sidecar supervisor
-- [x] Basic UI: sidebar, category bar, task list, add dialog, settings
-- [x] Frameless window + custom title bar
-- [x] i18n (zh / en) + accent-color theme + system auto theme
-- [x] SQLite task persistence
-- [x] aria2-next runtime auto-fetch + auto-update
-- [x] Task details dialog (piece map, files, BT info)
-- [ ] System tray integration (currently stubbed: "Minimize to tray" is coming soon)
-- [ ] Magnet link support
-- [ ] Drag-and-drop file / task support
-- [ ] Polished app icon
+- [x] 双循环引擎桥 + aria2-next 侧车监管者
+- [x] 基础 UI：侧边栏、分类栏、任务列表、添加对话框、设置
+- [x] 无边框窗口 + 自定义标题栏
+- [x] i18n（zh / en）+ 强调色主题 + 系统自动主题
+- [x] SQLite 任务持久化
+- [x] aria2-next 运行时自动获取 + 自动更新
+- [x] 任务详情对话框（分片图、文件、BT 信息）
+- [ ] 系统托盘集成（当前为占位："最小化到托盘"敬请期待）
+- [ ] Magnet 磁力链接支持
+- [ ] 拖拽文件 / 任务支持
+- [ ] 打磨应用图标
 
-## Acknowledgements
+## 致谢
 
-- [aria2-next](https://github.com/AnInsomniacy/aria2-next) by AnInsomniacy — the download engine at the core. It is a separate, independently licensed program (GPL-2.0-or-later) that is **not bundled** with Remotrix; it is downloaded from its GitHub Releases at runtime.
+- [aria2-next](https://github.com/AnInsomniacy/aria2-next) by AnInsomniacy —— 核心下载引擎。它是一个独立的、独立许可的程序（GPL-2.0-or-later），**不随 Remotrix 一并打包**；运行时从其 GitHub Releases 下载。
 
-## License
+## 协议
 
-MIT. See the `LICENSE` file for the full license text.
+MIT。完整许可文本见 `LICENSE` 文件。
