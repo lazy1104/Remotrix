@@ -179,6 +179,10 @@ pub enum SettingsMsg {
         silent_applied: Vec<crate::ui::update_dialog::UpdateOffer>,
         errors: Vec<String>,
     },
+    UpdateChangelogLoaded {
+        tab: usize,
+        releases: Result<Vec<crate::updater::ReleaseInfo>, String>,
+    },
     SpeedUnitChanged(SettingKey, SpeedUnit),
     ToggleScheduleDaysMenu,
     ScheduleDayToggled {

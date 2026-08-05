@@ -157,7 +157,7 @@ impl EngineUiState {
 
 struct UpdateDialogState {
     offers: Vec<crate::ui::update_dialog::UpdateOffer>,
-    changelog_md: Vec<iced::widget::markdown::Content>,
+    changelogs: Vec<crate::ui::update_dialog::ChangelogState>,
     active_tab: usize,
 }
 
@@ -2522,6 +2522,32 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 dialog.active_tab = i;
             }
         }
+        Message::Settings(SettingsMsg::UpdateChangelogLoaded { tab, releases }) => {
+            if let Some(dialog) = &mut state.update_dialog {
+                if let Some(changelog) = dialog.changelogs.get_mut(tab) {
+                    changelog.loading = false;
+                    match releases {
+                        Ok(rels) => {
+                            let text = concat_changelog(&rels);
+                            changelog.md = iced::widget::markdown::Content::parse(&text);
+                            if let Some(offer) = dialog.offers.get_mut(tab) {
+                                offer.changelog = text;
+                            }
+                        }
+                        Err(e) => {
+                            spawn_toast(
+                                state,
+                                ToastGroup::General,
+                                ToastKind::Error,
+                                format!("{}: {e}", state.fluent.get(Tr::UpdateFailed)),
+                                Some(Duration::from_secs(6)),
+                                true,
+                            );
+                        }
+                    }
+                }
+            }
+        }
         Message::Settings(SettingsMsg::UpdateDialogCancel) => {
             state.update_dialog = None;
         }
@@ -2574,14 +2600,41 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 send_download_aria2_update(state, silent);
             }
             if !offers.is_empty() {
+                let changelogs = offers
+                    .iter()
+                    .map(|_| crate::ui::update_dialog::ChangelogState {
+                        md: iced::widget::markdown::Content::default(),
+                        loading: true,
+                    })
+                    .collect();
                 state.update_dialog = Some(UpdateDialogState {
-                    changelog_md: offers
-                        .iter()
-                        .map(|o| iced::widget::markdown::Content::parse(&o.changelog))
-                        .collect(),
+                    changelogs,
                     offers,
                     active_tab: 0,
                 });
+                let slug = crate::updater::platform_slug();
+                let mut tasks = Vec::new();
+                for (tab, offer) in state
+                    .update_dialog
+                    .as_ref()
+                    .unwrap()
+                    .offers
+                    .iter()
+                    .enumerate()
+                {
+                    let (repo, prefix) = update_repo(offer.component);
+                    let current = offer.current.clone();
+                    tasks.push(Task::perform(
+                        crate::updater::fetch_changelog(repo, prefix, slug, current),
+                        move |r| {
+                            Message::Settings(SettingsMsg::UpdateChangelogLoaded {
+                                tab,
+                                releases: r,
+                            })
+                        },
+                    ));
+                }
+                return Task::batch(tasks);
             } else if checked_any && errors.is_empty() {
                 spawn_toast(
                     state,
@@ -2612,12 +2665,10 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             continue;
                         }
                         state.app_update_in_flight = true;
-                        let download = crate::app_updater::AppUpdateDownload {
-                            version: offer.latest.clone(),
-                            slug: crate::updater::platform_slug().to_string(),
-                            download_url: offer.download_url.clone(),
-                            sha256: offer.sha256.clone(),
-                        };
+                        let version = offer.latest.clone();
+                        let slug = crate::updater::platform_slug().to_string();
+                        let download_url = offer.download_url.clone();
+                        let offer_sha256 = offer.sha256.clone();
                         spawn_toast(
                             state,
                             ToastGroup::General,
@@ -2627,7 +2678,27 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             true,
                         );
                         tasks.push(Task::perform(
-                            async move { crate::app_updater::stage_app_update(&download).await },
+                            async move {
+                                let sha256 = match offer_sha256 {
+                                    Some(s) => Some(s),
+                                    None => {
+                                        let asset_name = format!("remotrix-{version}-{slug}");
+                                        crate::updater::fetch_asset_checksum(
+                                            crate::updater::APP_REPO,
+                                            &version,
+                                            &asset_name,
+                                        )
+                                        .await
+                                    }
+                                };
+                                let download = crate::app_updater::AppUpdateDownload {
+                                    version,
+                                    slug,
+                                    download_url,
+                                    sha256,
+                                };
+                                crate::app_updater::stage_app_update(&download).await
+                            },
                             |result| Message::Settings(SettingsMsg::UpdateDownloadStarted(result)),
                         ));
                     }
@@ -3225,7 +3296,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             &state.fluent,
             t,
             &dialog.offers,
-            &dialog.changelog_md,
+            &dialog.changelogs,
             dialog.active_tab,
         )
     } else {
@@ -3675,31 +3746,31 @@ fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -> Task<Mess
 
     Task::perform(
         async move {
-            let fetched = tokio::time::timeout(Duration::from_secs(45), async {
+            let fetched = tokio::time::timeout(Duration::from_secs(30), async {
                 let mut offers = Vec::new();
                 let mut silent_applied = Vec::new();
                 let mut errors = Vec::new();
 
                 if scope.covers("aria2-next") {
-                    match crate::updater::fetch_releases_since(
+                    match crate::updater::fetch_latest_release(
                         "AnInsomniacy/aria2-next",
                         "aria2-next",
                         slug,
-                        &engine_current,
+                        false,
                     )
                     .await
                     {
-                        Ok(rels) => {
-                            if let Some(latest) = rels.first() {
+                        Ok(latest) => {
+                            if crate::updater::version_gt(&latest.version, &engine_current) {
                                 let settings = crate::config::load();
                                 if !settings.update.is_skipped("aria2-next", &latest.version) {
                                     let offer = crate::ui::update_dialog::UpdateOffer {
                                         component: crate::ui::update_dialog::UpdateComponent::Aria2,
                                         current: engine_current.clone(),
                                         latest: latest.version.clone(),
-                                        changelog: concat_changelog(&rels),
+                                        changelog: String::new(),
                                         download_url: latest.download_url.clone(),
-                                        sha256: latest.sha256.clone(),
+                                        sha256: None,
                                         asset_name: latest.asset_name.clone(),
                                     };
                                     if silent {
@@ -3715,16 +3786,23 @@ fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -> Task<Mess
                 }
 
                 if scope.covers("remotrix") {
-                    match crate::updater::fetch_app_releases_since(&app_current).await {
-                        Ok(rels) => {
-                            if let Some(latest) = rels.first() {
+                    match crate::updater::fetch_latest_release(
+                        crate::updater::APP_REPO,
+                        crate::updater::APP_ASSET_PREFIX,
+                        slug,
+                        false,
+                    )
+                    .await
+                    {
+                        Ok(latest) => {
+                            if crate::updater::version_gt(&latest.version, &app_current) {
                                 offers.push(crate::ui::update_dialog::UpdateOffer {
                                     component: crate::ui::update_dialog::UpdateComponent::App,
                                     current: app_current.clone(),
                                     latest: latest.version.clone(),
-                                    changelog: concat_changelog(&rels),
+                                    changelog: String::new(),
                                     download_url: latest.download_url.clone(),
-                                    sha256: latest.sha256.clone(),
+                                    sha256: None,
                                     asset_name: latest.asset_name.clone(),
                                 });
                             }
@@ -3754,6 +3832,19 @@ fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -> Task<Mess
         },
         std::convert::identity,
     )
+}
+
+fn update_repo(
+    component: crate::ui::update_dialog::UpdateComponent,
+) -> (&'static str, &'static str) {
+    match component {
+        crate::ui::update_dialog::UpdateComponent::App => {
+            (crate::updater::APP_REPO, crate::updater::APP_ASSET_PREFIX)
+        }
+        crate::ui::update_dialog::UpdateComponent::Aria2 => {
+            ("AnInsomniacy/aria2-next", "aria2-next")
+        }
+    }
 }
 
 fn concat_changelog(rels: &[crate::updater::ReleaseInfo]) -> String {

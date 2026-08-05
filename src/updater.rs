@@ -23,6 +23,7 @@ pub async fn fetch_latest_release(
     repo: &str,
     asset_prefix: &str,
     slug: &str,
+    fetch_checksum: bool,
 ) -> Result<ReleaseInfo, String> {
     let client = http_client()?;
     let api_url = format!("https://api.github.com/repos/{repo}/releases/latest");
@@ -43,16 +44,16 @@ pub async fn fetch_latest_release(
         .await
         .map_err(|e| format!("parse release json: {e}"))?;
 
-    release_from_json(&client, &body, asset_prefix, slug)
+    release_from_json(&client, &body, asset_prefix, slug, fetch_checksum)
         .await
         .ok_or_else(|| format!("no matching asset '{asset_prefix}-*-{slug}' in latest release"))
 }
 
-pub async fn fetch_releases_since(
+pub async fn fetch_changelog(
     repo: &str,
     asset_prefix: &str,
     slug: &str,
-    current: &str,
+    current: String,
 ) -> Result<Vec<ReleaseInfo>, String> {
     let client = http_client()?;
     let api_url = format!("https://api.github.com/repos/{repo}/releases?per_page=30");
@@ -78,18 +79,27 @@ pub async fn fetch_releases_since(
 
     let mut out = Vec::new();
     for rel in releases {
-        let Some(info) = release_from_json(&client, rel, asset_prefix, slug).await else {
+        let Some(info) = release_from_json(&client, rel, asset_prefix, slug, false).await else {
             continue;
         };
-        if version_gt(&info.version, current) {
+        if version_gt(&info.version, &current) {
             out.push(info);
         }
     }
     Ok(out)
 }
 
-pub async fn fetch_app_releases_since(current: &str) -> Result<Vec<ReleaseInfo>, String> {
-    fetch_releases_since(APP_REPO, APP_ASSET_PREFIX, platform_slug(), current).await
+pub async fn fetch_asset_checksum(repo: &str, version: &str, asset_name: &str) -> Option<String> {
+    let client = http_client().ok()?;
+    let tag = version.strip_prefix('v').unwrap_or(version);
+    let api_url = format!("https://api.github.com/repos/{repo}/releases/tags/v{tag}");
+    let resp = client.get(&api_url).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let body: serde_json::Value = resp.json().await.ok()?;
+    let assets = body["assets"].as_array()?;
+    try_fetch_checksum(&client, asset_name, assets).await
 }
 
 async fn release_from_json(
@@ -97,6 +107,7 @@ async fn release_from_json(
     body: &serde_json::Value,
     asset_prefix: &str,
     slug: &str,
+    fetch_checksum: bool,
 ) -> Option<ReleaseInfo> {
     let tag = body["tag_name"].as_str()?.to_string();
     let version = tag.strip_prefix('v').unwrap_or(&tag).to_string();
@@ -110,7 +121,11 @@ async fn release_from_json(
 
     let download_url = asset["browser_download_url"].as_str()?.to_string();
     let asset_name = asset["name"].as_str()?.to_string();
-    let sha256 = try_fetch_checksum(client, &asset_name, assets).await;
+    let sha256 = if fetch_checksum {
+        try_fetch_checksum(client, &asset_name, assets).await
+    } else {
+        None
+    };
 
     Some(ReleaseInfo {
         tag,

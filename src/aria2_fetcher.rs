@@ -106,7 +106,7 @@ pub async fn ensure_aria2_next(event_tx: &EventTx) -> Result<(PathBuf, Option<St
     emit_status(event_tx, "downloading", "Looking up latest release...");
 
     let release =
-        updater::fetch_latest_release("AnInsomniacy/aria2-next", "aria2-next", slug).await?;
+        updater::fetch_latest_release("AnInsomniacy/aria2-next", "aria2-next", slug, true).await?;
     let bin_name = format!("aria2-next-{}-{}", release.version, slug);
     let part_path = dir.join(format!("{bin_name}.part"));
     let bin_path = dir.join(&bin_name);

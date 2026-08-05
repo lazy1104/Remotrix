@@ -1168,6 +1168,13 @@ async fn handle_download_aria2_update(cmd: EngineCmd, event_tx: &EventTx) {
     let slug = asset_name
         .strip_prefix(&format!("aria2-next-{version}-"))
         .unwrap_or(fallback_slug);
+    let sha256 = match sha256 {
+        Some(s) => Some(s),
+        None => {
+            crate::updater::fetch_asset_checksum("AnInsomniacy/aria2-next", &version, &asset_name)
+                .await
+        }
+    };
     match crate::aria2_fetcher::stage_update_from(
         &version,
         slug,

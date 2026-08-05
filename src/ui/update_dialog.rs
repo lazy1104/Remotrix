@@ -26,6 +26,11 @@ pub struct UpdateOffer {
     pub asset_name: String,
 }
 
+pub struct ChangelogState {
+    pub md: iced::widget::markdown::Content,
+    pub loading: bool,
+}
+
 fn component_label(fluent: &Fluent, c: UpdateComponent) -> String {
     match c {
         UpdateComponent::App => fluent.get(Tr::ComponentApp),
@@ -49,7 +54,7 @@ pub fn view<'a>(
     fluent: &'a Fluent,
     theme: &iced::Theme,
     offers: &'a [UpdateOffer],
-    changelog_md: &'a [markdown::Content],
+    changelogs: &'a [ChangelogState],
     active_tab: usize,
 ) -> Element<'a, Message> {
     let active_tab = active_tab.min(offers.len().saturating_sub(1));
@@ -107,14 +112,21 @@ pub fn view<'a>(
     body = body.push(transition);
 
     body = body.push(text(fluent.get(Tr::UpdateDialogChangelog)).size(FONT_MEDIUM));
-    let changelog: Element<'a, Message> = if offer.changelog.trim().is_empty() {
+    let changelog: Element<'a, Message> = if changelogs[active_tab].loading {
+        column![text(fluent.get(Tr::Loading))
+            .size(FONT_SMALL)
+            .style(theme::style::text::secondary),]
+        .width(Length::Fill)
+        .align_x(Alignment::Center)
+        .into()
+    } else if offer.changelog.trim().is_empty() {
         column![text(fluent.get(Tr::UpdateChangelogEmpty))
             .size(FONT_SMALL)
             .style(theme::style::text::secondary)]
         .into()
     } else {
         column![markdown::view(
-            changelog_md[active_tab].items(),
+            changelogs[active_tab].md.items(),
             markdown::Settings::with_text_size(FONT_SMALL, markdown::Style::from(theme),),
         )
         .map(Message::OpenLink),]
@@ -124,7 +136,7 @@ pub fn view<'a>(
     body = body.push(
         container(
             slim_scrollable(changelog)
-                .height(Length::Fixed(240.0))
+                .height(Length::Fixed(280.0))
                 .width(Length::Fill),
         )
         .width(Length::Fill)
