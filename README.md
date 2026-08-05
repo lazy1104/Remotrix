@@ -6,6 +6,14 @@ sidecar engine driven over WebSocket JSON-RPC ([`aria2-ws`](https://crates.io/cr
 
 > The name "Remotrix" is a portmanteau of **Rust** + **Motrix**.
 
+## Why Remotrix?
+
+Remotrix started as a learning project. I liked Motrix / Motrix-next's design, but the Tauri-based
+Motrix-next did not run properly on my Windows 10 machine and had severe performance problems on my
+Linux machine. I wanted to learn Rust and the `iced` GUI framework, so I decided to build a native
+Rust download manager from scratch, using Motrix-next as the design reference. The app is developed
+with AI assistance.
+
 ## Features
 
 - **Native Rust UI** — pure-Rust rendering via `iced 0.14`, no Electron / browser stack
