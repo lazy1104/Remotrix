@@ -1,6 +1,6 @@
 [package]
 name = "remotrix"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Rust-native download manager inspired by Motrix"
 license = "MIT"

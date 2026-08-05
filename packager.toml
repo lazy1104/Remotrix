@@ -3,7 +3,7 @@ product-name = "Remotrix"
 # cargo-packager tries to detect the package name by chdir'ing into the config
 # file path, which fails with "Not a directory (os error 20)".
 name = "remotrix"
-version = "0.1.0"
+version = "0.1.1"
 binaries-dir = "target/dist"
 out-dir = "target/release/bundle"
 identifier = "org.remotrix.app"
