@@ -940,6 +940,23 @@ fn download_view<'a>(
             settings.remove_task_if_files_missing,
             SettingKey::RemoveTaskIfFilesMissing,
         ))
+        .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
+        .push(group_title(fluent, Tr::Notifications, accent))
+        .push(labeled_toggle(
+            fluent.get(Tr::NotifyDownloadComplete),
+            settings.notifications.download_complete,
+            SettingKey::NotificationDownloadComplete,
+        ))
+        .push(labeled_toggle(
+            fluent.get(Tr::NotifyDownloadError),
+            settings.notifications.download_error,
+            SettingKey::NotificationDownloadError,
+        ))
+        .push(labeled_toggle(
+            fluent.get(Tr::NotifyEngineDegraded),
+            settings.notifications.engine_degraded,
+            SettingKey::NotificationEngineDegraded,
+        ))
         .into()
 }
 

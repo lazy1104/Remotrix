@@ -77,7 +77,7 @@ impl Default for Notifiers {
     }
 }
 
-pub fn show_wake(notifiers: &Notifiers, title: &str, body: &str) -> Option<NotificationHandle> {
+pub fn show(notifiers: &Notifiers, title: &str, body: &str) -> Option<NotificationHandle> {
     let notification = Notification {
         title: title.to_string(),
         body: body.to_string(),

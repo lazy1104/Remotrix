@@ -288,6 +288,26 @@ impl Default for TrackerPrefs {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NotificationPrefs {
+    #[serde(default = "default_true")]
+    pub download_complete: bool,
+    #[serde(default = "default_true")]
+    pub download_error: bool,
+    #[serde(default = "default_true")]
+    pub engine_degraded: bool,
+}
+
+impl Default for NotificationPrefs {
+    fn default() -> Self {
+        Self {
+            download_complete: true,
+            download_error: true,
+            engine_degraded: true,
+        }
+    }
+}
+
 pub fn all_proxy_url(server: &str, username: &str, password: &str) -> Option<String> {
     if server.trim().is_empty() {
         return None;
@@ -571,6 +591,8 @@ pub struct Settings {
     pub log: LogPrefs,
     #[serde(default)]
     pub tracker: TrackerPrefs,
+    #[serde(default)]
+    pub notifications: NotificationPrefs,
 }
 
 impl Settings {
@@ -615,6 +637,7 @@ impl Default for Settings {
             speed_limit_schedule: SpeedLimitSchedule::default(),
             log: LogPrefs::default(),
             tracker: TrackerPrefs::default(),
+            notifications: NotificationPrefs::default(),
         }
     }
 }

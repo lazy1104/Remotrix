@@ -139,6 +139,7 @@ struct EngineUiState {
     downloading_toast_id: Option<u64>,
     startup_error_toast_id: Option<u64>,
     startup_starting_toast_shown: bool,
+    degraded_notified: bool,
 }
 
 impl EngineUiState {
@@ -153,6 +154,7 @@ impl EngineUiState {
             downloading_toast_id: None,
             startup_error_toast_id: None,
             startup_starting_toast_shown: false,
+            degraded_notified: false,
         }
     }
 }
@@ -207,6 +209,7 @@ struct TaskTracking {
     active_count: usize,
     dirty: HashSet<String>,
     completion_toasted: HashSet<String>,
+    error_notified: HashSet<String>,
     torrent_files: HashMap<String, PathBuf>,
     torrent_followed: HashSet<String>,
 }
@@ -221,6 +224,7 @@ impl TaskTracking {
             active_count,
             dirty: HashSet::new(),
             completion_toasted: HashSet::new(),
+            error_notified: HashSet::new(),
             torrent_files: HashMap::new(),
             torrent_followed: HashSet::new(),
         }
@@ -498,6 +502,7 @@ fn remove_task_local(state: &mut Remotrix, gid: &str) {
     let _ = state.tracking.torrent_files.remove(gid);
     state.tracking.torrent_followed.remove(gid);
     state.tracking.completion_toasted.remove(gid);
+    state.tracking.error_notified.remove(gid);
     state.tracking.paused_gids.remove(gid);
     state.tasks.remove(gid);
     state.task_order.retain(|g| g != gid);
@@ -1426,6 +1431,21 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     state.settings.remove_task_if_files_missing = b;
                 }
             }
+            SettingKey::NotificationDownloadComplete => {
+                if let SettingValue::Bool(b) = value {
+                    state.settings.notifications.download_complete = b;
+                }
+            }
+            SettingKey::NotificationDownloadError => {
+                if let SettingValue::Bool(b) = value {
+                    state.settings.notifications.download_error = b;
+                }
+            }
+            SettingKey::NotificationEngineDegraded => {
+                if let SettingValue::Bool(b) = value {
+                    state.settings.notifications.engine_degraded = b;
+                }
+            }
             SettingKey::DetectClipboardOnStart => {
                 if let SettingValue::Bool(b) = value {
                     state.settings.detect_clipboard_on_start = b;
@@ -1778,6 +1798,11 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     .get(&gid)
                     .map(|t| t.status == TaskStatus::Completed)
                     .unwrap_or(false);
+                let was_error = state
+                    .tasks
+                    .get(&gid)
+                    .map(|t| t.status == TaskStatus::Error)
+                    .unwrap_or(false);
                 if status == "complete"
                     && state.settings.delete_torrent_after_complete
                     && state.tracking.torrent_files.contains_key(&gid)
@@ -1912,6 +1937,36 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                                 Some(Duration::from_secs(4)),
                                 false,
                             );
+                            if state.tracking.sync_done
+                                && state.settings.notifications.download_complete
+                            {
+                                let title = state.fluent.get(Tr::DownloadCompleteTitle);
+                                let body = state.fluent.get_args(Tr::DownloadComplete, &args);
+                                send_system_notification(state, title, body);
+                            }
+                            return Task::none();
+                        }
+                    }
+                }
+                if was_error && status != "error" {
+                    state.tracking.error_notified.remove(&gid);
+                }
+                if status == "error" && !was_error {
+                    if let Some(t) = state.tasks.get(&gid) {
+                        let name = t.name.clone();
+                        if state.tracking.error_notified.insert(gid.clone()) {
+                            let mut args = std::collections::HashMap::new();
+                            args.insert(
+                                std::borrow::Cow::from("name"),
+                                std::borrow::Cow::from(name).into(),
+                            );
+                            if state.tracking.sync_done
+                                && state.settings.notifications.download_error
+                            {
+                                let title = state.fluent.get(Tr::DownloadErrorTitle);
+                                let body = state.fluent.get_args(Tr::DownloadError, &args);
+                                send_system_notification(state, title, body);
+                            }
                             return Task::none();
                         }
                     }
@@ -2007,6 +2062,16 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 }
                 let id = spawn_toast(state, ToastGroup::Engine, ToastKind::Error, msg, None, true);
                 state.engine_ui.startup_error_toast_id = Some(id);
+                if state.settings.notifications.engine_degraded
+                    && !state.engine_ui.degraded_notified
+                {
+                    state.engine_ui.degraded_notified = true;
+                    send_system_notification(
+                        state,
+                        state.fluent.get(Tr::EngineDegradedTitle),
+                        state.fluent.get(Tr::EngineDegradedBody),
+                    );
+                }
                 return Task::none();
             }
             EngineEvent::EngineDegraded { reason } => {
@@ -2015,6 +2080,16 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     state.restart.engine_restart_in_progress = false;
                     state.restart.restart_resume_gids.clear();
                 }
+                if state.settings.notifications.engine_degraded
+                    && !state.engine_ui.degraded_notified
+                {
+                    state.engine_ui.degraded_notified = true;
+                    send_system_notification(
+                        state,
+                        state.fluent.get(Tr::EngineDegradedTitle),
+                        state.fluent.get(Tr::EngineDegradedBody),
+                    );
+                }
             }
             EngineEvent::GlobalSpeed { download, upload } => {
                 state.global_speed = Some((download, upload));
@@ -2022,6 +2097,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             EngineEvent::Aria2Status { stage, message } => {
                 if stage == "ready" {
                     state.engine_ui.aria2_fetch_error = None;
+                    state.engine_ui.degraded_notified = false;
                 }
                 if stage == "ready" || stage == "starting" {
                     if let Some(id) = state.engine_ui.downloading_toast_id.take() {
@@ -2777,10 +2853,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             let title = state.fluent.get(Tr::AppRunningTitle);
             let body = state.fluent.get(Tr::AppRunningBody);
-            let handle = crate::notify::show_wake(&state.notifiers, &title, &body);
-            if let Some(handle) = handle {
-                let _ = state.notify_tx.send(handle);
-            }
+            send_system_notification(state, title, body);
             return Task::none();
         }
         Message::ActivateWindow => {
@@ -3399,6 +3472,12 @@ fn copy_to_clipboard(state: &mut Remotrix, content: String) -> Task<Message> {
 
 fn dismiss_toast(state: &mut Remotrix, id: u64) {
     state.toasts.dismiss(id);
+}
+
+fn send_system_notification(state: &mut Remotrix, title: String, body: String) {
+    if let Some(handle) = crate::notify::show(&state.notifiers, &title, &body) {
+        let _ = state.notify_tx.send(handle);
+    }
 }
 
 fn maybe_auto_check_updates(state: &mut Remotrix, startup: bool) -> Task<Message> {
