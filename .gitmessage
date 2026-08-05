@@ -1,0 +1,8 @@
+# Remotrix commit template
+# Format: type(scope): 中文描述 (English summary)
+# types: feat, fix, perf, refactor, style, docs, build, ci, chore, test, revert
+
+# Example:
+# feat(notify): 添加 Windows Toast 通知支持 (add Windows toast notifications)
+#
+# Keep the subject under ~72 chars. Add a body below only to explain "why".

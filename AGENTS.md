@@ -139,6 +139,18 @@ iced_lucide = "0.1"
 - **No comments** in source code unless explaining a non-obvious design decision
 - **Imports**: Group as `std` → external crates → `crate::` (blank-line separated)
 
+## Commit Messages (bilingual, simple)
+- **Format**: `type(scope): 中文描述 (English summary)` — one concise line, both in the subject.
+- The subject is the changelog source (`release-changelog-builder-action` reads commit messages), so it must be self-explanatory in Chinese for end users, with a short English parenthetical for machine/GitHub readability.
+- **Types** (Conventional Commits): `feat`, `fix`, `perf`, `refactor`, `style`, `docs`, `build`, `ci`, `chore`, `test`, `revert`.
+- **Scope**: the affected module, e.g. `ui`, `engine`, `notify`, `tray`, `update`, `settings`, `proxy`, `i18n`, `logging`, `packaging`.
+- Keep the subject under ~72 chars. Body only when needed to explain "why" in either language.
+- Examples:
+  - `feat(notify): 添加 Windows Toast 通知支持 (add Windows toast notifications)`
+  - `fix(engine): 为 RPC 调用添加超时机制防止阻塞 (add timeouts to RPC calls)`
+  - `refactor(settings): 合并通知与确认设置分组 (merge notification & confirm settings)`
+- A `.gitmessage` commit template is provided; enable it with `git config core.template .gitmessage`.
+
 ## Build / Check Commands
 ```bash
 cargo build                    # debug build (no network; aria2-next fetched at runtime)
