@@ -1,4 +1,4 @@
-use iced::widget::{button, row, text};
+use iced::widget::{button, checkbox, column, row, text};
 use iced::{Alignment, Element};
 
 use crate::i18n::{Fluent, Tr};
@@ -11,10 +11,26 @@ pub fn view<'a>(
     fluent: &'a Fluent,
     _theme: &iced::Theme,
     tray_available: bool,
+    close_to_tray: bool,
 ) -> Element<'a, Message> {
-    let body = text(fluent.get(Tr::ConfirmCloseBody))
+    let body_text = text(fluent.get(Tr::ConfirmCloseBody))
         .size(FONT_MEDIUM)
         .style(theme::style::text::secondary);
+
+    let mut body = column![body_text].spacing(SPACE_LG);
+    if tray_available {
+        body = body.push(
+            checkbox(close_to_tray)
+                .label(fluent.get(Tr::ConfirmCloseTrayPref))
+                .on_toggle(|v| Message::Window(WindowMsg::CloseDialogTrayPrefChanged(v)))
+                .text_size(FONT_MEDIUM),
+        );
+        body = body.push(
+            text(fluent.get(Tr::ConfirmCloseTrayPrefHint))
+                .size(FONT_SMALL)
+                .style(theme::style::text::secondary),
+        );
+    }
 
     let close_btn = button(text(fluent.get(Tr::CloseAction)).size(FONT_BODY))
         .on_press(Message::Window(WindowMsg::CloseDialog(
@@ -37,8 +53,8 @@ pub fn view<'a>(
     };
     let tray_btn = button(text(fluent.get(Tr::TrayAction)).size(FONT_BODY))
         .on_press(tray_action)
-        .padding(PADDING_TRAY)
-        .style(theme::style::button::text());
+        .padding(PADDING_BUTTON_LG)
+        .style(theme::style::button::secondary());
 
     let buttons = row![]
         .push(cancel_btn)

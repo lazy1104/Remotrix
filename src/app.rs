@@ -2334,6 +2334,11 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 CloseDialogChoice::Cancel => Task::none(),
             };
         }
+        Message::Window(WindowMsg::CloseDialogTrayPrefChanged(b)) => {
+            state.settings.close_to_tray = b;
+            state.applied_settings.close_to_tray = b;
+            config::save(&state.settings);
+        }
         Message::Window(WindowMsg::ShutdownRequested) => {
             return begin_close(state);
         }
@@ -3384,7 +3389,12 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
     };
 
     let close_layer: iced::Element<'_, Message> = if state.window.show_close_dialog {
-        crate::ui::close_dialog::view(&state.fluent, t, state.tray.enabled())
+        crate::ui::close_dialog::view(
+            &state.fluent,
+            t,
+            state.tray.enabled(),
+            state.settings.close_to_tray,
+        )
     } else {
         iced::widget::Space::new().into()
     };

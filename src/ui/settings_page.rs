@@ -344,6 +344,15 @@ fn general_view<'a>(
         .push(
             row![
                 iced::widget::Space::new().width(Length::Fixed(200.0)),
+                text(fluent.get(Tr::CloseToTrayHint))
+                    .size(FONT_TINY)
+                    .style(theme::style::text::secondary),
+            ]
+            .align_y(Alignment::Center),
+        )
+        .push(
+            row![
+                iced::widget::Space::new().width(Length::Fixed(200.0)),
                 text(fluent.get(Tr::TrayRestartHint))
                     .size(FONT_TINY)
                     .style(theme::style::text::secondary),

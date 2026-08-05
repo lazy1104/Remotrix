@@ -230,6 +230,7 @@ pub enum WindowMsg {
     WindowAction(WindowCmd),
     CloseRequested,
     CloseDialog(CloseDialogChoice),
+    CloseDialogTrayPrefChanged(bool),
     HideToTray,
     ShutdownRequested,
     ShutdownTimeout,

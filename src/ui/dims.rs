@@ -46,7 +46,6 @@ pub const PADDING_BUTTON_XS: [u16; 2] = [6, 8]; // 小菜单/工具栏按钮
 pub const PADDING_BUTTON_SM: [u16; 2] = [6, 12]; // 设置引擎按钮
 pub const PADDING_TAB: [u16; 2] = [6, 14]; // 详情页签
 pub const PADDING_BUTTON_MD: [u16; 2] = [8, 18]; // 添加对话框按钮
-pub const PADDING_TRAY: [u16; 2] = [8, 22]; // 关闭对话框托盘按钮
 pub const PADDING_FILTER: [u16; 2] = [10, 14]; // 分类栏筛选/设置项
 pub const PADDING_BUTTON_LG: [u16; 2] = [10, 22]; // 对话框操作按钮
 pub const PADDING_BUTTON_XL: [u16; 2] = [10, 24]; // 设置主操作按钮
