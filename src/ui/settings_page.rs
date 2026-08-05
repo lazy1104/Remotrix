@@ -918,13 +918,6 @@ fn download_view<'a>(
             el
         })
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
-        .push(group_title(fluent, Tr::Confirm, accent))
-        .push(labeled_toggle(
-            fluent.get(Tr::NavToTasksAfterAdd),
-            settings.nav_to_tasks_after_add,
-            SettingKey::NavToTasksAfterAdd,
-        ))
-        .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::AutoCleanup, accent))
         .push(labeled_toggle(
             fluent.get(Tr::DeleteTorrentAfterComplete),
@@ -942,7 +935,7 @@ fn download_view<'a>(
             SettingKey::RemoveTaskIfFilesMissing,
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
-        .push(group_title(fluent, Tr::Notifications, accent))
+        .push(group_title(fluent, Tr::NotificationsConfirmations, accent))
         .push(labeled_toggle(
             fluent.get(Tr::NotifyDownloadComplete),
             settings.notifications.download_complete,
@@ -957,6 +950,11 @@ fn download_view<'a>(
             fluent.get(Tr::NotifyEngineDegraded),
             settings.notifications.engine_degraded,
             SettingKey::NotificationEngineDegraded,
+        ))
+        .push(labeled_toggle(
+            fluent.get(Tr::NavToTasksAfterAdd),
+            settings.nav_to_tasks_after_add,
+            SettingKey::NavToTasksAfterAdd,
         ))
         .into()
 }
