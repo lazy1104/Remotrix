@@ -242,9 +242,9 @@ pub struct Remotrix {
     wake_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>>,
     _primary: app_single_instance::PrimaryHandle,
     notifiers: crate::notify::Notifiers,
-    notify_tx: tokio::sync::mpsc::UnboundedSender<notify_rust::NotificationHandle>,
+    notify_tx: tokio::sync::mpsc::UnboundedSender<crate::notify::NotifyEvent>,
     notify_rx_slot:
-        Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<notify_rust::NotificationHandle>>>>,
+        Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<crate::notify::NotifyEvent>>>>,
     add_dialog: AddDialogState,
     drop_hover: bool,
     about_dialog_visible: bool,
@@ -296,9 +296,9 @@ pub fn init() -> (Remotrix, Task<Message>) {
 
     let notifiers = crate::notify::Notifiers::new();
     let (notify_tx, notify_rx) =
-        tokio::sync::mpsc::unbounded_channel::<notify_rust::NotificationHandle>();
+        tokio::sync::mpsc::unbounded_channel::<crate::notify::NotifyEvent>();
     let notify_rx_slot: Arc<
-        Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<notify_rust::NotificationHandle>>>,
+        Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<crate::notify::NotifyEvent>>>,
     > = Arc::new(Mutex::new(Some(notify_rx)));
 
     let settings_ui = SettingsUiState::new(&settings);
@@ -1923,6 +1923,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 if status == "complete" && !was_completed {
                     if let Some(t) = state.tasks.get(&gid) {
                         let name = t.name.clone();
+                        let open_path = t.save_dir.join(&t.name);
                         if state.tracking.completion_toasted.insert(gid.clone()) {
                             let mut args = std::collections::HashMap::new();
                             args.insert(
@@ -1942,7 +1943,12 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             {
                                 let title = state.fluent.get(Tr::DownloadCompleteTitle);
                                 let body = state.fluent.get_args(Tr::DownloadComplete, &args);
-                                send_system_notification(state, title, body);
+                                send_system_notification(
+                                    state,
+                                    title,
+                                    body,
+                                    crate::notify::NotifyAction::OpenFile(open_path),
+                                );
                             }
                             return Task::none();
                         }
@@ -1965,7 +1971,12 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             {
                                 let title = state.fluent.get(Tr::DownloadErrorTitle);
                                 let body = state.fluent.get_args(Tr::DownloadError, &args);
-                                send_system_notification(state, title, body);
+                                send_system_notification(
+                                    state,
+                                    title,
+                                    body,
+                                    crate::notify::NotifyAction::ActivateWindow,
+                                );
                             }
                             return Task::none();
                         }
@@ -2070,6 +2081,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         state,
                         state.fluent.get(Tr::EngineDegradedTitle),
                         state.fluent.get(Tr::EngineDegradedBody),
+                        crate::notify::NotifyAction::ActivateWindow,
                     );
                 }
                 return Task::none();
@@ -2088,6 +2100,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         state,
                         state.fluent.get(Tr::EngineDegradedTitle),
                         state.fluent.get(Tr::EngineDegradedBody),
+                        crate::notify::NotifyAction::ActivateWindow,
                     );
                 }
             }
@@ -2847,13 +2860,26 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 |_| Message::Noop,
             );
         }
+        Message::OpenFile(path) => {
+            return Task::perform(
+                async move {
+                    let _ = open::that(&path);
+                },
+                |_| Message::Noop,
+            );
+        }
         Message::ShowRequested => {
             if state.window.closing {
                 return Task::none();
             }
             let title = state.fluent.get(Tr::AppRunningTitle);
             let body = state.fluent.get(Tr::AppRunningBody);
-            send_system_notification(state, title, body);
+            send_system_notification(
+                state,
+                title,
+                body,
+                crate::notify::NotifyAction::ActivateWindow,
+            );
             return Task::none();
         }
         Message::ActivateWindow => {
@@ -3474,9 +3500,16 @@ fn dismiss_toast(state: &mut Remotrix, id: u64) {
     state.toasts.dismiss(id);
 }
 
-fn send_system_notification(state: &mut Remotrix, title: String, body: String) {
+fn send_system_notification(
+    state: &mut Remotrix,
+    title: String,
+    body: String,
+    action: crate::notify::NotifyAction,
+) {
     if let Some(handle) = crate::notify::show(&state.notifiers, &title, &body) {
-        let _ = state.notify_tx.send(handle);
+        let _ = state
+            .notify_tx
+            .send(crate::notify::NotifyEvent { handle, action });
     }
 }
 

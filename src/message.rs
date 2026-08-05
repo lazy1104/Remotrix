@@ -69,6 +69,7 @@ pub enum Message {
     Toast(ToastMsg),
     CopyText(String),
     OpenLink(String),
+    OpenFile(PathBuf),
     ShowRequested,
     ActivateWindow,
     Noop,

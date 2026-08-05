@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use notify_rust::{
@@ -98,9 +99,18 @@ pub fn show(notifiers: &Notifiers, title: &str, body: &str) -> Option<Notificati
     None
 }
 
-pub struct NotifySlot(
-    pub Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<NotificationHandle>>>>,
-);
+#[derive(Debug, Clone)]
+pub enum NotifyAction {
+    ActivateWindow,
+    OpenFile(PathBuf),
+}
+
+pub struct NotifyEvent {
+    pub handle: NotificationHandle,
+    pub action: NotifyAction,
+}
+
+pub struct NotifySlot(pub Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<NotifyEvent>>>>);
 
 impl std::hash::Hash for NotifySlot {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -131,12 +141,18 @@ pub fn build_notify_stream(slot: &NotifySlot) -> impl iced::futures::Stream<Item
         1,
         move |sender: iced::futures::channel::mpsc::Sender<Message>| async move {
             if let Some(mut rx) = rx {
-                while let Some(handle) = rx.recv().await {
+                while let Some(event) = rx.recv().await {
                     let mut s = sender.clone();
-                    handle
-                        .wait_for_action_async(move |action: &NotificationResponse| {
-                            if matches!(action, NotificationResponse::Default) {
-                                let _ = s.try_send(Message::ActivateWindow);
+                    let action = event.action;
+                    event
+                        .handle
+                        .wait_for_action_async(move |response: &NotificationResponse| {
+                            if matches!(response, NotificationResponse::Default) {
+                                let msg = match action {
+                                    NotifyAction::OpenFile(path) => Message::OpenFile(path),
+                                    NotifyAction::ActivateWindow => Message::ActivateWindow,
+                                };
+                                let _ = s.try_send(msg);
                             }
                         })
                         .await;
