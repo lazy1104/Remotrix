@@ -53,6 +53,7 @@ pub enum ConfirmAction {
     DeleteTask(String),
     RemoveMissingFileTask(String),
     LeaveSettings { target: Page },
+    UnsavedOnClose,
     RestartEngine { has_active: bool },
 }
 
@@ -153,6 +154,8 @@ pub enum SettingsMsg {
     ResetSettings,
     ApplyAndLeaveSettings,
     DiscardAndLeaveSettings,
+    ApplyAndClose,
+    DiscardAndClose,
     ThemeModeChanged(ThemeMode),
     ThemeColorChanged(iced::Color),
     LocaleChanged(Locale),
@@ -381,7 +384,6 @@ pub enum SettingKey {
     DiskCache,
     EnableProxy,
     NavToTasksAfterAdd,
-    TrayEnabled,
     CloseToTray,
     DeleteTorrentAfterComplete,
     CleanupCompletedOnClose,

@@ -99,6 +99,7 @@ pub struct SettingsPageContext<'a> {
     pub settings_ui: &'a SettingsUiState,
     pub category: SettingsCategory,
     pub applied_settings: &'a Settings,
+    pub settings_dirty: bool,
     pub engine_restart_pending: bool,
     pub engine_restart_in_progress: bool,
     pub aria2_version: Option<&'a str>,
@@ -119,6 +120,7 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
         settings_ui,
         category,
         applied_settings,
+        settings_dirty,
         engine_restart_pending,
         engine_restart_in_progress,
         aria2_version,
@@ -131,7 +133,7 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
         font_restart_required,
     } = ctx;
     let accent = theme::accent(theme);
-    let dirty = settings != applied_settings;
+    let dirty = *settings_dirty;
     let content = match category {
         SettingsCategory::General => general_view(
             fluent,
@@ -332,33 +334,10 @@ fn general_view<'a>(
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::Tray, accent))
         .push(labeled_toggle(
-            fluent.get(Tr::TrayEnabled),
-            settings.tray_enabled,
-            SettingKey::TrayEnabled,
-        ))
-        .push(labeled_toggle(
             fluent.get(Tr::CloseToTray),
             settings.close_to_tray,
             SettingKey::CloseToTray,
         ))
-        .push(
-            row![
-                iced::widget::Space::new().width(Length::Fixed(200.0)),
-                text(fluent.get(Tr::CloseToTrayHint))
-                    .size(FONT_TINY)
-                    .style(theme::style::text::secondary),
-            ]
-            .align_y(Alignment::Center),
-        )
-        .push(
-            row![
-                iced::widget::Space::new().width(Length::Fixed(200.0)),
-                text(fluent.get(Tr::TrayRestartHint))
-                    .size(FONT_TINY)
-                    .style(theme::style::text::secondary),
-            ]
-            .align_y(Alignment::Center),
-        )
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::AutoUpdate, accent))
         .push(labeled_toggle(

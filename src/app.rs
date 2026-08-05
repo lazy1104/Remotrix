@@ -276,6 +276,7 @@ pub struct Remotrix {
     details: DetailsDialogState,
     confirm: Option<ConfirmAction>,
     applied_settings: Settings,
+    settings_dirty: bool,
     applied_font_family: String,
     restart_pending: bool,
     settings_ui: SettingsUiState,
@@ -321,7 +322,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
     let (tray_tx, tray_rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
     let tray_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>> =
         Arc::new(Mutex::new(Some(tray_rx)));
-    let tray = crate::tray::TrayManager::new(tray_tx, settings.tray_enabled);
+    let tray = crate::tray::TrayManager::new(tray_tx, true);
 
     let settings_ui = SettingsUiState::new(&settings);
     let add_dialog = AddDialogState::new(settings.download_dir.clone());
@@ -374,6 +375,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         drop_hover: false,
         about_dialog_visible: false,
         applied_settings: settings.clone(),
+        settings_dirty: false,
         applied_font_family: settings.font_family.clone(),
         restart_pending: false,
         settings,
@@ -444,6 +446,7 @@ fn sync_geometry_to_settings(state: &mut Remotrix) {
 
 fn revert_apply_settings(state: &mut Remotrix) {
     state.settings = state.applied_settings.clone();
+    state.settings_dirty = false;
     state
         .settings_ui
         .download_picker
@@ -497,6 +500,7 @@ fn apply_settings(state: &mut Remotrix) -> bool {
     state.restart.engine_restart_pending = restart_needed
         || state.settings.log.engine_level != state.applied_settings.log.engine_level;
     state.applied_settings = state.settings.clone();
+    state.settings_dirty = false;
     restart_needed
 }
 
@@ -786,10 +790,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
     match message {
         Message::Nav(NavMsg::NavigatePage(page)) => {
             state.settings_ui.download_picker.close_history();
-            if page == Page::Tasks
-                && state.page == Page::Settings
-                && state.settings != state.applied_settings
-            {
+            if page == Page::Tasks && state.page == Page::Settings && state.settings_dirty {
                 state.confirm = Some(ConfirmAction::LeaveSettings { target: page });
             } else {
                 state.page = page;
@@ -1270,318 +1271,314 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::Dialog(DialogMsg::CloseAbout) => {
             state.about_dialog_visible = false;
         }
-        Message::Settings(SettingsMsg::SettingChanged(key, value)) => match key {
-            SettingKey::MaxConcurrent => {
-                if let SettingValue::Num(n) = value {
-                    state.settings.max_concurrent = n.max(1) as u32;
+        Message::Settings(SettingsMsg::SettingChanged(key, value)) => {
+            state.settings_dirty = true;
+            match key {
+                SettingKey::MaxConcurrent => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.max_concurrent = n.max(1) as u32;
+                    }
                 }
-            }
-            SettingKey::Split => {
-                if let SettingValue::Num(n) = value {
-                    state.settings.split = n.max(1) as u16;
+                SettingKey::Split => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.split = n.max(1) as u16;
+                    }
                 }
-            }
-            SettingKey::DownloadLimit => {
-                if let SettingValue::Num(n) = value {
-                    state.settings.download_limit_kb = n;
+                SettingKey::DownloadLimit => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.download_limit_kb = n;
+                    }
                 }
-            }
-            SettingKey::UploadLimit => {
-                if let SettingValue::Num(n) = value {
-                    state.settings.upload_limit_kb = n;
+                SettingKey::UploadLimit => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.upload_limit_kb = n;
+                    }
                 }
-            }
-            SettingKey::MaxConnectionPerServer => {
-                if let SettingValue::Num(n) = value {
-                    state.settings.aria2.max_connection_per_server = n.max(1) as u32;
+                SettingKey::MaxConnectionPerServer => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.aria2.max_connection_per_server = n.max(1) as u32;
+                    }
                 }
-            }
-            SettingKey::MinSplitSize => {
-                if let SettingValue::Num(n) = value {
-                    state.settings.aria2.min_split_size_mb = n;
+                SettingKey::MinSplitSize => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.aria2.min_split_size_mb = n;
+                    }
                 }
-            }
-            SettingKey::AutoFileRenaming => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.aria2.auto_file_renaming = b;
+                SettingKey::AutoFileRenaming => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.aria2.auto_file_renaming = b;
+                    }
                 }
-            }
-            SettingKey::AllowOverwrite => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.aria2.allow_overwrite = b;
+                SettingKey::AllowOverwrite => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.aria2.allow_overwrite = b;
+                    }
                 }
-            }
-            SettingKey::Continue => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.aria2.r#continue = b;
+                SettingKey::Continue => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.aria2.r#continue = b;
+                    }
                 }
-            }
-            SettingKey::CheckIntegrity => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.aria2.check_integrity = b;
+                SettingKey::CheckIntegrity => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.aria2.check_integrity = b;
+                    }
                 }
-            }
-            SettingKey::MaxDownloadLimit => {
-                if let SettingValue::Num(n) = value {
-                    state.settings.aria2.max_download_limit_kb = n;
+                SettingKey::MaxDownloadLimit => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.aria2.max_download_limit_kb = n;
+                    }
                 }
-            }
-            SettingKey::MaxUploadLimit => {
-                if let SettingValue::Num(n) = value {
-                    state.settings.aria2.max_upload_limit_kb = n;
+                SettingKey::MaxUploadLimit => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.aria2.max_upload_limit_kb = n;
+                    }
                 }
-            }
-            SettingKey::LowestSpeedLimit => {
-                if let SettingValue::Num(n) = value {
-                    state.settings.aria2.lowest_speed_limit_kb = n;
+                SettingKey::LowestSpeedLimit => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.aria2.lowest_speed_limit_kb = n;
+                    }
                 }
-            }
-            SettingKey::ProxyServer => {
-                if let SettingValue::Text(s) = value {
-                    state.settings.aria2.proxy_server = s;
+                SettingKey::ProxyServer => {
+                    if let SettingValue::Text(s) = value {
+                        state.settings.aria2.proxy_server = s;
+                    }
                 }
-            }
-            SettingKey::ProxyUsername => {
-                if let SettingValue::Text(s) = value {
-                    state.settings.aria2.proxy_username = s;
+                SettingKey::ProxyUsername => {
+                    if let SettingValue::Text(s) = value {
+                        state.settings.aria2.proxy_username = s;
+                    }
                 }
-            }
-            SettingKey::ProxyPassword => {
-                if let SettingValue::Text(s) = value {
-                    state.settings.aria2.proxy_password = s;
+                SettingKey::ProxyPassword => {
+                    if let SettingValue::Text(s) = value {
+                        state.settings.aria2.proxy_password = s;
+                    }
                 }
-            }
-            SettingKey::MaxTries => {
-                if let SettingValue::Num(n) = value {
-                    state.settings.aria2.max_tries = n as u32;
+                SettingKey::MaxTries => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.aria2.max_tries = n as u32;
+                    }
                 }
-            }
-            SettingKey::RetryWait => {
-                if let SettingValue::Num(n) = value {
-                    state.settings.aria2.retry_wait = n as u32;
+                SettingKey::RetryWait => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.aria2.retry_wait = n as u32;
+                    }
                 }
-            }
-            SettingKey::ConnectTimeout => {
-                if let SettingValue::Num(n) = value {
-                    state.settings.aria2.connect_timeout = n as u32;
+                SettingKey::ConnectTimeout => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.aria2.connect_timeout = n as u32;
+                    }
                 }
-            }
-            SettingKey::TrackerAutoSync => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.tracker.auto_sync = b;
+                SettingKey::TrackerAutoSync => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.tracker.auto_sync = b;
+                    }
                 }
-            }
-            SettingKey::TrackerSyncInterval => {
-                if let SettingValue::Num(n) = value {
-                    state.settings.tracker.sync_interval_hours = n as u32;
+                SettingKey::TrackerSyncInterval => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.tracker.sync_interval_hours = n as u32;
+                    }
                 }
-            }
-            SettingKey::AutoUpdateEnabled => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.update.enabled = b;
+                SettingKey::AutoUpdateEnabled => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.update.enabled = b;
+                    }
                 }
-            }
-            SettingKey::UpdateCheckInterval => {
-                if let SettingValue::Num(n) = value {
-                    state.settings.update.interval_hours = n as u32;
+                SettingKey::UpdateCheckInterval => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.update.interval_hours = n as u32;
+                    }
                 }
-            }
-            SettingKey::UpdateScope => {
-                if let SettingValue::Text(s) = value {
-                    if let Some(scope) = crate::config::UpdateScope::from_str(&s) {
-                        state.settings.update.scope = scope;
+                SettingKey::UpdateScope => {
+                    if let SettingValue::Text(s) = value {
+                        if let Some(scope) = crate::config::UpdateScope::from_str(&s) {
+                            state.settings.update.scope = scope;
+                        }
+                    }
+                }
+                SettingKey::Aria2SilentUpdate => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.update.aria2_silent_update = b;
+                    }
+                }
+                SettingKey::SeedRatio => {
+                    if let SettingValue::NumF(n) = value {
+                        state.settings.aria2.seed_ratio = n.max(0.0);
+                    }
+                }
+                SettingKey::SeedTime => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.aria2.seed_time = n as u32;
+                    }
+                }
+                SettingKey::EnableDht => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.aria2.enable_dht = b;
+                    }
+                }
+                SettingKey::BtRequireCrypto => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.aria2.bt_require_crypto = b;
+                    }
+                }
+                SettingKey::BtEnableLpd => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.aria2.bt_enable_lpd = b;
+                    }
+                }
+                SettingKey::EnablePeerExchange => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.aria2.enable_peer_exchange = b;
+                    }
+                }
+                SettingKey::BtAutoDownload => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.aria2.bt_auto_download = b;
+                    }
+                }
+                SettingKey::FileAllocation => {
+                    if let SettingValue::Text(s) = value {
+                        state.settings.aria2.file_allocation = s;
+                    }
+                }
+                SettingKey::DiskCache => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.aria2.disk_cache_mb = n;
+                    }
+                }
+                SettingKey::EnableProxy => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.aria2.proxy_enabled = b;
+                    }
+                }
+                SettingKey::NavToTasksAfterAdd => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.nav_to_tasks_after_add = b;
+                    }
+                }
+                SettingKey::CloseToTray => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.close_to_tray = b;
+                    }
+                }
+                SettingKey::DeleteTorrentAfterComplete => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.delete_torrent_after_complete = b;
+                    }
+                }
+                SettingKey::CleanupCompletedOnClose => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.cleanup_completed_on_close = b;
+                    }
+                }
+                SettingKey::RemoveTaskIfFilesMissing => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.remove_task_if_files_missing = b;
+                    }
+                }
+                SettingKey::NotificationDownloadComplete => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.notifications.download_complete = b;
+                    }
+                }
+                SettingKey::NotificationDownloadError => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.notifications.download_error = b;
+                    }
+                }
+                SettingKey::NotificationEngineDegraded => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.notifications.engine_degraded = b;
+                    }
+                }
+                SettingKey::DetectClipboardOnStart => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.detect_clipboard_on_start = b;
+                    }
+                }
+                SettingKey::ClipboardHttp => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.clipboard_types.http = b;
+                    }
+                }
+                SettingKey::ClipboardFtp => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.clipboard_types.ftp = b;
+                    }
+                }
+                SettingKey::ClipboardMagnet => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.clipboard_types.magnet = b;
+                    }
+                }
+                SettingKey::ClipboardEd2k => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.clipboard_types.ed2k = b;
+                    }
+                }
+                SettingKey::ClipboardThunder => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.clipboard_types.thunder = b;
+                    }
+                }
+                SettingKey::ClipboardBtInfohash => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.clipboard_types.bt_infohash = b;
+                    }
+                }
+                SettingKey::Ed2kServer => {
+                    if let SettingValue::Text(s) = value {
+                        state.settings.aria2.ed2k_server = s;
+                    }
+                }
+                SettingKey::Ed2kListenPort => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.aria2.ed2k_listen_port = n as u16;
+                    }
+                }
+                SettingKey::Ed2kUdpListenPort => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.aria2.ed2k_udp_listen_port = n as u16;
+                    }
+                }
+                SettingKey::Ed2kUploadSlots => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.aria2.ed2k_upload_slots = n.max(1) as u16;
+                    }
+                }
+                SettingKey::SpeedLimitScheduleEnabled => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.speed_limit_schedule.enabled = b;
+                    }
+                }
+                SettingKey::ScheduleStart => {
+                    if let SettingValue::Text(s) = value {
+                        if crate::scheduler::parse_hhmm(&s).is_some() {
+                            state.settings.speed_limit_schedule.start = s;
+                        }
+                    }
+                }
+                SettingKey::ScheduleEnd => {
+                    if let SettingValue::Text(s) = value {
+                        if crate::scheduler::parse_hhmm(&s).is_some() {
+                            state.settings.speed_limit_schedule.end = s;
+                        }
+                    }
+                }
+                SettingKey::AppLogLevel => {
+                    if let SettingValue::Text(s) = value {
+                        state.settings.log.app_level = crate::logging::normalize_app_level(&s);
+                        crate::logging::set_app_level(&state.settings.log.app_level);
+                    }
+                }
+                SettingKey::EngineLogLevel => {
+                    if let SettingValue::Text(s) = value {
+                        state.settings.log.engine_level =
+                            crate::logging::normalize_engine_level(&s);
                     }
                 }
             }
-            SettingKey::Aria2SilentUpdate => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.update.aria2_silent_update = b;
-                }
-            }
-            SettingKey::SeedRatio => {
-                if let SettingValue::NumF(n) = value {
-                    state.settings.aria2.seed_ratio = n.max(0.0);
-                }
-            }
-            SettingKey::SeedTime => {
-                if let SettingValue::Num(n) = value {
-                    state.settings.aria2.seed_time = n as u32;
-                }
-            }
-            SettingKey::EnableDht => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.aria2.enable_dht = b;
-                }
-            }
-            SettingKey::BtRequireCrypto => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.aria2.bt_require_crypto = b;
-                }
-            }
-            SettingKey::BtEnableLpd => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.aria2.bt_enable_lpd = b;
-                }
-            }
-            SettingKey::EnablePeerExchange => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.aria2.enable_peer_exchange = b;
-                }
-            }
-            SettingKey::BtAutoDownload => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.aria2.bt_auto_download = b;
-                }
-            }
-            SettingKey::FileAllocation => {
-                if let SettingValue::Text(s) = value {
-                    state.settings.aria2.file_allocation = s;
-                }
-            }
-            SettingKey::DiskCache => {
-                if let SettingValue::Num(n) = value {
-                    state.settings.aria2.disk_cache_mb = n;
-                }
-            }
-            SettingKey::EnableProxy => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.aria2.proxy_enabled = b;
-                }
-            }
-            SettingKey::NavToTasksAfterAdd => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.nav_to_tasks_after_add = b;
-                }
-            }
-            SettingKey::TrayEnabled => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.tray_enabled = b;
-                    if !b {
-                        state.tray.quit();
-                    }
-                }
-            }
-            SettingKey::CloseToTray => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.close_to_tray = b;
-                }
-            }
-            SettingKey::DeleteTorrentAfterComplete => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.delete_torrent_after_complete = b;
-                }
-            }
-            SettingKey::CleanupCompletedOnClose => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.cleanup_completed_on_close = b;
-                }
-            }
-            SettingKey::RemoveTaskIfFilesMissing => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.remove_task_if_files_missing = b;
-                }
-            }
-            SettingKey::NotificationDownloadComplete => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.notifications.download_complete = b;
-                }
-            }
-            SettingKey::NotificationDownloadError => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.notifications.download_error = b;
-                }
-            }
-            SettingKey::NotificationEngineDegraded => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.notifications.engine_degraded = b;
-                }
-            }
-            SettingKey::DetectClipboardOnStart => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.detect_clipboard_on_start = b;
-                }
-            }
-            SettingKey::ClipboardHttp => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.clipboard_types.http = b;
-                }
-            }
-            SettingKey::ClipboardFtp => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.clipboard_types.ftp = b;
-                }
-            }
-            SettingKey::ClipboardMagnet => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.clipboard_types.magnet = b;
-                }
-            }
-            SettingKey::ClipboardEd2k => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.clipboard_types.ed2k = b;
-                }
-            }
-            SettingKey::ClipboardThunder => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.clipboard_types.thunder = b;
-                }
-            }
-            SettingKey::ClipboardBtInfohash => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.clipboard_types.bt_infohash = b;
-                }
-            }
-            SettingKey::Ed2kServer => {
-                if let SettingValue::Text(s) = value {
-                    state.settings.aria2.ed2k_server = s;
-                }
-            }
-            SettingKey::Ed2kListenPort => {
-                if let SettingValue::Num(n) = value {
-                    state.settings.aria2.ed2k_listen_port = n as u16;
-                }
-            }
-            SettingKey::Ed2kUdpListenPort => {
-                if let SettingValue::Num(n) = value {
-                    state.settings.aria2.ed2k_udp_listen_port = n as u16;
-                }
-            }
-            SettingKey::Ed2kUploadSlots => {
-                if let SettingValue::Num(n) = value {
-                    state.settings.aria2.ed2k_upload_slots = n.max(1) as u16;
-                }
-            }
-            SettingKey::SpeedLimitScheduleEnabled => {
-                if let SettingValue::Bool(b) = value {
-                    state.settings.speed_limit_schedule.enabled = b;
-                }
-            }
-            SettingKey::ScheduleStart => {
-                if let SettingValue::Text(s) = value {
-                    if crate::scheduler::parse_hhmm(&s).is_some() {
-                        state.settings.speed_limit_schedule.start = s;
-                    }
-                }
-            }
-            SettingKey::ScheduleEnd => {
-                if let SettingValue::Text(s) = value {
-                    if crate::scheduler::parse_hhmm(&s).is_some() {
-                        state.settings.speed_limit_schedule.end = s;
-                    }
-                }
-            }
-            SettingKey::AppLogLevel => {
-                if let SettingValue::Text(s) = value {
-                    state.settings.log.app_level = crate::logging::normalize_app_level(&s);
-                    crate::logging::set_app_level(&state.settings.log.app_level);
-                }
-            }
-            SettingKey::EngineLogLevel => {
-                if let SettingValue::Text(s) = value {
-                    state.settings.log.engine_level = crate::logging::normalize_engine_level(&s);
-                }
-            }
-        },
+        }
         Message::Settings(SettingsMsg::ApplySettings) => {
             apply_settings(state);
         }
@@ -2316,7 +2313,11 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             if state.window.closing {
                 return Task::none();
             }
-            if state.settings.tray_enabled && state.settings.close_to_tray && state.tray.enabled() {
+            if state.settings_dirty {
+                state.confirm = Some(ConfirmAction::UnsavedOnClose);
+                return Task::none();
+            }
+            if state.settings.close_to_tray && state.tray.enabled() {
                 return hide_to_tray(state);
             }
             state.window.show_close_dialog = true;
@@ -2398,6 +2399,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         }
         Message::Settings(SettingsMsg::FontFamilyChanged(family)) => {
             state.settings.font_family = family;
+            state.settings_dirty = true;
         }
         Message::Settings(SettingsMsg::RestartApp) => {
             state.restart_pending = true;
@@ -2409,12 +2411,15 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::Settings(SettingsMsg::UaEditor(action)) => {
             state.ua_editor.perform(action);
             state.settings.aria2.user_agent = state.ua_editor.text();
+            state.settings_dirty = true;
         }
         Message::Settings(SettingsMsg::BtTrackerEditor(action)) => {
             state.bt_tracker_editor.perform(action);
             state.settings.aria2.bt_tracker = state.bt_tracker_editor.text();
+            state.settings_dirty = true;
         }
         Message::Settings(SettingsMsg::TrackerSourceToggled { source, enabled }) => {
+            state.settings_dirty = true;
             if enabled {
                 if !state.settings.tracker.sources.contains(&source) {
                     state.settings.tracker.sources.push(source);
@@ -2442,6 +2447,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 state.toasts.push(toast);
                 return Task::none();
             }
+            state.settings_dirty = true;
             if !state.settings.tracker.custom_urls.contains(&input) {
                 state.settings.tracker.custom_urls.push(input.clone());
             }
@@ -2451,6 +2457,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.settings_ui.custom_tracker_input.clear();
         }
         Message::Settings(SettingsMsg::TrackerCustomRemove(url)) => {
+            state.settings_dirty = true;
             state.settings.tracker.custom_urls.retain(|u| u != &url);
             state.settings.tracker.sources.retain(|u| u != &url);
         }
@@ -2826,6 +2833,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
         }
         Message::Settings(SettingsMsg::ScheduleDayToggled { day, enabled }) => {
+            state.settings_dirty = true;
             let weekdays = &mut state.settings.speed_limit_schedule.weekdays;
             if enabled {
                 if !weekdays.contains(&day) {
@@ -3094,6 +3102,21 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 state.page = target;
             }
         }
+        Message::Settings(SettingsMsg::ApplyAndClose) => {
+            if matches!(state.confirm, Some(ConfirmAction::UnsavedOnClose)) {
+                state.confirm = None;
+                apply_settings(state);
+                return continue_close_flow(state);
+            }
+        }
+        Message::Settings(SettingsMsg::DiscardAndClose) => {
+            if matches!(state.confirm, Some(ConfirmAction::UnsavedOnClose)) {
+                state.confirm = None;
+                revert_apply_settings(state);
+                config::save(&state.settings);
+                return continue_close_flow(state);
+            }
+        }
         Message::Toast(ToastMsg::DismissToast(id)) => {
             dismiss_toast(state, id);
         }
@@ -3285,6 +3308,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                 settings_ui: &state.settings_ui,
                 category: state.settings_cat,
                 applied_settings: &state.applied_settings,
+                settings_dirty: state.settings_dirty,
                 engine_restart_pending: state.restart.engine_restart_pending,
                 engine_restart_in_progress: state.restart.engine_restart_in_progress,
                 aria2_version: state.engine_ui.aria2_version.as_deref(),
@@ -4083,6 +4107,14 @@ fn open_path_in_manager(p: PathBuf) -> Task<Message> {
         },
         |_| Message::Noop,
     )
+}
+
+fn continue_close_flow(state: &mut Remotrix) -> Task<Message> {
+    if state.settings.close_to_tray && state.tray.enabled() {
+        return hide_to_tray(state);
+    }
+    state.window.show_close_dialog = true;
+    Task::none()
 }
 
 fn hide_to_tray(state: &mut Remotrix) -> Task<Message> {

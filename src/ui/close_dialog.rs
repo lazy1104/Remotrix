@@ -25,11 +25,6 @@ pub fn view<'a>(
                 .on_toggle(|v| Message::Window(WindowMsg::CloseDialogTrayPrefChanged(v)))
                 .text_size(FONT_MEDIUM),
         );
-        body = body.push(
-            text(fluent.get(Tr::ConfirmCloseTrayPrefHint))
-                .size(FONT_SMALL)
-                .style(theme::style::text::secondary),
-        );
     }
 
     let close_btn = button(text(fluent.get(Tr::CloseAction)).size(FONT_BODY))

@@ -22,6 +22,7 @@ pub fn view<'a>(
         ConfirmAction::LeaveSettings { .. } => {
             (Tr::ConfirmUnappliedTitle, Tr::ConfirmUnappliedBody)
         }
+        ConfirmAction::UnsavedOnClose => (Tr::ConfirmUnappliedTitle, Tr::ConfirmUnappliedBody),
         ConfirmAction::RestartEngine { has_active } => {
             if *has_active {
                 (
@@ -104,6 +105,21 @@ pub fn view<'a>(
                 .style(theme::style::button::danger());
             let apply_btn = button(text(fluent.get(Tr::Apply)).size(FONT_BODY))
                 .on_press(Message::Settings(SettingsMsg::ApplyAndLeaveSettings))
+                .padding(PADDING_BUTTON_LG)
+                .style(theme::style::button::primary());
+
+            row![cancel_btn, discard_btn, apply_btn]
+                .spacing(SPACE_XL)
+                .align_y(Alignment::Center)
+                .into()
+        }
+        ConfirmAction::UnsavedOnClose => {
+            let discard_btn = button(text(fluent.get(Tr::Discard)).size(FONT_BODY))
+                .on_press(Message::Settings(SettingsMsg::DiscardAndClose))
+                .padding(PADDING_BUTTON_LG)
+                .style(theme::style::button::danger());
+            let apply_btn = button(text(fluent.get(Tr::Apply)).size(FONT_BODY))
+                .on_press(Message::Settings(SettingsMsg::ApplyAndClose))
                 .padding(PADDING_BUTTON_LG)
                 .style(theme::style::button::primary());
 

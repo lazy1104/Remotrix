@@ -565,8 +565,6 @@ pub struct Settings {
     pub aria2: Aria2Options,
     #[serde(default = "default_true")]
     pub nav_to_tasks_after_add: bool,
-    #[serde(default = "default_true")]
-    pub tray_enabled: bool,
     #[serde(default)]
     pub close_to_tray: bool,
     #[serde(default)]
@@ -628,7 +626,6 @@ impl Default for Settings {
             update: UpdatePrefs::default(),
             aria2: Aria2Options::default(),
             nav_to_tasks_after_add: true,
-            tray_enabled: true,
             close_to_tray: false,
             delete_torrent_after_complete: false,
             cleanup_completed_on_close: false,
