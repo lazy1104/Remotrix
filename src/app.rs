@@ -474,6 +474,7 @@ fn revert_apply_settings(state: &mut Remotrix) {
 
 fn apply_settings(state: &mut Remotrix) -> bool {
     config::save(&state.settings);
+    crate::logging::set_app_level(&state.settings.log.app_level);
     let opts = state.settings.effective_task_options();
     tracing::info!(
         app_log_level = %state.settings.log.app_level,
@@ -1574,7 +1575,6 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 SettingKey::AppLogLevel => {
                     if let SettingValue::Text(s) = value {
                         state.settings.log.app_level = crate::logging::normalize_app_level(&s);
-                        crate::logging::set_app_level(&state.settings.log.app_level);
                     }
                 }
                 SettingKey::EngineLogLevel => {
