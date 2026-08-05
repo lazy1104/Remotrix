@@ -1,0 +1,27 @@
+product-name = "Remotrix"
+# `name` must be set: when it is missing and config comes from `--config`,
+# cargo-packager tries to detect the package name by chdir'ing into the config
+# file path, which fails with "Not a directory (os error 20)".
+name = "remotrix"
+version = "0.1.0"
+binaries-dir = "target/release"
+out-dir = "target/release/bundle"
+identifier = "org.remotrix.app"
+description = "Rust-native download manager inspired by Motrix"
+authors = ["Remotrix"]
+license-file = "LICENSE"
+icons = ["assets/icon.png"]
+before-packaging-command = "cargo build --release --locked"
+
+[deb]
+# iced 0.14 loads GTK/X11/Vulkan via dlopen at runtime, so the only hard
+# shared-library deps (per `ldd`) are the C runtime. Vulkan is a runtime
+# requirement (see README) but cannot be enforced as a deb dependency.
+depends = ["libc6", "libgcc-s1"]
+
+[nsis]
+installer-icon = "assets/icon.ico"
+
+[[binaries]]
+path = "remotrix"
+main = true

@@ -114,8 +114,25 @@ module; the aria2-next binary is fetched on first run.
 ```bash
 cargo build                # debug build
 cargo run --               # launch app (fetches aria2-next on first launch)
-cargo build --release      # release build (optimized, LTO thin)
+cargo build --release      # release build (aggressive: fat LTO, strip, panic=abort)
 ```
+
+## Packaging
+
+Installers are produced with [cargo-packager](https://github.com/crabnebula-dev/cargo-packager)
+(`cargo install cargo-packager --locked`), configured by `packager.toml`. Release binaries are built
+per-platform on GitHub Actions (`.github/workflows/release.yml`) — Linux `.deb`/`.AppImage`, Windows
+NSIS `.exe` — and uploaded as build artifacts (attached to a GitHub Release on tag push).
+
+```bash
+cargo packager --release --config packager.toml --formats deb,appimage   # Linux
+cargo packager --release --config packager.toml --formats nsis           # Windows
+```
+
+Packages contain only the binary (fonts, icons, and i18n are compile-time embedded). **Vulkan is
+required at runtime** on Linux (iced/wgpu loads it via `dlopen`); the aria2-next binary is fetched at
+runtime and is intentionally not bundled. `deb.depends` is minimal because iced links only the C
+runtime — the deb cannot enforce the `dlopen`'d GTK/X11/Vulkan libraries.
 
 To use a local aria2-next binary instead of the auto-download:
 

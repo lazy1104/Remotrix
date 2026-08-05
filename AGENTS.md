@@ -147,8 +147,32 @@ cargo build --release          # release build
 cargo run --                   # run app
 cargo clippy --workspace       # lint (no warnings allowed)
 cargo fmt --check              # formatting check
+cargo packager --release --config packager.toml --formats deb,appimage   # local Linux packaging
 ```
 Run `/check-docs` (Kilo command) to audit README.md and this file against the codebase.
+
+## Release profile
+- `[profile.release]` (Cargo.toml) is **Aggressive**: `lto="fat"`, `codegen-units=1`, `panic="abort"`,
+  `strip="symbols"`, `debug=false`, `overflow-checks=true`.
+- Tradeoffs: `panic="abort"` removes Rust panic **backtraces** (errors still surface via `EngineEvent`);
+  `strip="symbols"` removes debug symbols; fat LTO increases build time for a smaller binary.
+
+## Packaging / CI
+- `packager.toml` configures **cargo-packager** (schema follows cargo-packager 0.11.x; `Packager.toml` is
+  the default filename, we use `packager.toml` + `--config` explicitly).
+- `version` in `packager.toml` **must stay in sync** with `Cargo.toml` (currently `0.1.0`).
+- `deb.depends` is intentionally minimal (`libc6`, `libgcc-s1`): `ldd` shows iced 0.14 links only the C
+  runtime — GTK/X11/Vulkan are loaded via `dlopen` at runtime, so they can't be enforced as deb deps.
+  Vulkan is a runtime requirement (see README).
+- Windows NSIS needs `assets/icon.ico` (committed; generated from `icon.png`). Regenerate with:
+  `python3 -c "from PIL import Image; Image.open('assets/icon.png').convert('RGBA').save('assets/icon.ico', format='ICO', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])"`.
+- CI: `.github/workflows/release.yml` builds Linux (deb+appimage) and Windows (nsis) natively and uploads
+  artifacts; on tag push it attaches installers to a GitHub Release. Requires a git remote to run.
+- All runtime assets are compile-time embedded — packages ship only the binary. aria2-next is NOT bundled
+  (fetched at runtime).
+- The app also installs a per-user `.desktop` at runtime (`src/config.rs` `install_desktop_file()`); a
+  packaged `.deb` provides its own desktop entry, so the runtime one may overlap — handle if this becomes
+  an issue.
 
 ## Build Process (build.rs)
 - Build-time only generates the icon module (`iced_lucide::build`)

@@ -321,10 +321,7 @@ mod tests {
 
     #[test]
     fn rejects_deeply_nested_input() {
-        let mut bytes = Vec::new();
-        for _ in 0..(MAX_BENCODE_DEPTH + 1) {
-            bytes.push(b'l');
-        }
+        let mut bytes = vec![b'l'; MAX_BENCODE_DEPTH + 1];
         bytes.push(b'e');
         assert!(parse_torrent(&bytes).is_none());
     }
