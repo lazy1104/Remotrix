@@ -50,3 +50,8 @@ panic = "abort"
 strip = "symbols"
 debug = false
 overflow-checks = true
+
+[profile.dist]
+inherits = "release"
+lto = "thin"
+codegen-units = 16

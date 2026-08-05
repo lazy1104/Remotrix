@@ -4,14 +4,14 @@ product-name = "Remotrix"
 # file path, which fails with "Not a directory (os error 20)".
 name = "remotrix"
 version = "0.1.0"
-binaries-dir = "target/release"
+binaries-dir = "target/dist"
 out-dir = "target/release/bundle"
 identifier = "org.remotrix.app"
 description = "Rust-native download manager inspired by Motrix"
 authors = ["Remotrix"]
 license-file = "LICENSE"
 icons = ["assets/icon.png"]
-before-packaging-command = "cargo build --release --locked"
+before-packaging-command = "cargo build --profile dist --locked"
 
 [deb]
 # iced 0.14 loads GTK/X11/Vulkan via dlopen at runtime, so the only hard

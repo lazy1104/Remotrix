@@ -85,16 +85,21 @@ jobs:
 
       - name: Cache cargo
         uses: swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          shared-key: dist
 
-      - name: Install cargo-packager
-        run: cargo install cargo-packager --locked
+      - name: Cache & install cargo-packager
+        uses: taiki-e/cache-cargo-install-action@v2
+        with:
+          tool: cargo-packager
 
       - name: Install Linux build deps
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev
 
       - name: Build release binary
-        run: cargo build --release --locked
+        run: cargo build --profile dist --locked
 
       - name: Stage raw binary asset
         shell: bash
@@ -102,9 +107,9 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p target/release/bundle
           if [ "${{ runner.os }}" = "Windows" ]; then
-            cp target/release/remotrix.exe "target/release/bundle/remotrix-${VERSION}-windows-x86_64.exe"
+            cp target/dist/remotrix.exe "target/release/bundle/remotrix-${VERSION}-windows-x86_64.exe"
           else
-            cp target/release/remotrix "target/release/bundle/remotrix-${VERSION}-linux-x86_64"
+            cp target/dist/remotrix "target/release/bundle/remotrix-${VERSION}-linux-x86_64"
           fi
 
       - name: Package installers
