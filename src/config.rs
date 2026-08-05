@@ -308,6 +308,19 @@ impl Default for NotificationPrefs {
     }
 }
 
+pub fn apply_proxy(
+    builder: reqwest::ClientBuilder,
+    proxy: Option<&str>,
+) -> Result<reqwest::ClientBuilder, String> {
+    match proxy {
+        Some(p) => {
+            let proxy = reqwest::Proxy::all(p).map_err(|e| format!("proxy: {e}"))?;
+            Ok(builder.proxy(proxy))
+        }
+        None => Ok(builder),
+    }
+}
+
 pub fn all_proxy_url(server: &str, username: &str, password: &str) -> Option<String> {
     if server.trim().is_empty() {
         return None;

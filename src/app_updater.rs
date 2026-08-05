@@ -27,13 +27,16 @@ pub fn app_update_dir() -> Option<PathBuf> {
     Some(dir)
 }
 
-pub async fn stage_app_update(download: &AppUpdateDownload) -> Result<String, String> {
+pub async fn stage_app_update(
+    download: &AppUpdateDownload,
+    proxy: Option<String>,
+) -> Result<String, String> {
     let dir = app_update_dir().ok_or("cannot determine app data directory")?;
     let bin_name = format!("remotrix-{}-{}", download.version, download.slug);
     let part_path = dir.join(format!("{bin_name}.part"));
     let bin_path = dir.join(&bin_name);
 
-    aria2_fetcher::download_file(&download.download_url, &part_path).await?;
+    aria2_fetcher::download_file(&download.download_url, &part_path, proxy.as_deref()).await?;
 
     if let Some(expected) = &download.sha256 {
         let digest = aria2_fetcher::sha256_file(&part_path).map_err(|e| format!("sha256: {e}"))?;

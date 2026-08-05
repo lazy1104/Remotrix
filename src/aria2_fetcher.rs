@@ -61,7 +61,10 @@ pub fn apply_pending_update(dir: &Path) -> Result<Option<String>, String> {
     Ok(Some(pending.version))
 }
 
-pub async fn ensure_aria2_next(event_tx: &EventTx) -> Result<(PathBuf, Option<String>), String> {
+pub async fn ensure_aria2_next(
+    event_tx: &EventTx,
+    proxy: Option<String>,
+) -> Result<(PathBuf, Option<String>), String> {
     if let Ok(bin) = std::env::var("ARIA2_BIN") {
         let path = PathBuf::from(&bin);
         if path.exists() {
@@ -105,8 +108,14 @@ pub async fn ensure_aria2_next(event_tx: &EventTx) -> Result<(PathBuf, Option<St
 
     emit_status(event_tx, "downloading", "Looking up latest release...");
 
-    let release =
-        updater::fetch_latest_release("AnInsomniacy/aria2-next", "aria2-next", slug, true).await?;
+    let release = updater::fetch_latest_release(
+        "AnInsomniacy/aria2-next",
+        "aria2-next",
+        slug,
+        true,
+        proxy.clone(),
+    )
+    .await?;
     let bin_name = format!("aria2-next-{}-{}", release.version, slug);
     let part_path = dir.join(format!("{bin_name}.part"));
     let bin_path = dir.join(&bin_name);
@@ -117,7 +126,7 @@ pub async fn ensure_aria2_next(event_tx: &EventTx) -> Result<(PathBuf, Option<St
         &format!("Downloading aria2-next {}...", release.version),
     );
 
-    download_file(&release.download_url, &part_path).await?;
+    download_file(&release.download_url, &part_path, proxy.as_deref()).await?;
 
     if let Some(expected) = &release.sha256 {
         emit_status(event_tx, "verifying", "Verifying checksum...");
@@ -155,6 +164,7 @@ pub async fn stage_update_from(
     download_url: &str,
     sha256: Option<&str>,
     event_tx: &EventTx,
+    proxy: Option<String>,
 ) -> Result<String, String> {
     let dir = aria2_bin_dir().ok_or("cannot determine data directory")?;
     let bin_name = format!("aria2-next-{version}-{slug}");
@@ -167,7 +177,7 @@ pub async fn stage_update_from(
         &format!("Downloading aria2-next {version}..."),
     );
 
-    download_file(download_url, &part_path).await?;
+    download_file(download_url, &part_path, proxy.as_deref()).await?;
 
     if let Some(expected) = sha256 {
         emit_status(event_tx, "update-verifying", "Verifying checksum...");
@@ -304,9 +314,16 @@ pub(crate) fn sha256_file(path: &Path) -> Result<String, String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-pub(crate) async fn download_file(url: &str, dest: &Path) -> Result<(), String> {
-    let client = reqwest::Client::builder()
-        .user_agent("remotrix-updater")
+pub(crate) async fn download_file(
+    url: &str,
+    dest: &Path,
+    proxy: Option<&str>,
+) -> Result<(), String> {
+    let builder = crate::config::apply_proxy(
+        reqwest::Client::builder().user_agent("remotrix-updater"),
+        proxy,
+    )?;
+    let client = builder
         .build()
         .map_err(|e| format!("create download client: {e}"))?;
 

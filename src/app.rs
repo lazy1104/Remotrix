@@ -2693,6 +2693,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     active_tab: 0,
                 });
                 let slug = crate::updater::platform_slug();
+                let proxy = state.settings.aria2.all_proxy_value();
                 let mut tasks = Vec::new();
                 for (tab, offer) in state
                     .update_dialog
@@ -2704,8 +2705,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 {
                     let (repo, prefix) = update_repo(offer.component);
                     let current = offer.current.clone();
+                    let proxy = proxy.clone();
                     tasks.push(Task::perform(
-                        crate::updater::fetch_changelog(repo, prefix, slug, current),
+                        crate::updater::fetch_changelog(repo, prefix, slug, current, proxy),
                         move |r| {
                             Message::Settings(SettingsMsg::UpdateChangelogLoaded {
                                 tab,
@@ -2745,6 +2747,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             continue;
                         }
                         state.app_update_in_flight = true;
+                        let proxy = state.settings.aria2.all_proxy_value();
                         let version = offer.latest.clone();
                         let slug = crate::updater::platform_slug().to_string();
                         let download_url = offer.download_url.clone();
@@ -2767,6 +2770,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                                             crate::updater::APP_REPO,
                                             &version,
                                             &asset_name,
+                                            proxy.clone(),
                                         )
                                         .await
                                     }
@@ -2777,7 +2781,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                                     download_url,
                                     sha256,
                                 };
-                                crate::app_updater::stage_app_update(&download).await
+                                crate::app_updater::stage_app_update(&download, proxy).await
                             },
                             |result| Message::Settings(SettingsMsg::UpdateDownloadStarted(result)),
                         ));
@@ -3914,6 +3918,7 @@ fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -> Task<Mess
 
     let scope = state.settings.update.scope;
     let silent = state.settings.update.aria2_silent_update;
+    let proxy = state.settings.aria2.all_proxy_value();
     let app_current = crate::app_updater::current_app_version().to_string();
     let engine_current = crate::aria2_fetcher::installed_version().unwrap_or_default();
     let slug = crate::updater::platform_slug();
@@ -3932,6 +3937,7 @@ fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -> Task<Mess
                         "aria2-next",
                         slug,
                         false,
+                        proxy.clone(),
                     )
                     .await
                     {
@@ -3966,6 +3972,7 @@ fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -> Task<Mess
                         crate::updater::APP_ASSET_PREFIX,
                         slug,
                         false,
+                        proxy.clone(),
                     )
                     .await
                     {
@@ -4055,8 +4062,9 @@ fn start_tracker_fetch(state: &mut Remotrix, urls: Vec<String>) -> Task<Message>
         true,
     );
     state.settings_ui.tracker_sync_toast_id = Some(id);
+    let proxy = state.settings.aria2.all_proxy_value();
     let fetch = Task::perform(
-        async move { crate::trackers::fetch_sources(&urls).await },
+        async move { crate::trackers::fetch_sources(&urls, proxy).await },
         |(fetched, failures)| Message::Settings(SettingsMsg::TrackersSynced { fetched, failures }),
     );
     const SYNC_TIMEOUT: Duration = Duration::from_secs(30);

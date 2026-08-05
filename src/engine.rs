@@ -1164,6 +1164,7 @@ async fn handle_download_aria2_update(cmd: EngineCmd, event_tx: &EventTx) {
         return;
     };
     tracing::info!(?version, "download aria2 update");
+    let proxy = crate::config::load().aria2.all_proxy_value();
     let fallback_slug = crate::updater::platform_slug();
     let slug = asset_name
         .strip_prefix(&format!("aria2-next-{version}-"))
@@ -1171,8 +1172,13 @@ async fn handle_download_aria2_update(cmd: EngineCmd, event_tx: &EventTx) {
     let sha256 = match sha256 {
         Some(s) => Some(s),
         None => {
-            crate::updater::fetch_asset_checksum("AnInsomniacy/aria2-next", &version, &asset_name)
-                .await
+            crate::updater::fetch_asset_checksum(
+                "AnInsomniacy/aria2-next",
+                &version,
+                &asset_name,
+                proxy.clone(),
+            )
+            .await
         }
     };
     match crate::aria2_fetcher::stage_update_from(
@@ -1181,6 +1187,7 @@ async fn handle_download_aria2_update(cmd: EngineCmd, event_tx: &EventTx) {
         &download_url,
         sha256.as_deref(),
         event_tx,
+        proxy,
     )
     .await
     {
@@ -1250,7 +1257,10 @@ async fn boot(
     generation: u64,
     event_tx: &EventTx,
 ) -> Result<(Sidecar, Option<String>), String> {
-    let (bin_path, applied) = crate::aria2_fetcher::ensure_aria2_next(event_tx).await?;
+    let (bin_path, applied) = {
+        let proxy = crate::config::load().aria2.all_proxy_value();
+        crate::aria2_fetcher::ensure_aria2_next(event_tx, proxy).await?
+    };
     let pid_path = config.session_path.join("aria2.pid");
     cleanup_stale_aria2(&bin_path, &pid_path).await;
     let _ = event_tx.send(EngineEvent::Aria2Status {

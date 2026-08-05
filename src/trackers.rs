@@ -77,14 +77,27 @@ pub fn sync_due(
     now_ms - last >= interval_hours as i64 * 3600 * 1000
 }
 
-pub async fn fetch_sources(urls: &[String]) -> (Vec<String>, Vec<(String, String)>) {
+pub async fn fetch_sources(
+    urls: &[String],
+    proxy: Option<String>,
+) -> (Vec<String>, Vec<(String, String)>) {
     if urls.is_empty() {
         return (vec![], vec![]);
     }
-    let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-    {
+    let builder = match crate::config::apply_proxy(
+        reqwest::Client::builder().timeout(std::time::Duration::from_secs(30)),
+        proxy.as_deref(),
+    ) {
+        Ok(builder) => builder,
+        Err(e) => {
+            let failures: Vec<(String, String)> = urls
+                .iter()
+                .map(|u| (u.clone(), format!("proxy: {e}")))
+                .collect();
+            return (vec![], failures);
+        }
+    };
+    let client = match builder.build() {
         Ok(c) => c,
         Err(e) => {
             let failures: Vec<(String, String)> =

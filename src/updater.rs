@@ -11,10 +11,14 @@ pub struct ReleaseInfo {
 pub const APP_REPO: &str = "lazy1104/Remotrix";
 pub const APP_ASSET_PREFIX: &str = "remotrix";
 
-fn http_client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .user_agent("remotrix-updater")
-        .timeout(std::time::Duration::from_secs(30))
+fn http_client(proxy: Option<&str>) -> Result<reqwest::Client, String> {
+    let builder = crate::config::apply_proxy(
+        reqwest::Client::builder()
+            .user_agent("remotrix-updater")
+            .timeout(std::time::Duration::from_secs(30)),
+        proxy,
+    )?;
+    builder
         .build()
         .map_err(|e| format!("create reqwest client: {e}"))
 }
@@ -24,8 +28,9 @@ pub async fn fetch_latest_release(
     asset_prefix: &str,
     slug: &str,
     fetch_checksum: bool,
+    proxy: Option<String>,
 ) -> Result<ReleaseInfo, String> {
-    let client = http_client()?;
+    let client = http_client(proxy.as_deref())?;
     let api_url = format!("https://api.github.com/repos/{repo}/releases/latest");
     let resp = client
         .get(&api_url)
@@ -54,8 +59,9 @@ pub async fn fetch_changelog(
     asset_prefix: &str,
     slug: &str,
     current: String,
+    proxy: Option<String>,
 ) -> Result<Vec<ReleaseInfo>, String> {
-    let client = http_client()?;
+    let client = http_client(proxy.as_deref())?;
     let api_url = format!("https://api.github.com/repos/{repo}/releases?per_page=30");
     let resp = client
         .get(&api_url)
@@ -89,8 +95,13 @@ pub async fn fetch_changelog(
     Ok(out)
 }
 
-pub async fn fetch_asset_checksum(repo: &str, version: &str, asset_name: &str) -> Option<String> {
-    let client = http_client().ok()?;
+pub async fn fetch_asset_checksum(
+    repo: &str,
+    version: &str,
+    asset_name: &str,
+    proxy: Option<String>,
+) -> Option<String> {
+    let client = http_client(proxy.as_deref()).ok()?;
     let tag = version.strip_prefix('v').unwrap_or(version);
     let api_url = format!("https://api.github.com/repos/{repo}/releases/tags/v{tag}");
     let resp = client.get(&api_url).send().await.ok()?;
