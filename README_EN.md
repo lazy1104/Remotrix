@@ -19,16 +19,20 @@ with AI assistance.
 ## Features
 
 - **Native Rust UI** — pure-Rust rendering via `iced 0.14`, no Electron / browser stack
-- **Multi-protocol downloads** — HTTP/HTTPS/FTP and BitTorrent (`.torrent` files) through aria2-next
+- **Multi-protocol downloads** — HTTP/HTTPS/FTP, BitTorrent (`.torrent` files), and Magnet links through aria2-next
 - **Parallel segments** — configurable split / max-connections per server
 - **Global & per-task speed limits** — separate download / upload caps, persisted to disk
 - **Embedded persistence** — task metadata and progress are stored in a local SQLite database and survive restarts
 - **Self-managing engine** — aria2-next is fetched at runtime from GitHub Releases (sha256-verified, cached, self-healing), with automatic update checks and staged background updates applied on the next restart
 - **Frameless window** — custom title bar with minimize / maximize / close controls and a close-confirmation dialog
+- **System tray** — tray icon and menu, with minimize-to-tray / close-to-tray (`ldtray`)
+- **System notifications** — native desktop notifications for events like download completion (`notify-rust`)
+- **Single instance** — a second launch focuses the existing window (`app-single-instance`)
 - **Theming** — pick an accent color (a wrapping row of swatches); iced auto-generates the full light / dark palette from it, including a M3-style surface background derived from the accent hue, and the app can follow the system appearance (`dark-light` detection)
 - **Internationalization** — auto-detects `zh_CN` / `en_US` from the system locale, switchable in Settings
 - **Task details** — summary / activity / files tabs with a BitTorrent piece-completion map
 - **Sorting & filters** — sort by added time, name, size, progress, or status; filter by All / Downloading / Completed
+- **Clipboard watching** — auto-detects http/ftp/magnet/ed2k/bt links copied to the clipboard
 - **File logging** — daily rolling logs written under the data directory
 
 ## Screenshots
@@ -81,6 +85,7 @@ Remotrix uses a **dual event loop** design:
 src/
 ├── main.rs               # entry, logging init, window settings
 ├── app.rs                # Remotrix state, update(), view(), subscription()
+├── app_updater.rs        # app self-update: download staging + swap on relaunch
 ├── config.rs             # Settings (serde) load/save, aria2 option mapping, path helpers
 ├── db.rs                 # SQLite persistence (rusqlite): task meta + progress flush
 ├── engine.rs             # EngineBridge: spawn tokio supervisor + aria2-next sidecar, mpsc channels
@@ -94,6 +99,8 @@ src/
 ├── scheduler.rs          # speed-limit schedule window + weekday helpers
 ├── torrent_meta.rs       # .torrent metadata parsing (name, files, size)
 ├── trackers.rs           # BT tracker list parse / reduce / merge
+├── notify.rs             # native system notifications (notify-rust)
+├── tray.rs               # system tray (ldtray): menu, minimize/close-to-tray, Wayland window mgmt
 └── ui/
     ├── mod.rs            # ui module re-exports
     ├── theme.rs          # accent-color → iced palette generation, ThemeMode, widget styles
@@ -111,8 +118,9 @@ src/
     ├── details_dialog.rs # task details: summary / activity / files tabs
     ├── sort.rs           # task sorting comparators
     ├── about_dialog.rs   # about / engine info overlay
+    ├── update_dialog.rs  # app / engine update overlay
     ├── settings_page.rs  # general, download, bittorrent, ed2k, network, advanced, appearance
-    └── components/       # reusable widgets (piece_map, path_picker, time_picker, toast, ...)
+    └── components/       # reusable widgets (dialogs, drag-drop upload, piece map, file tree, ...)
 ```
 
 ## Build & Run
@@ -174,16 +182,16 @@ Runtime data (SQLite database, aria2-next binary cache + session, log files) liv
 - Windows: `%APPDATA%\remotrix\Remotrix\data\`
 
 Persisted settings include the download folder, max concurrent downloads, split, global & per-task
-speed limits, theme mode + selected light/dark themes, locale, auto-update preferences, and a full set
-of aria2 options (max-connection-per-server, min-split-size, auto-file-renaming, allow-overwrite,
-continue, check-integrity, user-agent, headers, proxy, retries, timeouts, bt-tracker, seed ratio/time,
-DHT, and more).
+speed limits, theme mode + selected light/dark themes, locale, auto-update preferences, close-to-tray,
+and a full set of aria2 options (max-connection-per-server, min-split-size, auto-file-renaming,
+allow-overwrite, continue, check-integrity, user-agent, headers, proxy, retries, timeouts,
+bt-tracker, seed ratio/time, DHT, and more).
 
 ## Tech Stack
 
 | Component | Choice | Rationale |
 |---|---|---|
-| GUI | `iced 0.14` (+tokio, advanced, canvas, svg) | Pure Rust, widget-based, dark theme support |
+| GUI | `iced 0.14` (+tokio, advanced, canvas, svg, markdown) | Pure Rust, widget-based, dark theme support |
 | Engine | `aria2-next` sidecar + `aria2-ws 0.5` | C++ aria2 fork, JSON-RPC over WebSocket, spawned as subprocess |
 | Async | `tokio 1.x` (full) | Shared runtime for engine + UI |
 | Persistence | `rusqlite 0.32` (bundled) | Embedded SQLite for task metadata / progress |
@@ -191,6 +199,9 @@ DHT, and more).
 | i18n | `fluent-templates 0.14` | Fluent translations (zh / en) |
 | System theme | `dark-light 1.1` | Detect system dark / light preference |
 | File dialog | `rfd 0.15` | Native OS file picker |
+| System tray | `ldtray 0.1` | Tray icon + menu |
+| Notifications | `notify-rust 4.17` (tokio) | Native desktop notifications |
+| Single instance | `app-single-instance 0.1` | Single-instance run, focuses existing window |
 | HTTP client | `reqwest 0.12` (rustls, json) | GitHub Releases fetch / updater |
 | Hashing | `sha2 0.10` | aria2-next binary checksum verification |
 | Icons | `iced_lucide 0.1`, `iced_aw 0.14` | Icon font + time picker |
@@ -203,6 +214,7 @@ DHT, and more).
 
 ## Roadmap
 
+**Done**
 - [x] Dual-loop engine bridge + aria2-next sidecar supervisor
 - [x] Basic UI: sidebar, category bar, task list, add dialog, settings
 - [x] Frameless window + custom title bar
@@ -210,9 +222,23 @@ DHT, and more).
 - [x] SQLite task persistence
 - [x] aria2-next runtime auto-fetch + auto-update
 - [x] Task details dialog (piece map, files, BT info)
-- [ ] System tray integration (currently stubbed: "Minimize to tray" is coming soon)
-- [ ] Magnet link support
-- [ ] Drag-and-drop file / task support
+- [x] Magnet link support
+- [x] Drag-and-drop file / task support
+- [x] System tray integration (minimize-to-tray / close-to-tray)
+- [x] System notifications (download completion, etc.)
+- [x] Single-instance run
+
+**Planned**
+- [ ] Download hardening & full testing — HTTP/HTTPS and BT work today, but haven't covered enough scenarios (resume, integrity check, speed limits, retry on failure, etc.); needs a full regression pass
+- [ ] System-level unit tests — add unit tests for core modules (engine, task parsing, config, scheduler, ...)
+- [ ] App animations — smooth transitions and motion for page switches, list updates, progress bars, etc.
+- [ ] Customizable paths — let users override app cache, log, and aria2-next binary paths
+- [ ] File associations — set the default program for opening file types (e.g. `.torrent`)
+- [ ] Browser extension — extension / context-menu to send links to Remotrix in one click
+- [ ] Launch at login — start automatically after sign-in
+- [ ] Scheduled / download-complete shutdown — scheduled shutdown and auto-shutdown when all tasks finish
+- [ ] Wayland compatibility polish — improve window, tray, and notification behavior under Wayland
+- [ ] UI/UX polish — continuously refine visuals and interactions
 
 ## Acknowledgements
 

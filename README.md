@@ -13,16 +13,20 @@ Remotrix 最初是一个学习项目。我喜欢 Motrix / Motrix-next 的设计�
 ## 功能特性
 
 - **原生 Rust UI** —— 通过 `iced 0.14` 纯 Rust 渲染，无 Electron / 浏览器内核
-- **多协议下载** —— 支持 HTTP/HTTPS/FTP 与 BitTorrent（`.torrent` 文件），由 aria2-next 驱动
+- **多协议下载** —— 支持 HTTP/HTTPS/FTP、BitTorrent（`.torrent` 文件）与 Magnet 磁力链接，由 aria2-next 驱动
 - **并行分段** —— 可配置每台服务器的分段数 / 最大连接数
 - **全局与任务级限速** —— 下载 / 上传限速独立设置，持久化到磁盘
 - **内嵌持久化** —— 任务元数据与进度存储在本地 SQLite 数据库，重启后保留
 - **自管理引擎** —— aria2-next 在运行时从 GitHub Releases 自动获取（sha256 校验、缓存、自愈），支持自动更新检查与后台暂存更新，下次重启时应用
 - **无边框窗口** —— 自定义标题栏，含最小化 / 最大化 / 关闭按钮与关闭确认对话框
+- **系统托盘** —— 托盘图标与菜单，支持最小化到托盘 / 关闭到托盘（`ldtray`）
+- **系统通知** —— 下载完成等事件的原生桌面通知（`notify-rust`）
+- **单实例运行** —— 二次启动时聚焦已有窗口（`app-single-instance`）
 - **主题系统** —— 选择强调色（一排色块）；iced 自动生成完整的浅色 / 深色调色板，包括由强调色派生出的 M3 风格表面背景；应用可跟随系统外观（`dark-light` 检测）
 - **国际化** —— 自动从系统区域设置检测 `zh_CN` / `en_US`，可在设置中切换
 - **任务详情** —— 摘要 / 活动 / 文件三个标签页，含 BitTorrent 分片完成度图
 - **排序与筛选** —— 按添加时间、名称、大小、进度或状态排序；按全部 / 下载中 / 已完成筛选
+- **剪贴板监听** —— 自动检测复制到剪贴板的 http/ftp/magnet/ed2k/bt 链接
 - **文件日志** —— 数据目录下按天滚动的日志文件
 
 ## 截图
@@ -67,6 +71,7 @@ Remotrix 采用**双事件循环**设计：
 src/
 ├── main.rs               # 入口、日志初始化、窗口设置
 ├── app.rs                # Remotrix 状态、update()、view()、subscription()
+├── app_updater.rs        # 应用自更新：下载暂存 + 重启时替换
 ├── config.rs             # 设置（serde）加载/保存、aria2 选项映射、路径辅助
 ├── db.rs                 # SQLite 持久化（rusqlite）：任务元数据 + 进度刷新
 ├── engine.rs             # EngineBridge：派生 tokio 监管者 + aria2-next 侧车、mpsc 通道
@@ -80,6 +85,8 @@ src/
 ├── scheduler.rs          # 限速时间段 + 星期辅助
 ├── torrent_meta.rs       # .torrent 元数据解析（名称、文件、大小）
 ├── trackers.rs           # BT tracker 列表解析 / 精简 / 合并
+├── notify.rs             # 原生系统通知（notify-rust）
+├── tray.rs               # 系统托盘（ldtray）：菜单、最小化/关闭到托盘、Wayland 窗口管理
 └── ui/
     ├── mod.rs            # ui 模块重导出
     ├── theme.rs          # 强调色 → iced 调色板生成、ThemeMode、控件样式
@@ -97,8 +104,9 @@ src/
     ├── details_dialog.rs # 任务详情：摘要 / 活动 / 文件标签页
     ├── sort.rs           # 任务排序比较器
     ├── about_dialog.rs   # 关于 / 引擎信息遮罩
+    ├── update_dialog.rs  # 应用 / 引擎更新遮罩
     ├── settings_page.rs  # 常规、下载、BitTorrent、ed2k、网络、高级、外观
-    └── components/       # 可复用控件（piece_map、path_picker、time_picker、toast、...）
+    └── components/       # 可复用控件（对话框、拖拽上传、分片图、文件树、时间/路径选择、Toast 等）
 ```
 
 ## 构建与运行
@@ -150,13 +158,13 @@ cargo fmt --check          # 格式检查
 - macOS: `~/Library/Application Support/dev.remotrix.Remotrix/`
 - Windows: `%APPDATA%\remotrix\Remotrix\data\`
 
-持久化的设置包括下载文件夹、最大并发下载数、分段数、全局与任务级限速、主题模式 + 所选浅色 / 深色主题、区域设置、自动更新偏好，以及全套 aria2 选项（每服务器最大连接数、最小分段大小、自动重命名、允许覆盖、断点续传、校验完整性、User-Agent、请求头、代理、重试、超时、bt-tracker、做种比例 / 时长、DHT 等）。
+持久化的设置包括下载文件夹、最大并发下载数、分段数、全局与任务级限速、主题模式 + 所选浅色 / 深色主题、区域设置、自动更新偏好、关闭到托盘，以及全套 aria2 选项（每服务器最大连接数、最小分段大小、自动重命名、允许覆盖、断点续传、校验完整性、User-Agent、请求头、代理、重试、超时、bt-tracker、做种比例 / 时长、DHT 等）。
 
 ## 技术栈
 
 | 组件 | 选型 | 理由 |
 |---|---|---|
-| GUI | `iced 0.14`（+tokio、advanced、canvas、svg） | 纯 Rust、基于控件、支持深色主题 |
+| GUI | `iced 0.14`（+tokio、advanced、canvas、svg、markdown） | 纯 Rust、基于控件、支持深色主题 |
 | 引擎 | `aria2-next` 侧车 + `aria2-ws 0.5` | C++ aria2 分支，WebSocket 上的 JSON-RPC，以子进程方式派生 |
 | 异步 | `tokio 1.x`（full） | 引擎 + UI 共享运行时 |
 | 持久化 | `rusqlite 0.32`（bundled） | 内嵌 SQLite，存储任务元数据 / 进度 |
@@ -164,6 +172,9 @@ cargo fmt --check          # 格式检查
 | i18n | `fluent-templates 0.14` | Fluent 翻译（zh / en） |
 | 系统主题 | `dark-light 1.1` | 检测系统深色 / 浅色偏好 |
 | 文件对话框 | `rfd 0.15` | 原生文件选择器 |
+| 系统托盘 | `ldtray 0.1` | 托盘图标 + 菜单 |
+| 通知 | `notify-rust 4.17`（tokio） | 原生桌面通知 |
+| 单实例 | `app-single-instance 0.1` | 单实例运行并聚焦已有窗口 |
 | HTTP 客户端 | `reqwest 0.12`（rustls、json） | GitHub Releases 获取 / 更新器 |
 | 哈希 | `sha2 0.10` | aria2-next 二进制校验和验证 |
 | 图标 | `iced_lucide 0.1`、`iced_aw 0.14` | 图标字体 + 时间选择器 |
@@ -176,6 +187,7 @@ cargo fmt --check          # 格式检查
 
 ## 路线图
 
+**已完成**
 - [x] 双循环引擎桥 + aria2-next 侧车监管者
 - [x] 基础 UI：侧边栏、分类栏、任务列表、添加对话框、设置
 - [x] 无边框窗口 + 自定义标题栏
@@ -183,9 +195,23 @@ cargo fmt --check          # 格式检查
 - [x] SQLite 任务持久化
 - [x] aria2-next 运行时自动获取 + 自动更新
 - [x] 任务详情对话框（分片图、文件、BT 信息）
-- [ ] 系统托盘集成（当前为占位："最小化到托盘"敬请期待）
-- [ ] Magnet 磁力链接支持
-- [ ] 拖拽文件 / 任务支持
+- [x] Magnet 磁力链接支持
+- [x] 拖拽文件 / 任务支持
+- [x] 系统托盘集成（最小化到托盘 / 关闭到托盘）
+- [x] 系统通知（下载完成等）
+- [x] 单实例运行
+
+**待办**
+- [ ] 下载功能完善与全面测试 —— HTTP/HTTPS 与 BT 目前可用，但尚未覆盖足够多的场景（断点续传、完整性校验、限速、失败重试等），需要完整回归测试
+- [ ] 系统级单元测试 —— 为引擎、任务解析、配置、调度等核心模块补充单元测试
+- [ ] 应用动画效果 —— 为页面切换、列表更新、进度条等添加流畅的过渡与动效
+- [ ] 各类路径的自定义 —— 支持自定义应用缓存、日志、aria2-next 二进制等路径
+- [ ] 文件关联 —— 设置各类文件（如 `.torrent`）的默认打开程序
+- [ ] 浏览器拓展 —— 提供浏览器扩展 / 右键菜单，一键将链接发送到 Remotrix
+- [ ] 开机自启动 —— 支持登录后自动启动
+- [ ] 定时关机 / 下载完成关机 —— 支持定时关机与全部任务完成后自动关机
+- [ ] Wayland 兼容性完善 —— 完善 Wayland 下的窗口、托盘、通知兼容性
+- [ ] UI/UX 优化 —— 持续打磨界面细节与交互体验
 
 ## 致谢
 
