@@ -34,6 +34,7 @@ pub const ABOUT_LOGO_SIZE: f32 = 96.0; // About 对话框 logo 边长（方形�
 pub const PADDING_NONE: u16 = 0; // 铺满按钮（标题栏、侧栏导航）
 pub const PADDING_XS: u16 = 2; // toast 关闭按钮
 pub const PADDING_ICON_BTN: u16 = 4; // 任务卡片图标按钮
+pub const PADDING_TOAST_CLOSE: u16 = 6; // toast 关闭按钮点击区
 pub const PADDING_DROPDOWN: u16 = 6; // 下拉卡片、关闭按钮、路径历史浮层
 pub const PADDING_EDITOR: u16 = 10; // URL 多行编辑器
 pub const PADDING_CARD: u16 = 16; // 任务卡片

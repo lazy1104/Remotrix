@@ -157,6 +157,7 @@ impl EngineUiState {
 
 struct UpdateDialogState {
     offers: Vec<crate::ui::update_dialog::UpdateOffer>,
+    changelog_md: Vec<iced::widget::markdown::Content>,
     active_tab: usize,
 }
 
@@ -2574,6 +2575,10 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             if !offers.is_empty() {
                 state.update_dialog = Some(UpdateDialogState {
+                    changelog_md: offers
+                        .iter()
+                        .map(|o| iced::widget::markdown::Content::parse(&o.changelog))
+                        .collect(),
                     offers,
                     active_tab: 0,
                 });
@@ -2965,6 +2970,10 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         }
         Message::CopyText(s) => return copy_to_clipboard(state, s),
         Message::OpenLink(url) => {
+            let scheme = url.split(':').next().unwrap_or_default();
+            if !matches!(scheme, "http" | "https") {
+                return Task::none();
+            }
             return Task::perform(
                 async move {
                     let _ = open::that(&url);
@@ -3212,7 +3221,13 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
     };
 
     let update_layer: iced::Element<'_, Message> = if let Some(dialog) = &state.update_dialog {
-        crate::ui::update_dialog::view(&state.fluent, t, &dialog.offers, dialog.active_tab)
+        crate::ui::update_dialog::view(
+            &state.fluent,
+            t,
+            &dialog.offers,
+            &dialog.changelog_md,
+            dialog.active_tab,
+        )
     } else {
         iced::widget::Space::new().into()
     };
@@ -3656,71 +3671,86 @@ fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -> Task<Mess
     let app_current = crate::app_updater::current_app_version().to_string();
     let engine_current = crate::aria2_fetcher::installed_version().unwrap_or_default();
     let slug = crate::updater::platform_slug();
+    let timeout_msg = state.fluent.get(Tr::UpdateCheckTimeout);
 
     Task::perform(
         async move {
-            let mut offers = Vec::new();
-            let mut silent_applied = Vec::new();
-            let mut errors = Vec::new();
+            let fetched = tokio::time::timeout(Duration::from_secs(45), async {
+                let mut offers = Vec::new();
+                let mut silent_applied = Vec::new();
+                let mut errors = Vec::new();
 
-            if scope.covers("aria2-next") {
-                match crate::updater::fetch_releases_since(
-                    "AnInsomniacy/aria2-next",
-                    "aria2-next",
-                    slug,
-                    &engine_current,
-                )
-                .await
-                {
-                    Ok(rels) => {
-                        if let Some(latest) = rels.first() {
-                            let settings = crate::config::load();
-                            if !settings.update.is_skipped("aria2-next", &latest.version) {
-                                let offer = crate::ui::update_dialog::UpdateOffer {
-                                    component: crate::ui::update_dialog::UpdateComponent::Aria2,
-                                    current: engine_current.clone(),
+                if scope.covers("aria2-next") {
+                    match crate::updater::fetch_releases_since(
+                        "AnInsomniacy/aria2-next",
+                        "aria2-next",
+                        slug,
+                        &engine_current,
+                    )
+                    .await
+                    {
+                        Ok(rels) => {
+                            if let Some(latest) = rels.first() {
+                                let settings = crate::config::load();
+                                if !settings.update.is_skipped("aria2-next", &latest.version) {
+                                    let offer = crate::ui::update_dialog::UpdateOffer {
+                                        component: crate::ui::update_dialog::UpdateComponent::Aria2,
+                                        current: engine_current.clone(),
+                                        latest: latest.version.clone(),
+                                        changelog: concat_changelog(&rels),
+                                        download_url: latest.download_url.clone(),
+                                        sha256: latest.sha256.clone(),
+                                        asset_name: latest.asset_name.clone(),
+                                    };
+                                    if silent {
+                                        silent_applied.push(offer);
+                                    } else {
+                                        offers.push(offer);
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => errors.push(format!("aria2-next: {e}")),
+                    }
+                }
+
+                if scope.covers("remotrix") {
+                    match crate::updater::fetch_app_releases_since(&app_current).await {
+                        Ok(rels) => {
+                            if let Some(latest) = rels.first() {
+                                offers.push(crate::ui::update_dialog::UpdateOffer {
+                                    component: crate::ui::update_dialog::UpdateComponent::App,
+                                    current: app_current.clone(),
                                     latest: latest.version.clone(),
                                     changelog: concat_changelog(&rels),
                                     download_url: latest.download_url.clone(),
                                     sha256: latest.sha256.clone(),
                                     asset_name: latest.asset_name.clone(),
-                                };
-                                if silent {
-                                    silent_applied.push(offer);
-                                } else {
-                                    offers.push(offer);
-                                }
+                                });
                             }
                         }
+                        Err(e) => errors.push(format!("remotrix: {e}")),
                     }
-                    Err(e) => errors.push(format!("aria2-next: {e}")),
                 }
-            }
 
-            if scope.covers("remotrix") {
-                match crate::updater::fetch_app_releases_since(&app_current).await {
-                    Ok(rels) => {
-                        if let Some(latest) = rels.first() {
-                            offers.push(crate::ui::update_dialog::UpdateOffer {
-                                component: crate::ui::update_dialog::UpdateComponent::App,
-                                current: app_current.clone(),
-                                latest: latest.version.clone(),
-                                changelog: concat_changelog(&rels),
-                                download_url: latest.download_url.clone(),
-                                sha256: latest.sha256.clone(),
-                                asset_name: latest.asset_name.clone(),
-                            });
-                        }
-                    }
-                    Err(e) => errors.push(format!("remotrix: {e}")),
-                }
-            }
-
-            Message::Settings(SettingsMsg::UpdateResult {
-                offers,
-                silent_applied,
-                errors,
+                (offers, silent_applied, errors)
             })
+            .await;
+
+            match fetched {
+                Ok((offers, silent_applied, errors)) => {
+                    Message::Settings(SettingsMsg::UpdateResult {
+                        offers,
+                        silent_applied,
+                        errors,
+                    })
+                }
+                Err(_) => Message::Settings(SettingsMsg::UpdateResult {
+                    offers: Vec::new(),
+                    silent_applied: Vec::new(),
+                    errors: vec![timeout_msg],
+                }),
+            }
         },
         std::convert::identity,
     )

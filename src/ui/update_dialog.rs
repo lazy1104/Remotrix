@@ -1,4 +1,4 @@
-use iced::widget::{button, column, container, row, text};
+use iced::widget::{button, column, container, markdown, rich_text, row, span, text};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
@@ -47,8 +47,9 @@ fn tab_button<'a>(label: String, active: bool, on_press: Message) -> Element<'a,
 
 pub fn view<'a>(
     fluent: &'a Fluent,
-    _theme: &iced::Theme,
-    offers: &[UpdateOffer],
+    theme: &iced::Theme,
+    offers: &'a [UpdateOffer],
+    changelog_md: &'a [markdown::Content],
     active_tab: usize,
 ) -> Element<'a, Message> {
     let active_tab = active_tab.min(offers.len().saturating_sub(1));
@@ -68,22 +69,26 @@ pub fn view<'a>(
         body = body.push(tabs);
     }
 
-    let transition = fluent.get_args(Tr::UpdateDialogVersionTransition, &{
-        let mut a = std::collections::HashMap::new();
-        a.insert(
-            std::borrow::Cow::from("component"),
-            component_label(fluent, offer.component).into(),
-        );
-        a.insert(std::borrow::Cow::from("from"), offer.current.clone().into());
-        a.insert(std::borrow::Cow::from("to"), offer.latest.clone().into());
-        a
-    });
-    body = body.push(
-        container(text(transition).size(FONT_BODY))
+    let transition: Element<'a, Message> = {
+        let rich: iced::Element<'a, ()> = rich_text![
+            span::<(), _>(component_label(fluent, offer.component))
+                .color(theme::text_secondary(theme)),
+            span::<(), _>(format!("  v{}", offer.current))
+                .strikethrough(true)
+                .color(theme::text_secondary(theme)),
+            span::<(), _>("  →  ").color(theme::text_secondary(theme)),
+            span::<(), _>(format!("v{}", offer.latest)).color(theme::primary(theme)),
+        ]
+        .size(FONT_BODY)
+        .into();
+        let framed: iced::Element<'a, ()> = container(rich)
             .width(Length::Fill)
             .padding(PADDING_CARD)
-            .style(theme::style::card),
-    );
+            .style(theme::style::subtle)
+            .into();
+        framed.map(|_: ()| Message::Noop)
+    };
+    body = body.push(transition);
 
     body = body.push(text(fluent.get(Tr::UpdateDialogChangelog)).size(FONT_MEDIUM));
     let changelog: Element<'a, Message> = if offer.changelog.trim().is_empty() {
@@ -92,9 +97,13 @@ pub fn view<'a>(
             .style(theme::style::text::secondary)]
         .into()
     } else {
-        column![text(offer.changelog.clone()).size(FONT_SMALL)]
-            .width(Length::Fill)
-            .into()
+        column![markdown::view(
+            changelog_md[active_tab].items(),
+            markdown::Settings::with_text_size(FONT_SMALL, markdown::Style::from(theme),),
+        )
+        .map(Message::OpenLink),]
+        .width(Length::Fill)
+        .into()
     };
     body = body.push(
         container(
@@ -104,7 +113,7 @@ pub fn view<'a>(
         )
         .width(Length::Fill)
         .padding(PADDING_CARD)
-        .style(theme::style::card),
+        .style(theme::style::subtle),
     );
 
     let footer = row![

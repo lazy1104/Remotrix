@@ -315,6 +315,10 @@ pub mod style {
         }
     }
 
+    pub fn subtle(t: &iced::Theme) -> iced::widget::container::Style {
+        tree_frame(t)
+    }
+
     pub fn tree_frame(t: &iced::Theme) -> iced::widget::container::Style {
         iced::widget::container::Style {
             background: Some(t.extended_palette().background.base.color.into()),

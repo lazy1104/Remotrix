@@ -10,6 +10,7 @@ use crate::ui::icon;
 use crate::ui::theme;
 
 const CARD_MAX_WIDTH: f32 = 320.0;
+const MSG_MAX_WIDTH: f32 = 200.0;
 const OVERLAY_PADDING: u16 = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -151,7 +152,13 @@ fn card<'a>(theme: &'a iced::Theme, toast: &'a Toast) -> Element<'a, Message> {
     .color(kind_color(theme, toast.kind));
 
     let icon_col = container(icon).align_y(Vertical::Center);
-    let message_col = text(&toast.message).size(FONT_MEDIUM).width(Length::Fill);
+    let message_col = container(
+        text(&toast.message)
+            .size(FONT_MEDIUM)
+            .wrapping(text::Wrapping::Glyph),
+    )
+    .width(Length::Fill)
+    .max_width(MSG_MAX_WIDTH);
 
     let mut content = row![icon_col, message_col]
         .spacing(SPACE_LG)
@@ -160,7 +167,7 @@ fn card<'a>(theme: &'a iced::Theme, toast: &'a Toast) -> Element<'a, Message> {
     if toast.show_close {
         let close_btn = button(icon::x().size(FONT_BODY).line_height(1.0))
             .on_press(Message::Toast(ToastMsg::DismissToast(toast.id)))
-            .padding(PADDING_XS)
+            .padding(PADDING_TOAST_CLOSE)
             .style(theme::style::button::text());
         content = content.push(close_btn);
     }
