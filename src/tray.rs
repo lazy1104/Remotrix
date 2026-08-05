@@ -6,7 +6,7 @@ use ldtray::{Event, Icon, Menu, MenuItem, Notification, Tray, TrayConfig, TrayHa
 
 use iced::futures::SinkExt;
 
-use crate::message::{AddMsg, Message, NavMsg, Page, TaskMsg, TrayMsg, WindowMsg};
+use crate::message::{Message, TaskMsg, TrayMsg, WindowMsg};
 
 pub struct TraySummary {
     pub active: usize,
@@ -198,14 +198,14 @@ fn event_callback(
             Event::LeftClick | Event::DoubleClick => Message::Tray(TrayMsg::ClickShow),
             Event::Menu(id) => match TrayMenuId::from_u32(id.0) {
                 Some(TrayMenuId::Show) => Message::Tray(TrayMsg::ToggleWindow),
-                Some(TrayMenuId::New) => Message::Add(AddMsg::OpenAddDialog),
+                Some(TrayMenuId::New) => Message::Tray(TrayMsg::OpenAddDialog),
                 Some(TrayMenuId::PauseAll) => Message::Task(TaskMsg::PauseAll),
                 Some(TrayMenuId::StartAll) => Message::Task(TaskMsg::StartAll),
                 Some(TrayMenuId::OpenDir) => {
                     let path = dir.lock().expect("tray dir poisoned").clone();
                     Message::Task(TaskMsg::OpenFolder(path))
                 }
-                Some(TrayMenuId::Settings) => Message::Nav(NavMsg::NavigatePage(Page::Settings)),
+                Some(TrayMenuId::Settings) => Message::Tray(TrayMsg::OpenSettings),
                 Some(TrayMenuId::Quit) => Message::Window(WindowMsg::ShutdownRequested),
                 None => Message::Noop,
             },

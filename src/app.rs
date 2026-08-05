@@ -171,6 +171,7 @@ struct WindowState {
     pending_close: bool,
     closing: bool,
     hidden_to_tray: bool,
+    wayland: bool,
 }
 
 impl WindowState {
@@ -185,8 +186,16 @@ impl WindowState {
             pending_close: false,
             closing: false,
             hidden_to_tray: false,
+            wayland: is_wayland(),
         }
     }
+}
+
+fn is_wayland() -> bool {
+    std::env::var("XDG_SESSION_TYPE")
+        .map(|t| t.eq_ignore_ascii_case("wayland"))
+        .unwrap_or(false)
+        || std::env::var("WAYLAND_DISPLAY").is_ok()
 }
 
 struct EngineRestartState {
@@ -798,10 +807,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             );
         }
         Message::Add(AddMsg::OpenAddDialog) => {
-            state.add_dialog.save_picker.close_history();
-            state
-                .add_dialog
-                .open(state.settings.download_dir.clone(), state.settings.split);
+            open_add_dialog(state);
         }
         Message::Add(AddMsg::CancelAdd) => {
             state.add_dialog.save_picker.close_history();
@@ -3144,6 +3150,43 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             return hide_to_tray(state);
         }
+        Message::Tray(TrayMsg::OpenAddDialog) => {
+            tracing::info!(
+                window_id = state.window.window_id.is_some(),
+                "tray new download"
+            );
+            open_add_dialog(state);
+            let attention = state
+                .window
+                .window_id
+                .map(|id| {
+                    iced::window::request_user_attention(
+                        id,
+                        Some(iced::window::UserAttention::Critical),
+                    )
+                })
+                .unwrap_or_else(Task::none);
+            return restore_window_from_tray(state).chain(attention);
+        }
+        Message::Tray(TrayMsg::OpenSettings) => {
+            tracing::info!(
+                window_id = state.window.window_id.is_some(),
+                "tray open settings"
+            );
+            state.settings_ui.download_picker.close_history();
+            state.page = Page::Settings;
+            let attention = state
+                .window
+                .window_id
+                .map(|id| {
+                    iced::window::request_user_attention(
+                        id,
+                        Some(iced::window::UserAttention::Critical),
+                    )
+                })
+                .unwrap_or_else(Task::none);
+            return restore_window_from_tray(state).chain(attention);
+        }
         Message::Noop => {}
     }
     Task::none()
@@ -4018,10 +4061,18 @@ fn hide_to_tray(state: &mut Remotrix) -> Task<Message> {
     state.window.show_close_dialog = false;
     state.window.hidden_to_tray = true;
     refresh_tray(state);
-    if let Some(id) = state.window.window_id {
-        iced::window::set_mode::<Message>(id, iced::window::Mode::Hidden)
+    tracing::info!(
+        wayland = state.window.wayland,
+        window_id = state.window.window_id.is_some(),
+        "hide to tray"
+    );
+    let Some(id) = state.window.window_id else {
+        return Task::none();
+    };
+    if state.window.wayland {
+        iced::window::minimize::<Message>(id, true)
     } else {
-        Task::none()
+        iced::window::set_mode::<Message>(id, iced::window::Mode::Hidden)
     }
 }
 
@@ -4036,6 +4087,13 @@ fn restore_window_from_tray(state: &mut Remotrix) -> Task<Message> {
             .chain(iced::window::gain_focus(id));
     }
     task
+}
+
+fn open_add_dialog(state: &mut Remotrix) {
+    state.add_dialog.save_picker.close_history();
+    state
+        .add_dialog
+        .open(state.settings.download_dir.clone(), state.settings.split);
 }
 
 fn refresh_tray(state: &mut Remotrix) {

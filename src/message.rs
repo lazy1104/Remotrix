@@ -80,6 +80,8 @@ pub enum Message {
 pub enum TrayMsg {
     ClickShow,
     ToggleWindow,
+    OpenAddDialog,
+    OpenSettings,
 }
 
 #[derive(Debug, Clone)]
