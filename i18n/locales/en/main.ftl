@@ -181,7 +181,6 @@ no-results = No matching tasks
 close-about = Close
 license-notice = Licensed under MIT
 about-tagline = A fast, simple download manager
-about-built-with = Built with iced { $version }
 core-dependencies = Core Dependencies
 engine = Engine
 aria2-version = aria2-next version

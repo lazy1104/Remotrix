@@ -29,14 +29,10 @@ pub fn view<'a>(
 ) -> Element<'a, Message> {
     let gui_text = format!("Remotrix {}", env!("CARGO_PKG_VERSION"));
     let engine_text = match aria2_version {
-        Some(v) => format!("Engine: aria2-next v{v}"),
-        None => "Engine: aria2-next (--)".to_string(),
+        Some(v) => format!("aria2-next v{v}"),
+        None => "aria2-next (--)".to_string(),
     };
-    let iced_text = fluent.get_args(Tr::AboutBuiltWith, &{
-        let mut a = std::collections::HashMap::new();
-        a.insert(std::borrow::Cow::from("version"), "0.14".into());
-        a
-    });
+    let iced_text = format!("iced {}", "0.14");
 
     let iced_row = row![
         copyable_text(iced_text.clone(), Message::CopyText(iced_text)).width(Length::Fill),

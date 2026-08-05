@@ -181,7 +181,6 @@ no-results = 没有匹配的任务
 close-about = 关闭
 license-notice = 基于 MIT 协议开源
 about-tagline = 快速、简洁的下载管理器
-about-built-with = 基于 iced { $version } 构建
 core-dependencies = 核心依赖
 engine = 引擎
 aria2-version = aria2-next 版本
