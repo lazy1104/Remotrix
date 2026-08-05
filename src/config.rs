@@ -751,6 +751,53 @@ pub fn save(settings: &Settings) {
     }
 }
 
+pub fn install_desktop_file() {
+    let Some(data_home) = data_home() else { return };
+    let dir = data_home.join("applications");
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    let path = dir.join("remotrix.desktop");
+    let Some(exe) = std::env::current_exe().ok() else {
+        return;
+    };
+    let content = format!(
+        "[Desktop Entry]\n\
+         Type=Application\n\
+         Name=Remotrix\n\
+         Comment=Download manager\n\
+         Exec=\"{}\"\n\
+         Terminal=false\n\
+         Categories=Network;FileTransfer;\n\
+         StartupWMClass=remotrix\n",
+        escape_exec(&exe.display().to_string())
+    );
+    if path.exists() {
+        if let Ok(existing) = std::fs::read_to_string(&path) {
+            if existing == content {
+                return;
+            }
+        }
+    }
+    let tmp = path.with_extension("desktop.tmp");
+    if std::fs::write(&tmp, content).is_ok() {
+        let _ = std::fs::rename(&tmp, &path);
+    }
+}
+
+fn escape_exec(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn data_home() -> Option<PathBuf> {
+    if let Ok(dir) = std::env::var("XDG_DATA_HOME") {
+        if !dir.is_empty() {
+            return Some(PathBuf::from(dir));
+        }
+    }
+    directories::BaseDirs::new().map(|b| b.data_dir().to_path_buf())
+}
+
 fn aria2_dir() -> Option<PathBuf> {
     let proj = directories::ProjectDirs::from("dev", "remotrix", "Remotrix")?;
     let dir = proj.data_dir().join("aria2");

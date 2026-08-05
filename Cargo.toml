@@ -36,6 +36,7 @@ libc = "0.2"
 fontdb = "0.23"
 iced_aw = { version = "0.14", default-features = false, features = ["time_picker"] }
 app-single-instance = "0.1"
+notify-rust = { version = "4.17", features = ["tokio"] }
 
 [build-dependencies]
 iced_lucide = "0.1"

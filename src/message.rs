@@ -70,6 +70,7 @@ pub enum Message {
     CopyText(String),
     OpenLink(String),
     ShowRequested,
+    ActivateWindow,
     Noop,
 }
 

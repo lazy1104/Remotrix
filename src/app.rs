@@ -237,6 +237,10 @@ pub struct Remotrix {
     event_rx_slot: Arc<Mutex<Option<EventRx>>>,
     wake_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>>,
     _primary: app_single_instance::PrimaryHandle,
+    notifiers: crate::notify::Notifiers,
+    notify_tx: tokio::sync::mpsc::UnboundedSender<notify_rust::NotificationHandle>,
+    notify_rx_slot:
+        Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<notify_rust::NotificationHandle>>>>,
     add_dialog: AddDialogState,
     drop_hover: bool,
     about_dialog_visible: bool,
@@ -286,6 +290,13 @@ pub fn init() -> (Remotrix, Task<Message>) {
         let _ = wake_tx.send(Message::ShowRequested);
     });
 
+    let notifiers = crate::notify::Notifiers::new();
+    let (notify_tx, notify_rx) =
+        tokio::sync::mpsc::unbounded_channel::<notify_rust::NotificationHandle>();
+    let notify_rx_slot: Arc<
+        Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<notify_rust::NotificationHandle>>>,
+    > = Arc::new(Mutex::new(Some(notify_rx)));
+
     let settings_ui = SettingsUiState::new(&settings);
     let add_dialog = AddDialogState::new(settings.download_dir.clone());
     let fluent = Fluent::new(settings.locale);
@@ -328,6 +339,9 @@ pub fn init() -> (Remotrix, Task<Message>) {
         event_rx_slot: Arc::new(Mutex::new(Some(event_rx))),
         wake_rx_slot: Arc::new(Mutex::new(Some(wake_rx))),
         _primary,
+        notifiers,
+        notify_tx,
+        notify_rx_slot,
         add_dialog,
         drop_hover: false,
         about_dialog_visible: false,
@@ -2761,10 +2775,23 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             if state.window.closing {
                 return Task::none();
             }
+            let title = state.fluent.get(Tr::AppRunningTitle);
+            let body = state.fluent.get(Tr::AppRunningBody);
+            let handle = crate::notify::show_wake(&state.notifiers, &title, &body);
+            if let Some(handle) = handle {
+                let _ = state.notify_tx.send(handle);
+            }
+            return Task::none();
+        }
+        Message::ActivateWindow => {
             let mut task = Task::none();
             if let Some(id) = state.window.window_id {
-                task = iced::window::set_mode::<Message>(id, iced::window::Mode::Windowed)
-                    .chain(iced::window::gain_focus(id));
+                task = iced::window::set_mode::<Message>(id, iced::window::Mode::Windowed).chain(
+                    iced::window::request_user_attention(
+                        id,
+                        Some(iced::window::UserAttention::Critical),
+                    ),
+                );
             }
             return task;
         }
@@ -3131,6 +3158,11 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
 
     let wake = Subscription::run_with(WakeSlot(state.wake_rx_slot.clone()), build_wake_stream);
 
+    let notify = Subscription::run_with(
+        crate::notify::NotifySlot(state.notify_rx_slot.clone()),
+        crate::notify::build_notify_stream,
+    );
+
     let open = iced::window::open_events().map(|id| Message::Window(WindowMsg::WindowOpened(id)));
     let close =
         iced::window::close_requests().map(|_id| Message::Window(WindowMsg::CloseRequested));
@@ -3194,6 +3226,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
     Subscription::batch(vec![
         engine,
         wake,
+        notify,
         open,
         close,
         focus,

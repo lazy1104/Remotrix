@@ -7,6 +7,7 @@ mod engine;
 mod i18n;
 mod logging;
 mod message;
+mod notify;
 mod scheduler;
 mod task;
 mod torrent_meta;
@@ -18,6 +19,8 @@ const APP_ID: &str = "remotrix";
 
 fn main() -> iced::Result {
     let _log_guard = crate::logging::init();
+
+    crate::config::install_desktop_file();
 
     if std::env::var_os("REMOTRIX_RESTART").is_none()
         && app_single_instance::notify_if_running(APP_ID)
@@ -52,6 +55,10 @@ fn main() -> iced::Result {
             decorations: false,
             exit_on_close_request: false,
             min_size: Some(iced::Size::new(800.0, 560.0)),
+            platform_specific: iced::window::settings::PlatformSpecific {
+                application_id: crate::APP_ID.to_string(),
+                ..Default::default()
+            },
             ..Default::default()
         })
         .antialiasing(true)
