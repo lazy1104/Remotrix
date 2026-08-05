@@ -15,6 +15,8 @@ use crate::aria2_fetcher;
 
 static MISSING_CHECK_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
+const RPC_TIMEOUT: Duration = Duration::from_secs(3);
+
 #[derive(Debug, Clone, Default)]
 pub struct TaskAdvancedOptions {
     pub out: String,
@@ -1064,11 +1066,16 @@ async fn handle_client_cmd(
 
 async fn apply_global_options(client: &Client, options: TaskOptions) -> Result<(), String> {
     let params = serde_json::to_value(options).map_err(|e| format!("serialize options: {e}"))?;
-    client
-        .call_and_wait::<String>("changeGlobalOption", vec![params])
-        .await
-        .map(|_| ())
-        .map_err(|e| format!("change_global_option: {e}"))
+    match timeout(
+        RPC_TIMEOUT,
+        client.call_and_wait::<String>("changeGlobalOption", vec![params]),
+    )
+    .await
+    {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(e)) => Err(format!("change_global_option: {e}")),
+        Err(_) => Err("change_global_option timed out".into()),
+    }
 }
 
 pub(crate) fn trigger_missing_files_check(client: Client, event_tx: EventTx) {
@@ -1319,8 +1326,10 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
                     | Event::Error
                     | Event::Stop
                     | Event::BtComplete => {
-                        if let Ok(status) = notif_client.tell_status(&gid).await {
-                            emit_progress(&notif_event_tx, &status).await;
+                        match timeout(RPC_TIMEOUT, notif_client.tell_status(&gid)).await {
+                            Ok(Ok(status)) => emit_progress(&notif_event_tx, &status).await,
+                            Ok(Err(e)) => tracing::warn!(?gid, error = ?e, "tell_status after notification failed"),
+                            Err(_) => tracing::warn!(?gid, "tell_status after notification timed out"),
                         }
                     }
                 },
@@ -1349,10 +1358,14 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
         loop {
             tokio::select! {
                 _ = ticker.tick() => {
-                    let active = match poll_client.tell_active().await {
-                        Ok(list) => list,
-                        Err(e) => {
-                            tracing::debug!("tell_active: {e}");
+                    let active = match timeout(RPC_TIMEOUT, poll_client.tell_active()).await {
+                        Ok(Ok(list)) => list,
+                        Ok(Err(e)) => {
+                            tracing::warn!("tell_active: {e}");
+                            continue;
+                        }
+                        Err(_) => {
+                            tracing::warn!("tell_active timed out; skipping tick");
                             continue;
                         }
                     };
@@ -1360,13 +1373,15 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
                         stopped_seen.remove(&s.gid);
                         emit_progress(&poll_event_tx, s).await;
                     }
-                    if let Ok(stat) = poll_client.get_global_stat().await {
-                        let _ = poll_event_tx.send(EngineEvent::GlobalSpeed {
-                            download: stat.download_speed,
-                            upload: stat.upload_speed,
-                        });
-                    } else {
-                        tracing::debug!("get_global_stat failed");
+                    match timeout(RPC_TIMEOUT, poll_client.get_global_stat()).await {
+                        Ok(Ok(stat)) => {
+                            let _ = poll_event_tx.send(EngineEvent::GlobalSpeed {
+                                download: stat.download_speed,
+                                upload: stat.upload_speed,
+                            });
+                        }
+                        Ok(Err(e)) => tracing::warn!("get_global_stat: {e}"),
+                        Err(_) => tracing::debug!("get_global_stat timed out"),
                     }
                 }
                 _ = slow.tick() => {
