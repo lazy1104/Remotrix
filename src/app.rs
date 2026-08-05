@@ -3142,11 +3142,11 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             return restore_window_from_tray(state).chain(attention);
         }
         Message::Tray(TrayMsg::ClickShow) => {
-            return restore_window_from_tray(state);
+            return restore_window_from_tray_wayland(state);
         }
         Message::Tray(TrayMsg::ToggleWindow) => {
             if state.window.hidden_to_tray {
-                return restore_window_from_tray(state);
+                return restore_window_from_tray_wayland(state);
             }
             return hide_to_tray(state);
         }
@@ -3166,7 +3166,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     )
                 })
                 .unwrap_or_else(Task::none);
-            return restore_window_from_tray(state).chain(attention);
+            return restore_window_from_tray_wayland(state).chain(attention);
         }
         Message::Tray(TrayMsg::OpenSettings) => {
             tracing::info!(
@@ -3185,7 +3185,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     )
                 })
                 .unwrap_or_else(Task::none);
-            return restore_window_from_tray(state).chain(attention);
+            return restore_window_from_tray_wayland(state).chain(attention);
         }
         Message::Noop => {}
     }
@@ -4074,6 +4074,22 @@ fn hide_to_tray(state: &mut Remotrix) -> Task<Message> {
     } else {
         iced::window::set_mode::<Message>(id, iced::window::Mode::Hidden)
     }
+}
+
+fn restore_window_from_tray_wayland(state: &mut Remotrix) -> Task<Message> {
+    let task = restore_window_from_tray(state);
+    if state.window.wayland {
+        let title = state.fluent.get(Tr::TrayWaylandFocusTitle);
+        let body = state.fluent.get(Tr::TrayWaylandFocusBody);
+        send_system_notification(
+            state,
+            title,
+            body,
+            crate::notify::NotifyAction::ActivateWindow,
+            None,
+        );
+    }
+    task
 }
 
 fn restore_window_from_tray(state: &mut Remotrix) -> Task<Message> {
