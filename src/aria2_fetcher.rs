@@ -98,6 +98,7 @@ pub async fn ensure_aria2_next(event_tx: &EventTx) -> Result<(PathBuf, Option<St
     if let Some((bin_path, version)) = scan_for_binary(&dir, slug) {
         tracing::info!(%version, ?bin_path, "aria2-next found via directory scan, self-healing .installed");
         self_heal_installed(&dir, &bin_path, &version, slug)?;
+        set_perms(&bin_path)?;
         emit_status(event_tx, "ready", &format!("aria2-next {version} ready"));
         return Ok((bin_path, applied));
     }
@@ -257,11 +258,10 @@ fn scan_for_binary(dir: &Path, slug: &str) -> Option<(PathBuf, String)> {
         let path = entry.path();
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
             let Ok(meta) = std::fs::metadata(&path) else {
                 continue;
             };
-            if !meta.is_file() || meta.permissions().mode() & 0o111 == 0 {
+            if !meta.is_file() {
                 continue;
             }
         }
