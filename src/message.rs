@@ -72,7 +72,14 @@ pub enum Message {
     OpenFile(PathBuf),
     ShowRequested,
     ActivateWindow,
+    Tray(TrayMsg),
     Noop,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrayMsg {
+    ClickShow,
+    ToggleWindow,
 }
 
 #[derive(Debug, Clone)]
@@ -220,6 +227,7 @@ pub enum WindowMsg {
     WindowAction(WindowCmd),
     CloseRequested,
     CloseDialog(CloseDialogChoice),
+    HideToTray,
     ShutdownRequested,
     ShutdownTimeout,
     PersistWindowGeometry,
@@ -369,6 +377,8 @@ pub enum SettingKey {
     DiskCache,
     EnableProxy,
     NavToTasksAfterAdd,
+    TrayEnabled,
+    CloseToTray,
     DeleteTorrentAfterComplete,
     CleanupCompletedOnClose,
     RemoveTaskIfFilesMissing,

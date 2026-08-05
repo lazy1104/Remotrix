@@ -13,6 +13,7 @@ mod scheduler;
 mod task;
 mod torrent_meta;
 mod trackers;
+mod tray;
 mod ui;
 mod updater;
 

@@ -330,6 +330,27 @@ fn general_view<'a>(
             |opt| Message::Settings(SettingsMsg::LocaleChanged(opt.value)),
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
+        .push(group_title(fluent, Tr::Tray, accent))
+        .push(labeled_toggle(
+            fluent.get(Tr::TrayEnabled),
+            settings.tray_enabled,
+            SettingKey::TrayEnabled,
+        ))
+        .push(labeled_toggle(
+            fluent.get(Tr::CloseToTray),
+            settings.close_to_tray,
+            SettingKey::CloseToTray,
+        ))
+        .push(
+            row![
+                iced::widget::Space::new().width(Length::Fixed(200.0)),
+                text(fluent.get(Tr::TrayRestartHint))
+                    .size(FONT_TINY)
+                    .style(theme::style::text::secondary),
+            ]
+            .align_y(Alignment::Center),
+        )
+        .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::AutoUpdate, accent))
         .push(labeled_toggle(
             fluent.get(Tr::AutoUpdate),

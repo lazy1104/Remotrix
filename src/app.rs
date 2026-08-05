@@ -17,7 +17,7 @@ use crate::i18n::{Fluent, Tr};
 use crate::message::{
     AddField, AddMsg, AddTab, CloseDialogChoice, ConfirmAction, DialogMsg, EngineMsg, Message,
     NavMsg, Page, PathPickerId, SettingKey, SettingValue, SettingsCategory, SettingsMsg, SortField,
-    SortMsg, SortOrder, TaskFilter, TaskMsg, ToastMsg, WindowCmd, WindowMsg,
+    SortMsg, SortOrder, TaskFilter, TaskMsg, ToastMsg, TrayMsg, WindowCmd, WindowMsg,
 };
 use crate::task::{DownloadTask, TaskStatus};
 use crate::ui::add_dialog::AddDialogState;
@@ -170,6 +170,7 @@ struct WindowState {
     geometry_dirty: bool,
     pending_close: bool,
     closing: bool,
+    hidden_to_tray: bool,
 }
 
 impl WindowState {
@@ -183,6 +184,7 @@ impl WindowState {
             geometry_dirty: false,
             pending_close: false,
             closing: false,
+            hidden_to_tray: false,
         }
     }
 }
@@ -247,6 +249,8 @@ pub struct Remotrix {
     notify_tx: tokio::sync::mpsc::UnboundedSender<crate::notify::NotifyEvent>,
     notify_rx_slot:
         Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<crate::notify::NotifyEvent>>>>,
+    tray: crate::tray::TrayManager,
+    tray_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>>,
     add_dialog: AddDialogState,
     drop_hover: bool,
     about_dialog_visible: bool,
@@ -305,6 +309,11 @@ pub fn init() -> (Remotrix, Task<Message>) {
         Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<crate::notify::NotifyEvent>>>,
     > = Arc::new(Mutex::new(Some(notify_rx)));
 
+    let (tray_tx, tray_rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
+    let tray_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>> =
+        Arc::new(Mutex::new(Some(tray_rx)));
+    let tray = crate::tray::TrayManager::new(tray_tx, settings.tray_enabled);
+
     let settings_ui = SettingsUiState::new(&settings);
     let add_dialog = AddDialogState::new(settings.download_dir.clone());
     let fluent = Fluent::new(settings.locale);
@@ -350,6 +359,8 @@ pub fn init() -> (Remotrix, Task<Message>) {
         notifiers,
         notify_tx,
         notify_rx_slot,
+        tray,
+        tray_rx_slot,
         add_dialog,
         drop_hover: false,
         about_dialog_visible: false,
@@ -378,6 +389,8 @@ pub fn init() -> (Remotrix, Task<Message>) {
         update_dialog: None,
         app_update_in_flight: false,
     };
+
+    refresh_tray(&mut state);
 
     if db_open_failed {
         state.toasts.spawn(
@@ -660,6 +673,7 @@ fn begin_close(state: &mut Remotrix) -> Task<Message> {
         clear_completed_local(state, &completed);
     }
     tracing::info!("ui: shutdown requested");
+    state.tray.quit();
     if state.handle.cmd_tx.send(EngineCmd::Shutdown).is_err() {
         tracing::warn!("ui: shutdown cmd send failed");
     }
@@ -1052,12 +1066,14 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             if state.handle.cmd_tx.send(EngineCmd::Pause(gid)).is_err() {
                 tracing::warn!("ui: pause cmd send failed");
             }
+            refresh_tray(state);
         }
         Message::Task(TaskMsg::ResumeTask(gid)) => {
             state.tracking.paused_gids.remove(&gid);
             if state.handle.cmd_tx.send(EngineCmd::Resume(gid)).is_err() {
                 tracing::warn!("ui: resume cmd send failed");
             }
+            refresh_tray(state);
         }
         Message::Task(TaskMsg::RedownloadTask(gid)) => {
             state.tracking.paused_gids.remove(&gid);
@@ -1152,6 +1168,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             if state.handle.cmd_tx.send(EngineCmd::ResumeAll).is_err() {
                 tracing::warn!("ui: resume all cmd send failed");
             }
+            refresh_tray(state);
         }
         Message::Task(TaskMsg::PauseAll) => {
             state.tracking.paused_gids.extend(
@@ -1164,6 +1181,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             if state.handle.cmd_tx.send(EngineCmd::PauseAll).is_err() {
                 tracing::warn!("ui: pause all cmd send failed");
             }
+            refresh_tray(state);
         }
         Message::Task(TaskMsg::DeleteAll) => {
             if state
@@ -1427,6 +1445,19 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             SettingKey::NavToTasksAfterAdd => {
                 if let SettingValue::Bool(b) = value {
                     state.settings.nav_to_tasks_after_add = b;
+                }
+            }
+            SettingKey::TrayEnabled => {
+                if let SettingValue::Bool(b) = value {
+                    state.settings.tray_enabled = b;
+                    if !b {
+                        state.tray.quit();
+                    }
+                }
+            }
+            SettingKey::CloseToTray => {
+                if let SettingValue::Bool(b) = value {
+                    state.settings.close_to_tray = b;
                 }
             }
             SettingKey::DeleteTorrentAfterComplete => {
@@ -1790,6 +1821,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     }
                 }
                 state.tracking.dirty.insert(gid);
+                refresh_tray(state);
             }
             EngineEvent::TorrentAdded { gid, path } => {
                 state.tracking.torrent_files.insert(gid, path);
@@ -1805,6 +1837,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 connections,
                 info_hash,
             } => {
+                refresh_tray(state);
                 state.tracking.synced_gids.insert(gid.clone());
                 let was_completed = state
                     .tasks
@@ -2001,6 +2034,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             EngineEvent::Removed(gid) => {
                 tracing::info!(?gid, "ui: task removed");
                 remove_task_local(state, &gid);
+                refresh_tray(state);
             }
             EngineEvent::TaskDetails { gid, details } => {
                 tracing::debug!(?gid, "task details received");
@@ -2137,6 +2171,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             EngineEvent::GlobalSpeed { download, upload } => {
                 state.global_speed = Some((download, upload));
+                refresh_tray(state);
             }
             EngineEvent::Aria2Status { stage, message } => {
                 if stage == "ready" {
@@ -2263,7 +2298,16 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             if state.window.closing {
                 return Task::none();
             }
+            if state.settings.tray_enabled && state.settings.close_to_tray && state.tray.enabled() {
+                return hide_to_tray(state);
+            }
             state.window.show_close_dialog = true;
+        }
+        Message::Window(WindowMsg::HideToTray) => {
+            if state.window.closing {
+                return Task::none();
+            }
+            return hide_to_tray(state);
         }
         Message::Window(WindowMsg::CloseDialog(choice)) => {
             state.window.show_close_dialog = false;
@@ -3064,6 +3108,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             if state.window.closing {
                 return Task::none();
             }
+            if state.window.hidden_to_tray {
+                return restore_window_from_tray(state);
+            }
             let title = state.fluent.get(Tr::AppRunningTitle);
             let body = state.fluent.get(Tr::AppRunningBody);
             send_system_notification(
@@ -3076,16 +3123,26 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             return Task::none();
         }
         Message::ActivateWindow => {
-            let mut task = Task::none();
-            if let Some(id) = state.window.window_id {
-                task = iced::window::set_mode::<Message>(id, iced::window::Mode::Windowed)
-                    .chain(iced::window::gain_focus(id))
-                    .chain(iced::window::request_user_attention(
+            let attention = state
+                .window
+                .window_id
+                .map(|id| {
+                    iced::window::request_user_attention(
                         id,
                         Some(iced::window::UserAttention::Critical),
-                    ));
+                    )
+                })
+                .unwrap_or_else(Task::none);
+            return restore_window_from_tray(state).chain(attention);
+        }
+        Message::Tray(TrayMsg::ClickShow) => {
+            return restore_window_from_tray(state);
+        }
+        Message::Tray(TrayMsg::ToggleWindow) => {
+            if state.window.hidden_to_tray {
+                return restore_window_from_tray(state);
             }
-            return task;
+            return hide_to_tray(state);
         }
         Message::Noop => {}
     }
@@ -3269,7 +3326,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
     };
 
     let close_layer: iced::Element<'_, Message> = if state.window.show_close_dialog {
-        crate::ui::close_dialog::view(&state.fluent, t)
+        crate::ui::close_dialog::view(&state.fluent, t, state.tray.enabled())
     } else {
         iced::widget::Space::new().into()
     };
@@ -3467,6 +3524,11 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         crate::notify::build_notify_stream,
     );
 
+    let tray = Subscription::run_with(
+        crate::tray::TraySlot(state.tray_rx_slot.clone()),
+        crate::tray::build_tray_stream,
+    );
+
     let open = iced::window::open_events().map(|id| Message::Window(WindowMsg::WindowOpened(id)));
     let close =
         iced::window::close_requests().map(|_id| Message::Window(WindowMsg::CloseRequested));
@@ -3531,6 +3593,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         engine,
         wake,
         notify,
+        tray,
         open,
         close,
         focus,
@@ -3949,4 +4012,77 @@ fn open_path_in_manager(p: PathBuf) -> Task<Message> {
         },
         |_| Message::Noop,
     )
+}
+
+fn hide_to_tray(state: &mut Remotrix) -> Task<Message> {
+    state.window.show_close_dialog = false;
+    state.window.hidden_to_tray = true;
+    refresh_tray(state);
+    if let Some(id) = state.window.window_id {
+        iced::window::set_mode::<Message>(id, iced::window::Mode::Hidden)
+    } else {
+        Task::none()
+    }
+}
+
+fn restore_window_from_tray(state: &mut Remotrix) -> Task<Message> {
+    if state.window.hidden_to_tray {
+        state.window.hidden_to_tray = false;
+        refresh_tray(state);
+    }
+    let mut task = Task::none();
+    if let Some(id) = state.window.window_id {
+        task = iced::window::set_mode::<Message>(id, iced::window::Mode::Windowed)
+            .chain(iced::window::gain_focus(id));
+    }
+    task
+}
+
+fn refresh_tray(state: &mut Remotrix) {
+    if !state.tray.enabled() {
+        return;
+    }
+    let summary = tray_summary(state);
+    state.tray.refresh(&summary);
+}
+
+fn tray_summary(state: &Remotrix) -> crate::tray::TraySummary {
+    let active = state.tracking.active_count;
+    let paused = state.tracking.paused_gids.len();
+    let total = state.tasks.len();
+    let (down_speed, up_speed) = if active > 0 {
+        state.global_speed.unwrap_or((0, 0))
+    } else {
+        (0, 0)
+    };
+    let mut args = std::collections::HashMap::new();
+    args.insert(
+        std::borrow::Cow::from("down"),
+        crate::task::format_speed(down_speed).into(),
+    );
+    args.insert(
+        std::borrow::Cow::from("up"),
+        crate::task::format_speed(up_speed).into(),
+    );
+    args.insert(std::borrow::Cow::from("active"), (active as i64).into());
+    let labels = crate::tray::TrayLabels {
+        show: state.fluent.get(Tr::TrayShow),
+        hide: state.fluent.get(Tr::TrayHide),
+        new: state.fluent.get(Tr::TrayNewDownload),
+        pause_all: state.fluent.get(Tr::TrayPauseAll),
+        start_all: state.fluent.get(Tr::TrayStartAll),
+        open_dir: state.fluent.get(Tr::TrayOpenFolder),
+        settings: state.fluent.get(Tr::TraySettings),
+        quit: state.fluent.get(Tr::TrayQuit),
+        tooltip: state.fluent.get_args(Tr::TrayTooltip, &args),
+    };
+    crate::tray::TraySummary {
+        active,
+        paused,
+        total,
+        download_dir: state.settings.download_dir.clone(),
+        engine_degraded: state.engine_ui.aria2_fetch_error.is_some(),
+        hidden: state.window.hidden_to_tray,
+        labels,
+    }
 }
