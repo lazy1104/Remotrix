@@ -14,8 +14,17 @@ mod trackers;
 mod ui;
 mod updater;
 
+const APP_ID: &str = "remotrix";
+
 fn main() -> iced::Result {
     let _log_guard = crate::logging::init();
+
+    if std::env::var_os("REMOTRIX_RESTART").is_none()
+        && app_single_instance::notify_if_running(APP_ID)
+    {
+        tracing::info!("another instance is running; exiting");
+        std::process::exit(0);
+    }
 
     let cfg = crate::config::load();
     tracing::info!(

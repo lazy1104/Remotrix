@@ -235,6 +235,8 @@ pub struct Remotrix {
     task_order: Vec<String>,
     handle: EngineHandle,
     event_rx_slot: Arc<Mutex<Option<EventRx>>>,
+    wake_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>>,
+    _primary: app_single_instance::PrimaryHandle,
     add_dialog: AddDialogState,
     drop_hover: bool,
     about_dialog_visible: bool,
@@ -279,6 +281,11 @@ pub fn init() -> (Remotrix, Task<Message>) {
 
     let (handle, event_rx) = crate::engine::spawn_engine();
 
+    let (wake_tx, wake_rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
+    let _primary = app_single_instance::start_primary(crate::APP_ID, move || {
+        let _ = wake_tx.send(Message::ShowRequested);
+    });
+
     let settings_ui = SettingsUiState::new(&settings);
     let add_dialog = AddDialogState::new(settings.download_dir.clone());
     let fluent = Fluent::new(settings.locale);
@@ -319,6 +326,8 @@ pub fn init() -> (Remotrix, Task<Message>) {
         task_order,
         handle,
         event_rx_slot: Arc::new(Mutex::new(Some(event_rx))),
+        wake_rx_slot: Arc::new(Mutex::new(Some(wake_rx))),
+        _primary,
         add_dialog,
         drop_hover: false,
         about_dialog_visible: false,
@@ -707,6 +716,7 @@ fn spawn_detached_self() {
     };
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let Err(err) = std::process::Command::new(exe)
+        .env("REMOTRIX_RESTART", "1")
         .args(&args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
@@ -2747,6 +2757,17 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 |_| Message::Noop,
             );
         }
+        Message::ShowRequested => {
+            if state.window.closing {
+                return Task::none();
+            }
+            let mut task = Task::none();
+            if let Some(id) = state.window.window_id {
+                task = iced::window::set_mode::<Message>(id, iced::window::Mode::Windowed)
+                    .chain(iced::window::gain_focus(id));
+            }
+            return task;
+        }
         Message::Noop => {}
     }
     Task::none()
@@ -3011,6 +3032,45 @@ impl Clone for EventSlot {
     }
 }
 
+struct WakeSlot(Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>>);
+
+impl Hash for WakeSlot {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        Arc::as_ptr(&self.0).hash(state);
+    }
+}
+
+impl PartialEq for WakeSlot {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for WakeSlot {}
+
+impl Clone for WakeSlot {
+    fn clone(&self) -> Self {
+        WakeSlot(self.0.clone())
+    }
+}
+
+fn build_wake_stream(slot: &WakeSlot) -> impl iced::futures::Stream<Item = Message> {
+    let rx = {
+        let mut guard = slot.0.lock().expect("wake rx slot poisoned");
+        guard.take()
+    };
+    iced::stream::channel(
+        4,
+        move |mut sender: iced::futures::channel::mpsc::Sender<Message>| async move {
+            if let Some(mut rx) = rx {
+                while let Some(msg) = rx.recv().await {
+                    let _ = sender.send(msg).await;
+                }
+            }
+        },
+    )
+}
+
 fn build_engine_stream(slot: &EventSlot) -> impl iced::futures::Stream<Item = Message> {
     let rx = {
         let mut guard = slot.0.lock().expect("event rx slot poisoned");
@@ -3068,6 +3128,8 @@ fn signal_stream() -> impl iced::futures::Stream<Item = Message> {
 pub fn subscription(state: &Remotrix) -> Subscription<Message> {
     let engine =
         Subscription::run_with(EventSlot(state.event_rx_slot.clone()), build_engine_stream);
+
+    let wake = Subscription::run_with(WakeSlot(state.wake_rx_slot.clone()), build_wake_stream);
 
     let open = iced::window::open_events().map(|id| Message::Window(WindowMsg::WindowOpened(id)));
     let close =
@@ -3131,6 +3193,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
 
     Subscription::batch(vec![
         engine,
+        wake,
         open,
         close,
         focus,
