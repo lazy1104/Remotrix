@@ -453,7 +453,7 @@ pub fn view<'a>(
     }
 
     let body = slim_scrollable(column(body_items).spacing(SPACE_3XL).width(Length::Fill))
-        .height(Length::Fixed(400.0));
+        .height(Length::Fixed(350.0));
 
     let content = column![]
         .push(tab_bar)
