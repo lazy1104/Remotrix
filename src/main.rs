@@ -18,6 +18,8 @@ mod trackers;
 mod tray;
 mod ui;
 mod updater;
+#[cfg(target_os = "windows")]
+mod win_toast;
 
 const APP_ID: &str = "remotrix";
 
@@ -25,6 +27,8 @@ fn main() -> iced::Result {
     let _log_guard = crate::logging::init();
 
     crate::config::install_desktop_file();
+    #[cfg(target_os = "windows")]
+    crate::win_toast::init();
 
     if std::env::var_os("REMOTRIX_RESTART").is_none()
         && app_single_instance::notify_if_running(APP_ID)

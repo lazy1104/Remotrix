@@ -47,6 +47,11 @@ impl DesktopNotifier {
             .body(&n.body);
         #[cfg(target_os = "linux")]
         notification.hint(notify_rust::Hint::DesktopEntry(crate::APP_ID.to_string()));
+        #[cfg(target_os = "windows")]
+        {
+            crate::win_toast::ensure_shortcut();
+            notification.app_id(crate::win_toast::AUMID);
+        }
         notification.finalize()
     }
 }
