@@ -40,15 +40,9 @@ impl Locale {
 }
 
 pub fn detect_locale() -> Locale {
-    let lang = std::env::var("LC_ALL")
-        .or_else(|_| std::env::var("LC_MESSAGES"))
-        .or_else(|_| std::env::var("LANG"))
-        .unwrap_or_default();
-    let lower = lang.to_lowercase();
-    if lower.starts_with("zh") {
-        Locale::ZhCN
-    } else {
-        Locale::EnUS
+    match sys_locale::get_locale() {
+        Some(lang) if lang.to_lowercase().starts_with("zh") => Locale::ZhCN,
+        _ => Locale::EnUS,
     }
 }
 
