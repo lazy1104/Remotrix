@@ -21,27 +21,36 @@ pub trait Notifier: Send + Sync {
 pub struct DesktopNotifier;
 
 const OPEN_ACTION: &str = "open";
+const REVEAL_ACTION: &str = "reveal";
+
+fn action_key(a: &NotifyAction) -> Option<&'static str> {
+    match a {
+        NotifyAction::OpenFile(_) => Some(OPEN_ACTION),
+        NotifyAction::RevealDir(_) => Some(REVEAL_ACTION),
+        NotifyAction::ActivateWindow => Some(OPEN_ACTION),
+    }
+}
 
 impl DesktopNotifier {
-    pub fn show_with_action(
+    pub fn show_with_actions(
         &self,
         n: &Notification,
-        action_label: Option<&str>,
+        buttons: &[(String, NotifyAction)],
     ) -> Result<NotificationHandle, String> {
-        self.build(n, action_label)
-            .show()
-            .map_err(|e| e.to_string())
+        self.build(n, buttons).show().map_err(|e| e.to_string())
     }
 
-    fn build(&self, n: &Notification, action_label: Option<&str>) -> RustNotification {
+    fn build(&self, n: &Notification, buttons: &[(String, NotifyAction)]) -> RustNotification {
         let mut notification = RustNotification::new();
         notification
             .appname(crate::APP_ID)
             .hint(Hint::DesktopEntry(crate::APP_ID.to_string()))
             .summary(&n.title)
             .body(&n.body);
-        if let Some(label) = action_label {
-            notification.action(OPEN_ACTION, label);
+        for (label, action) in buttons {
+            if let Some(key) = action_key(action) {
+                notification.action(key, label);
+            }
         }
         notification.finalize()
     }
@@ -49,7 +58,7 @@ impl DesktopNotifier {
 
 impl Notifier for DesktopNotifier {
     fn send(&self, notification: &Notification) -> Result<(), String> {
-        self.build(notification, None)
+        self.build(notification, &[])
             .show()
             .map_err(|e| e.to_string())?;
         Ok(())
@@ -96,16 +105,20 @@ pub fn show(
     notifiers: &Notifiers,
     title: &str,
     body: &str,
-    action_label: Option<String>,
-) -> Option<NotificationHandle> {
+    buttons: &[(String, NotifyAction)],
+) -> Option<(NotificationHandle, Vec<(String, NotifyAction)>)> {
     let notification = Notification {
         title: title.to_string(),
         body: body.to_string(),
     };
+    let keyed: Vec<(String, NotifyAction)> = buttons
+        .iter()
+        .filter_map(|(_, a)| action_key(a).map(|k| (k.to_string(), a.clone())))
+        .collect();
     for notifier in &notifiers.list {
         if let Some(desktop) = notifier.as_any().downcast_ref::<DesktopNotifier>() {
-            match desktop.show_with_action(&notification, action_label.as_deref()) {
-                Ok(handle) => return Some(handle),
+            match desktop.show_with_actions(&notification, buttons) {
+                Ok(handle) => return Some((handle, keyed)),
                 Err(e) => {
                     tracing::warn!(error = %e, "wake notification failed");
                     let _ = desktop.send(&notification);
@@ -122,11 +135,13 @@ pub fn show(
 pub enum NotifyAction {
     ActivateWindow,
     OpenFile(PathBuf),
+    RevealDir(PathBuf),
 }
 
 pub struct NotifyEvent {
     pub handle: NotificationHandle,
-    pub action: NotifyAction,
+    pub actions: Vec<(String, NotifyAction)>,
+    pub default_action: NotifyAction,
 }
 
 pub struct NotifySlot(pub Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<NotifyEvent>>>>);
@@ -162,18 +177,24 @@ pub fn build_notify_stream(slot: &NotifySlot) -> impl iced::futures::Stream<Item
             if let Some(mut rx) = rx {
                 while let Some(event) = rx.recv().await {
                     let mut s = sender.clone();
-                    let action = event.action;
+                    let default_action = event.default_action;
+                    let actions = event.actions;
                     event
                         .handle
                         .wait_for_action_async(move |response: &NotificationResponse| {
-                            let invoked = matches!(response, NotificationResponse::Default)
-                                || matches!(
-                                    response,
-                                    NotificationResponse::Action(key) if key == OPEN_ACTION
-                                );
-                            if invoked {
+                            let target = match response {
+                                NotificationResponse::Default => Some(default_action.clone()),
+                                NotificationResponse::Action(key) => actions
+                                    .iter()
+                                    .find(|(k, _)| k == key)
+                                    .map(|(_, a)| a.clone())
+                                    .or_else(|| Some(default_action.clone())),
+                                _ => None,
+                            };
+                            if let Some(action) = target {
                                 let msg = match action {
                                     NotifyAction::OpenFile(path) => Message::OpenFile(path),
+                                    NotifyAction::RevealDir(path) => Message::RevealDir(path),
                                     NotifyAction::ActivateWindow => Message::ActivateWindow,
                                 };
                                 let _ = s.try_send(msg);

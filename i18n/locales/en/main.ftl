@@ -247,6 +247,7 @@ torrent-mode-multi = Multi file
 speed = Speed
 connections = Connections
 show-in-folder = Show in folder
+locate = Locate
 copy-link = Copy link
 re-download = Re-download
 open = Open

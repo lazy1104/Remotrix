@@ -1995,12 +1995,24 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             {
                                 let title = state.fluent.get(Tr::DownloadCompleteTitle);
                                 let body = state.fluent.get_args(Tr::DownloadComplete, &args);
+                                let open_path_clone = open_path.clone();
                                 send_system_notification(
                                     state,
                                     title,
                                     body,
+                                    vec![
+                                        (
+                                            state.fluent.get(Tr::Open),
+                                            crate::notify::NotifyAction::OpenFile(
+                                                open_path_clone.clone(),
+                                            ),
+                                        ),
+                                        (
+                                            state.fluent.get(Tr::Locate),
+                                            crate::notify::NotifyAction::RevealDir(open_path_clone),
+                                        ),
+                                    ],
                                     crate::notify::NotifyAction::OpenFile(open_path),
-                                    Some(state.fluent.get(crate::i18n::Tr::Open)),
                                 );
                             }
                             return Task::none();
@@ -2028,8 +2040,8 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                                     state,
                                     title,
                                     body,
+                                    vec![],
                                     crate::notify::NotifyAction::ActivateWindow,
-                                    None,
                                 );
                             }
                             return Task::none();
@@ -2150,8 +2162,8 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         state,
                         state.fluent.get(Tr::EngineDegradedTitle),
                         state.fluent.get(Tr::EngineDegradedBody),
+                        vec![],
                         crate::notify::NotifyAction::ActivateWindow,
-                        None,
                     );
                 }
                 return Task::none();
@@ -2170,8 +2182,8 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         state,
                         state.fluent.get(Tr::EngineDegradedTitle),
                         state.fluent.get(Tr::EngineDegradedBody),
+                        vec![],
                         crate::notify::NotifyAction::ActivateWindow,
-                        None,
                     );
                 }
             }
@@ -3110,6 +3122,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 |_| Message::Noop,
             );
         }
+        Message::RevealDir(path) => {
+            return open_path_in_manager(path);
+        }
         Message::ShowRequested => {
             if state.window.closing {
                 return Task::none();
@@ -3123,8 +3138,8 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 state,
                 title,
                 body,
+                vec![],
                 crate::notify::NotifyAction::ActivateWindow,
-                None,
             );
             return Task::none();
         }
@@ -3815,13 +3830,16 @@ fn send_system_notification(
     state: &mut Remotrix,
     title: String,
     body: String,
-    action: crate::notify::NotifyAction,
-    button_label: Option<String>,
+    buttons: Vec<(String, crate::notify::NotifyAction)>,
+    default_action: crate::notify::NotifyAction,
 ) {
-    if let Some(handle) = crate::notify::show(&state.notifiers, &title, &body, button_label) {
-        let _ = state
-            .notify_tx
-            .send(crate::notify::NotifyEvent { handle, action });
+    if let Some((handle, actions)) = crate::notify::show(&state.notifiers, &title, &body, &buttons)
+    {
+        let _ = state.notify_tx.send(crate::notify::NotifyEvent {
+            handle,
+            actions,
+            default_action,
+        });
     }
 }
 
@@ -4085,8 +4103,8 @@ fn restore_window_from_tray_wayland(state: &mut Remotrix) -> Task<Message> {
             state,
             title,
             body,
+            vec![],
             crate::notify::NotifyAction::ActivateWindow,
-            None,
         );
     }
     task

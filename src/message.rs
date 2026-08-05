@@ -70,6 +70,7 @@ pub enum Message {
     CopyText(String),
     OpenLink(String),
     OpenFile(PathBuf),
+    RevealDir(PathBuf),
     ShowRequested,
     ActivateWindow,
     Tray(TrayMsg),
