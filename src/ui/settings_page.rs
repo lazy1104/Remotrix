@@ -175,7 +175,12 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
     let mut body = column![]
         .push(text(settings_title(fluent, *category)).size(FONT_PAGE_TITLE))
         .push(iced::widget::Space::new().height(Length::Fixed(20.0)))
-        .push(slim_scrollable(content).height(Length::Fill));
+        .push(
+            iced::widget::keyed::Column::new()
+                .push(*category, slim_scrollable(content).height(Length::Fill))
+                .width(Length::Fill)
+                .height(Length::Fill),
+        );
 
     let mut actions = row![].spacing(SPACE_2XL).width(Length::Fill);
     actions = actions.push(
@@ -339,20 +344,16 @@ fn general_view<'a>(
                     label: fluent.get(Tr::IntervalEveryStartup),
                 },
                 Labeled {
-                    value: 6,
-                    label: fluent.get(Tr::Interval6Hours),
-                },
-                Labeled {
-                    value: 12,
-                    label: fluent.get(Tr::Interval12Hours),
-                },
-                Labeled {
                     value: 24,
                     label: fluent.get(Tr::IntervalDaily),
                 },
                 Labeled {
                     value: 168,
                     label: fluent.get(Tr::IntervalWeekly),
+                },
+                Labeled {
+                    value: 720,
+                    label: fluent.get(Tr::IntervalMonthly),
                 },
             ];
             labeled_pick(

@@ -285,6 +285,7 @@ interval-6-hours = 每 6 小时
 interval-12-hours = 每 12 小时
 interval-daily = 每天
 interval-weekly = 每周
+interval-monthly = 每月
 system-info = 系统信息
 system-platform = 系统平台
 app-version = Remotrix 版本

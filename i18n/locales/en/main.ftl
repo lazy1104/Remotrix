@@ -285,6 +285,7 @@ interval-6-hours = Every 6 hours
 interval-12-hours = Every 12 hours
 interval-daily = Daily
 interval-weekly = Weekly
+interval-monthly = Monthly
 system-info = System Info
 system-platform = Platform
 app-version = Remotrix version
