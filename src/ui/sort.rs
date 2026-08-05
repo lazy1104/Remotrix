@@ -9,7 +9,7 @@ pub fn sort_tasks<'a>(
     let mut sorted = tasks.to_vec();
     sorted.sort_by(|a, b| {
         let cmp = match field {
-            SortField::AddedTime => a.gid.cmp(&b.gid),
+            SortField::AddedTime => a.added_at.cmp(&b.added_at),
             SortField::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
             SortField::Size => a.total.cmp(&b.total),
             SortField::Progress => a.progress_pct().total_cmp(&b.progress_pct()),
