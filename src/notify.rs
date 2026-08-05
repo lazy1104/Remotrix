@@ -20,24 +20,38 @@ pub trait Notifier: Send + Sync {
 
 pub struct DesktopNotifier;
 
+const OPEN_ACTION: &str = "open";
+
 impl DesktopNotifier {
-    pub fn show_with_action(&self, n: &Notification) -> Result<NotificationHandle, String> {
-        self.build(n).show().map_err(|e| e.to_string())
+    pub fn show_with_action(
+        &self,
+        n: &Notification,
+        action_label: Option<&str>,
+    ) -> Result<NotificationHandle, String> {
+        self.build(n, action_label)
+            .show()
+            .map_err(|e| e.to_string())
     }
 
-    fn build(&self, n: &Notification) -> RustNotification {
-        RustNotification::new()
+    fn build(&self, n: &Notification, action_label: Option<&str>) -> RustNotification {
+        let mut notification = RustNotification::new();
+        notification
             .appname(crate::APP_ID)
             .hint(Hint::DesktopEntry(crate::APP_ID.to_string()))
             .summary(&n.title)
-            .body(&n.body)
-            .finalize()
+            .body(&n.body);
+        if let Some(label) = action_label {
+            notification.action(OPEN_ACTION, label);
+        }
+        notification.finalize()
     }
 }
 
 impl Notifier for DesktopNotifier {
     fn send(&self, notification: &Notification) -> Result<(), String> {
-        self.build(notification).show().map_err(|e| e.to_string())?;
+        self.build(notification, None)
+            .show()
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -78,14 +92,19 @@ impl Default for Notifiers {
     }
 }
 
-pub fn show(notifiers: &Notifiers, title: &str, body: &str) -> Option<NotificationHandle> {
+pub fn show(
+    notifiers: &Notifiers,
+    title: &str,
+    body: &str,
+    action_label: Option<String>,
+) -> Option<NotificationHandle> {
     let notification = Notification {
         title: title.to_string(),
         body: body.to_string(),
     };
     for notifier in &notifiers.list {
         if let Some(desktop) = notifier.as_any().downcast_ref::<DesktopNotifier>() {
-            match desktop.show_with_action(&notification) {
+            match desktop.show_with_action(&notification, action_label.as_deref()) {
                 Ok(handle) => return Some(handle),
                 Err(e) => {
                     tracing::warn!(error = %e, "wake notification failed");
@@ -147,7 +166,12 @@ pub fn build_notify_stream(slot: &NotifySlot) -> impl iced::futures::Stream<Item
                     event
                         .handle
                         .wait_for_action_async(move |response: &NotificationResponse| {
-                            if matches!(response, NotificationResponse::Default) {
+                            let invoked = matches!(response, NotificationResponse::Default)
+                                || matches!(
+                                    response,
+                                    NotificationResponse::Action(key) if key == OPEN_ACTION
+                                );
+                            if invoked {
                                 let msg = match action {
                                     NotifyAction::OpenFile(path) => Message::OpenFile(path),
                                     NotifyAction::ActivateWindow => Message::ActivateWindow,

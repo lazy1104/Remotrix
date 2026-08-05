@@ -1948,6 +1948,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                                     title,
                                     body,
                                     crate::notify::NotifyAction::OpenFile(open_path),
+                                    Some(state.fluent.get(crate::i18n::Tr::Open)),
                                 );
                             }
                             return Task::none();
@@ -1976,6 +1977,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                                     title,
                                     body,
                                     crate::notify::NotifyAction::ActivateWindow,
+                                    None,
                                 );
                             }
                             return Task::none();
@@ -2082,6 +2084,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         state.fluent.get(Tr::EngineDegradedTitle),
                         state.fluent.get(Tr::EngineDegradedBody),
                         crate::notify::NotifyAction::ActivateWindow,
+                        None,
                     );
                 }
                 return Task::none();
@@ -2101,6 +2104,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         state.fluent.get(Tr::EngineDegradedTitle),
                         state.fluent.get(Tr::EngineDegradedBody),
                         crate::notify::NotifyAction::ActivateWindow,
+                        None,
                     );
                 }
             }
@@ -2879,6 +2883,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 title,
                 body,
                 crate::notify::NotifyAction::ActivateWindow,
+                None,
             );
             return Task::none();
         }
@@ -3505,8 +3510,9 @@ fn send_system_notification(
     title: String,
     body: String,
     action: crate::notify::NotifyAction,
+    button_label: Option<String>,
 ) {
-    if let Some(handle) = crate::notify::show(&state.notifiers, &title, &body) {
+    if let Some(handle) = crate::notify::show(&state.notifiers, &title, &body, button_label) {
         let _ = state
             .notify_tx
             .send(crate::notify::NotifyEvent { handle, action });
