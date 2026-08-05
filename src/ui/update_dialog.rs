@@ -1,5 +1,5 @@
 use iced::widget::{button, column, container, markdown, rich_text, row, span, text};
-use iced::{Alignment, Element, Length};
+use iced::{Alignment, Element, Font, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, SettingsMsg};
@@ -70,10 +70,18 @@ pub fn view<'a>(
     }
 
     let transition: Element<'a, Message> = {
-        let rich: iced::Element<'a, ()> = rich_text![
-            span::<(), _>(component_label(fluent, offer.component))
-                .color(theme::text_secondary(theme)),
-            span::<(), _>(format!("  v{}", offer.current))
+        let name: iced::Element<'a, ()> =
+            rich_text![span::<(), _>(component_label(fluent, offer.component))
+                .font(Font {
+                    weight: iced::font::Weight::Bold,
+                    ..Font::DEFAULT
+                })
+                .color(theme::text_secondary(theme)),]
+            .size(FONT_BODY)
+            .into();
+
+        let versions: iced::Element<'a, ()> = rich_text![
+            span::<(), _>(format!("v{}", offer.current))
                 .strikethrough(true)
                 .color(theme::text_secondary(theme)),
             span::<(), _>("  →  ").color(theme::text_secondary(theme)),
@@ -81,11 +89,19 @@ pub fn view<'a>(
         ]
         .size(FONT_BODY)
         .into();
-        let framed: iced::Element<'a, ()> = container(rich)
-            .width(Length::Fill)
-            .padding(PADDING_CARD)
-            .style(theme::style::subtle)
-            .into();
+
+        let framed: iced::Element<'a, ()> = container(
+            row![
+                name,
+                iced::widget::Space::new().width(Length::Fill),
+                versions,
+            ]
+            .align_y(Alignment::Center),
+        )
+        .width(Length::Fill)
+        .padding(PADDING_CARD)
+        .style(theme::style::subtle)
+        .into();
         framed.map(|_: ()| Message::Noop)
     };
     body = body.push(transition);
@@ -108,7 +124,7 @@ pub fn view<'a>(
     body = body.push(
         container(
             slim_scrollable(changelog)
-                .height(Length::Fixed(220.0))
+                .height(Length::Fixed(240.0))
                 .width(Length::Fill),
         )
         .width(Length::Fill)
