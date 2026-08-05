@@ -255,7 +255,9 @@ pub struct Remotrix {
     wake_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>>,
     _primary: app_single_instance::PrimaryHandle,
     notifiers: crate::notify::Notifiers,
+    #[cfg(target_os = "linux")]
     notify_tx: tokio::sync::mpsc::UnboundedSender<crate::notify::NotifyEvent>,
+    #[cfg(target_os = "linux")]
     notify_rx_slot:
         Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<crate::notify::NotifyEvent>>>>,
     tray: crate::tray::TrayManager,
@@ -313,8 +315,10 @@ pub fn init() -> (Remotrix, Task<Message>) {
     });
 
     let notifiers = crate::notify::Notifiers::new();
+    #[cfg(target_os = "linux")]
     let (notify_tx, notify_rx) =
         tokio::sync::mpsc::unbounded_channel::<crate::notify::NotifyEvent>();
+    #[cfg(target_os = "linux")]
     let notify_rx_slot: Arc<
         Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<crate::notify::NotifyEvent>>>,
     > = Arc::new(Mutex::new(Some(notify_rx)));
@@ -367,7 +371,9 @@ pub fn init() -> (Remotrix, Task<Message>) {
         wake_rx_slot: Arc::new(Mutex::new(Some(wake_rx))),
         _primary,
         notifiers,
+        #[cfg(target_os = "linux")]
         notify_tx,
+        #[cfg(target_os = "linux")]
         notify_rx_slot,
         tray,
         tray_rx_slot,
@@ -3611,6 +3617,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
 
     let wake = Subscription::run_with(WakeSlot(state.wake_rx_slot.clone()), build_wake_stream);
 
+    #[cfg(target_os = "linux")]
     let notify = Subscription::run_with(
         crate::notify::NotifySlot(state.notify_rx_slot.clone()),
         crate::notify::build_notify_stream,
@@ -3684,6 +3691,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
     Subscription::batch(vec![
         engine,
         wake,
+        #[cfg(target_os = "linux")]
         notify,
         tray,
         open,
@@ -3867,13 +3875,22 @@ fn send_system_notification(
     buttons: Vec<(String, crate::notify::NotifyAction)>,
     default_action: crate::notify::NotifyAction,
 ) {
-    if let Some((handle, actions)) = crate::notify::show(&state.notifiers, &title, &body, &buttons)
+    #[cfg(target_os = "linux")]
     {
-        let _ = state.notify_tx.send(crate::notify::NotifyEvent {
-            handle,
-            actions,
-            default_action,
-        });
+        if let Some((handle, actions)) =
+            crate::notify::show(&state.notifiers, &title, &body, &buttons)
+        {
+            let _ = state.notify_tx.send(crate::notify::NotifyEvent {
+                handle,
+                actions,
+                default_action,
+            });
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = default_action;
+        crate::notify::show(&state.notifiers, &title, &body, &buttons);
     }
 }
 

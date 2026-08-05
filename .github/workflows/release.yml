@@ -11,9 +11,54 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  deny:
+    name: cargo-deny (${{ matrix.checks }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        checks:
+          - advisories
+          - bans licenses sources
+    continue-on-error: ${{ matrix.checks == 'advisories' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check ${{ matrix.checks }}
+
+  changelog:
+    name: Generate changelog
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build changelog
+        uses: mikepenz/release-changelog-builder-action@v5
+        with:
+          commitMode: true
+          outputFile: CHANGELOG.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload changelog artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog
+          path: CHANGELOG.md
+
   package:
     name: package (${{ matrix.triple }})
     runs-on: ${{ matrix.os }}
+    needs: changelog
     permissions:
       contents: write
     strategy:
@@ -28,6 +73,12 @@ jobs:
             formats: nsis
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download changelog
+        uses: actions/download-artifact@v4
+        with:
+          name: changelog
+          path: .
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -69,6 +120,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          body_path: CHANGELOG.md
           files: |
             target/release/bundle/*.deb
             target/release/bundle/*.AppImage

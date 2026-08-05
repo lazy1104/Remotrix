@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::process::Stdio;
 
 use crate::aria2_fetcher;

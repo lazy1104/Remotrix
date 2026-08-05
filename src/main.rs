@@ -64,14 +64,24 @@ fn main() -> iced::Result {
             decorations: false,
             exit_on_close_request: false,
             min_size: Some(iced::Size::new(800.0, 560.0)),
-            platform_specific: iced::window::settings::PlatformSpecific {
-                application_id: crate::APP_ID.to_string(),
-                ..Default::default()
-            },
+            platform_specific: platform_specific_settings(),
             ..Default::default()
         })
         .antialiasing(true)
         .run()
+}
+
+#[cfg(target_os = "linux")]
+fn platform_specific_settings() -> iced::window::settings::PlatformSpecific {
+    iced::window::settings::PlatformSpecific {
+        application_id: crate::APP_ID.to_string(),
+        ..Default::default()
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn platform_specific_settings() -> iced::window::settings::PlatformSpecific {
+    iced::window::settings::PlatformSpecific::default()
 }
 
 fn load_icon() -> Option<iced::window::Icon> {

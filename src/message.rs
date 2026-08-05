@@ -70,9 +70,12 @@ pub enum Message {
     Toast(ToastMsg),
     CopyText(String),
     OpenLink(String),
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     OpenFile(PathBuf),
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     RevealDir(PathBuf),
     ShowRequested,
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     ActivateWindow,
     Tray(TrayMsg),
     Noop,
