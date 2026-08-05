@@ -172,6 +172,10 @@ struct WindowState {
     closing: bool,
     hidden_to_tray: bool,
     wayland: bool,
+    #[cfg(target_os = "windows")]
+    resizing: bool,
+    #[cfg(target_os = "windows")]
+    resize_quiet: Option<Instant>,
 }
 
 impl WindowState {
@@ -187,6 +191,10 @@ impl WindowState {
             closing: false,
             hidden_to_tray: false,
             wayland: is_wayland(),
+            #[cfg(target_os = "windows")]
+            resizing: false,
+            #[cfg(target_os = "windows")]
+            resize_quiet: None,
         }
     }
 }
@@ -552,6 +560,11 @@ fn remove_task_local(state: &mut Remotrix, gid: &str) {
 }
 
 const REMOVED_GID_GRACE: Duration = Duration::from_secs(60);
+
+#[cfg(target_os = "windows")]
+const RESIZE_TICK_MS: u64 = 33;
+#[cfg(target_os = "windows")]
+const RESIZE_QUIET_MS: u64 = 150;
 
 fn gid_recently_removed(state: &mut Remotrix, gid: &str) -> bool {
     match state.tracking.removed_gids.get(gid) {
@@ -2237,7 +2250,16 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         },
         Message::Window(WindowMsg::WindowResized(size)) => {
             state.window.last_resize = Some(size);
-            state.window.geometry_dirty = true;
+            #[cfg(target_os = "windows")]
+            {
+                state.window.resizing = true;
+                state.window.resize_quiet =
+                    Some(Instant::now() + Duration::from_millis(RESIZE_QUIET_MS));
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                state.window.geometry_dirty = true;
+            }
         }
         Message::Window(WindowMsg::WindowOpened(id)) => {
             if state.window.window_id.is_none() {
@@ -2907,6 +2929,29 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::Window(WindowMsg::FlushDirty) => {
             flush_dirty(state);
         }
+        #[cfg(target_os = "windows")]
+        Message::Window(WindowMsg::ResizeTick) => {
+            if !state.window.resizing {
+                return Task::none();
+            }
+            let settled = state
+                .window
+                .resize_quiet
+                .map(|d| Instant::now() >= d)
+                .unwrap_or(false);
+            if let Some(s) = state.window.last_resize {
+                state.window.window_size = s;
+            }
+            if settled {
+                state.window.resizing = false;
+                state.window.resize_quiet = None;
+                state.window.geometry_dirty = true;
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        Message::Window(WindowMsg::ResizeTick) => {
+            return Task::none();
+        }
         Message::Nav(NavMsg::SelectDetailsTab(tab)) => {
             state.details.active_tab = tab;
         }
@@ -3266,6 +3311,10 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
     };
 
     let t = &state.theme;
+    #[cfg(target_os = "windows")]
+    if state.window.resizing {
+        return resize_placeholder_view(state);
+    }
     let titlebar = crate::ui::title_bar::view(t, state.window.maximized);
     let left_col = crate::ui::sidebar::view(&state.fluent, t, state.page);
 
@@ -3500,6 +3549,25 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         .into()
 }
 
+#[cfg(target_os = "windows")]
+fn resize_placeholder_view(state: &Remotrix) -> Element<'static, Message> {
+    let base = container(iced::widget::Space::new())
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(crate::ui::theme::style::base_background);
+    if state.window.maximized {
+        #[allow(clippy::useless_conversion)]
+        {
+            iced::widget::opaque(base).into()
+        }
+    } else {
+        stack![iced::widget::opaque(base), crate::ui::resize_frame::view(),]
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    }
+}
+
 struct EventSlot(Arc<Mutex<Option<EventRx>>>);
 
 impl Hash for EventSlot {
@@ -3660,6 +3728,15 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
 
     let resizes = iced::window::resize_events()
         .map(|(_id, size)| Message::Window(WindowMsg::WindowResized(size)));
+
+    #[cfg(target_os = "windows")]
+    let resize_tick = if state.window.resizing {
+        iced::time::every(Duration::from_millis(RESIZE_TICK_MS))
+            .map(|_| Message::Window(WindowMsg::ResizeTick))
+    } else {
+        Subscription::none()
+    };
+
     let persist_periodic = iced::time::every(Duration::from_millis(2000))
         .map(|_| Message::Window(WindowMsg::PersistWindowGeometry));
 
@@ -3704,6 +3781,8 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         files,
         flush,
         resizes,
+        #[cfg(target_os = "windows")]
+        resize_tick,
         persist_periodic,
         refresh,
         toast_tick,

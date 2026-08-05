@@ -242,6 +242,8 @@ pub enum WindowMsg {
     ShutdownTimeout,
     PersistWindowGeometry,
     FlushDirty,
+    #[allow(dead_code)]
+    ResizeTick,
 }
 
 #[derive(Debug, Clone)]
