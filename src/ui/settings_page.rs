@@ -27,6 +27,8 @@ use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
+pub const SETTINGS_SCROLL_ID: &str = "settings-scroll";
+
 #[derive(Debug, Clone)]
 pub struct SettingsUiState {
     pub download_picker: PathPicker,
@@ -177,7 +179,12 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
         .push(iced::widget::Space::new().height(Length::Fixed(20.0)))
         .push(
             iced::widget::keyed::Column::new()
-                .push(*category, slim_scrollable(content).height(Length::Fill))
+                .push(
+                    *category,
+                    slim_scrollable(content)
+                        .id(SETTINGS_SCROLL_ID)
+                        .height(Length::Fill),
+                )
                 .width(Length::Fill)
                 .height(Length::Fill),
         );

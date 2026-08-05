@@ -743,6 +743,10 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::Nav(NavMsg::SetSettingsCategory(cat)) => {
             state.settings_ui.download_picker.close_history();
             state.settings_cat = cat;
+            return iced::widget::operation::scroll_to::<Message>(
+                iced::widget::Id::new(crate::ui::settings_page::SETTINGS_SCROLL_ID),
+                iced::widget::operation::AbsoluteOffset::<f32>::default(),
+            );
         }
         Message::Add(AddMsg::OpenAddDialog) => {
             state.add_dialog.save_picker.close_history();
