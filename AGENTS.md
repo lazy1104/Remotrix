@@ -96,7 +96,7 @@ let status = client.tell_status(&gid).await?;
 
 ## Cargo.toml Dependencies
 ```toml
-[package] name = "remotrix" version = "0.1.1" edition = "2021" license = "MIT"
+[package] name = "remotrix" version = "0.1.2" edition = "2021" license = "MIT"
 [dependencies]
 aria2-ws = "0.5"
 iced = { version = "0.14", features = ["tokio", "advanced", "canvas", "svg"] }
@@ -171,7 +171,7 @@ Run `/check-docs` (Kilo command) to audit README.md and this file against the co
 ## Packaging / CI
 - `packager.toml` configures **cargo-packager** (schema follows cargo-packager 0.11.x; `Packager.toml` is
   the default filename, we use `packager.toml` + `--config` explicitly).
-- `version` in `packager.toml` **must stay in sync** with `Cargo.toml` (currently `0.1.0`).
+- `version` in `packager.toml` **must stay in sync** with `Cargo.toml` (currently `0.1.2`).
 - `deb.depends` is intentionally minimal (`libc6`, `libgcc-s1`): `ldd` shows iced 0.14 links only the C
   runtime — GTK/X11/Vulkan are loaded via `dlopen` at runtime, so they can't be enforced as deb deps.
   Vulkan is a runtime requirement (see README).
