@@ -1,5 +1,60 @@
 use std::path::PathBuf;
 
+use aria2_ws::TaskOptions;
+
+#[derive(Debug, Clone, Default)]
+pub struct TaskAdvancedOptions {
+    pub out: String,
+    pub user_agent: String,
+    pub http_user: String,
+    pub http_passwd: String,
+    pub referer: String,
+    pub cookie: String,
+    pub proxy_server: String,
+    pub proxy_username: String,
+    pub proxy_password: String,
+}
+
+impl TaskAdvancedOptions {
+    pub fn apply(&self, opts: &mut TaskOptions) {
+        if !self.out.is_empty() {
+            opts.out = Some(self.out.clone());
+        }
+        let extra = [
+            ("user-agent", &self.user_agent),
+            ("http-user", &self.http_user),
+            ("http-passwd", &self.http_passwd),
+            ("referer", &self.referer),
+            ("cookie", &self.cookie),
+        ];
+        for (key, value) in extra {
+            if !value.is_empty() {
+                opts.extra_options
+                    .insert(key.to_string(), serde_json::Value::String(value.clone()));
+            }
+        }
+        if let Some(proxy) = crate::config::all_proxy_url(
+            &self.proxy_server,
+            &self.proxy_username,
+            &self.proxy_password,
+        ) {
+            opts.all_proxy = Some(proxy);
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.out.is_empty()
+            && self.user_agent.is_empty()
+            && self.http_user.is_empty()
+            && self.http_passwd.is_empty()
+            && self.referer.is_empty()
+            && self.cookie.is_empty()
+            && self.proxy_server.is_empty()
+            && self.proxy_username.is_empty()
+            && self.proxy_password.is_empty()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct DownloadTask {
     pub gid: String,
@@ -16,6 +71,7 @@ pub struct DownloadTask {
     pub info_hash: Option<String>,
     pub metadata_probe_size: Option<u64>,
     pub is_seeding: bool,
+    pub advanced: Option<TaskAdvancedOptions>,
 }
 
 impl DownloadTask {
@@ -64,6 +120,17 @@ impl TaskStatus {
             "error" => TaskStatus::Error,
             "removed" => TaskStatus::Removed,
             _ => TaskStatus::Waiting,
+        }
+    }
+
+    pub fn to_str(self) -> &'static str {
+        match self {
+            TaskStatus::Waiting => "waiting",
+            TaskStatus::Active => "active",
+            TaskStatus::Paused => "paused",
+            TaskStatus::Completed => "complete",
+            TaskStatus::Error => "error",
+            TaskStatus::Removed => "removed",
         }
     }
 }

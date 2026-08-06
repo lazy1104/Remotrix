@@ -146,6 +146,8 @@ pub enum TaskMsg {
     DetailsFilesSelectNone,
     DetailsFilesScroll(f32),
     DetailsFilesFlush(u64),
+    DetailsAdvancedFieldChanged(AddField, String),
+    DetailsAdvancedSave,
     CopyPath(String),
     OpenFolder(PathBuf),
 }
@@ -214,7 +216,7 @@ pub enum SettingsMsg {
 
 #[derive(Debug, Clone)]
 pub enum EngineMsg {
-    Event(EngineEvent),
+    Event(Box<EngineEvent>),
     RetryAria2Fetch,
     RestartEngine,
     ConfirmRestartEngine,
@@ -340,6 +342,7 @@ pub enum DetailsTab {
     Summary,
     Activity,
     Files,
+    Advanced,
 }
 
 impl std::fmt::Display for SortField {

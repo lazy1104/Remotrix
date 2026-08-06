@@ -12,51 +12,11 @@ use tokio::task::JoinHandle;
 use tokio::time::{interval, timeout, Duration};
 
 use crate::aria2_fetcher;
+use crate::task::TaskAdvancedOptions;
 
 static MISSING_CHECK_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(3);
-
-#[derive(Debug, Clone, Default)]
-pub struct TaskAdvancedOptions {
-    pub out: String,
-    pub user_agent: String,
-    pub http_user: String,
-    pub http_passwd: String,
-    pub referer: String,
-    pub cookie: String,
-    pub proxy_server: String,
-    pub proxy_username: String,
-    pub proxy_password: String,
-}
-
-impl TaskAdvancedOptions {
-    pub fn apply(&self, opts: &mut TaskOptions) {
-        if !self.out.is_empty() {
-            opts.out = Some(self.out.clone());
-        }
-        let mut extra = vec![
-            ("user-agent", &self.user_agent),
-            ("http-user", &self.http_user),
-            ("http-passwd", &self.http_passwd),
-            ("referer", &self.referer),
-            ("cookie", &self.cookie),
-        ];
-        for (key, value) in extra.drain(..) {
-            if !value.is_empty() {
-                opts.extra_options
-                    .insert(key.to_string(), serde_json::Value::String(value.clone()));
-            }
-        }
-        if let Some(proxy) = crate::config::all_proxy_url(
-            &self.proxy_server,
-            &self.proxy_username,
-            &self.proxy_password,
-        ) {
-            opts.all_proxy = Some(proxy);
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub enum EngineCmd {
@@ -103,6 +63,11 @@ pub enum EngineCmd {
         files: Vec<u64>,
     },
     FetchTaskDetails(String),
+    FetchTaskAdvanced(String),
+    ChangeTaskAdvanced {
+        gid: String,
+        advanced: TaskAdvancedOptions,
+    },
     ReaddTask {
         gid: String,
         url: String,
@@ -141,6 +106,7 @@ pub enum EngineEvent {
         url: String,
         dir: String,
         info_hash: Option<String>,
+        advanced: TaskAdvancedOptions,
     },
     Progress {
         gid: String,
@@ -167,6 +133,20 @@ pub enum EngineEvent {
         gid: String,
     },
     SelectFilesFailed {
+        gid: String,
+    },
+    TaskAdvancedLoaded {
+        gid: String,
+        options: Box<TaskAdvancedOptions>,
+    },
+    TaskAdvancedLoadFailed {
+        gid: String,
+    },
+    TaskAdvancedApplied {
+        gid: String,
+        options: TaskAdvancedOptions,
+    },
+    TaskAdvancedApplyFailed {
         gid: String,
     },
     EngineReady,
@@ -428,7 +408,11 @@ fn name_from_status(s: &aria2_ws::response::Status) -> String {
     s.gid.clone()
 }
 
-async fn emit_added(event_tx: &EventTx, s: &aria2_ws::response::Status) {
+async fn emit_added(
+    event_tx: &EventTx,
+    s: &aria2_ws::response::Status,
+    advanced: TaskAdvancedOptions,
+) {
     let url = s
         .files
         .first()
@@ -441,6 +425,7 @@ async fn emit_added(event_tx: &EventTx, s: &aria2_ws::response::Status) {
         url,
         dir: s.dir.clone(),
         info_hash: s.info_hash.clone(),
+        advanced,
     });
 }
 
@@ -536,7 +521,7 @@ async fn sync_existing_tasks(client: &Client, event_tx: &EventTx) -> bool {
         }
     };
     for s in &all {
-        emit_added(event_tx, s).await;
+        emit_added(event_tx, s, TaskAdvancedOptions::default()).await;
         emit_progress(event_tx, s).await;
     }
     if truncated {
@@ -606,6 +591,35 @@ fn select_file_csv(files: &[u64]) -> Option<String> {
     )
 }
 
+fn parse_all_proxy(url: &str) -> (String, String, String) {
+    let url = url.trim();
+    if url.is_empty() {
+        return (String::new(), String::new(), String::new());
+    }
+    let (scheme, rest) = match url.split_once("://") {
+        Some((s, r)) => (Some(s), r),
+        None => (None, url),
+    };
+    let (server, user, pass) = if let Some((userinfo, host)) = rest.rsplit_once('@') {
+        if host.is_empty() {
+            (url.to_string(), String::new(), String::new())
+        } else {
+            let (user, pass) = match userinfo.rsplit_once(':') {
+                Some((u, p)) => (u.to_string(), p.to_string()),
+                None => (userinfo.to_string(), String::new()),
+            };
+            (host.to_string(), user, pass)
+        }
+    } else {
+        (rest.to_string(), String::new(), String::new())
+    };
+    let server = match scheme {
+        Some(s) => format!("{s}://{server}"),
+        None => server,
+    };
+    (server, user, pass)
+}
+
 fn base_task_options(dir: &Path, split: u16) -> TaskOptions {
     TaskOptions {
         dir: Some(dir.to_string_lossy().to_string()),
@@ -641,7 +655,7 @@ async fn add_torrent_and_emit(
         .map_err(|e| format!("add_torrent: {e}"))?;
     match client.tell_status(&gid).await {
         Ok(status) => {
-            emit_added(event_tx, &status).await;
+            emit_added(event_tx, &status, advanced.clone()).await;
             emit_progress(event_tx, &status).await;
         }
         Err(e) => {
@@ -658,6 +672,7 @@ async fn add_torrent_and_emit(
                 url: String::new(),
                 dir,
                 info_hash: None,
+                advanced: advanced.clone(),
             });
         }
     }
@@ -747,6 +762,7 @@ async fn handle_client_cmd(
                             url,
                             dir: dir.clone(),
                             info_hash: None,
+                            advanced: advanced.clone(),
                         });
                         added += 1;
                     }
@@ -944,6 +960,75 @@ async fn handle_client_cmd(
                 }
             }
         }
+        EngineCmd::FetchTaskAdvanced(gid) => {
+            tracing::debug!(?gid, "fetch task advanced options");
+            match client
+                .call_and_wait::<serde_json::Value>(
+                    "getOption",
+                    vec![serde_json::Value::String(gid.clone())],
+                )
+                .await
+            {
+                Ok(map) => {
+                    let get = |key: &str| -> String {
+                        match map.get(key) {
+                            Some(serde_json::Value::String(s)) => s.clone(),
+                            _ => String::new(),
+                        }
+                    };
+                    let (proxy_server, proxy_username, proxy_password) =
+                        parse_all_proxy(&get("all-proxy"));
+                    let options = TaskAdvancedOptions {
+                        out: String::new(),
+                        user_agent: get("user-agent"),
+                        http_user: get("http-user"),
+                        http_passwd: get("http-passwd"),
+                        referer: get("referer"),
+                        cookie: get("cookie"),
+                        proxy_server,
+                        proxy_username,
+                        proxy_password,
+                    };
+                    let _ = event_tx.send(EngineEvent::TaskAdvancedLoaded {
+                        gid,
+                        options: Box::new(options),
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!(?gid, error = ?e, "getOption failed");
+                    let _ = event_tx.send(EngineEvent::TaskAdvancedLoadFailed { gid });
+                }
+            }
+        }
+        EngineCmd::ChangeTaskAdvanced { gid, advanced } => {
+            tracing::info!(?gid, "change task advanced options");
+            let mut options = TaskOptions::default();
+            advanced.apply(&mut options);
+            let params = match serde_json::to_value(options) {
+                Ok(v) => vec![serde_json::Value::String(gid.clone()), v],
+                Err(e) => {
+                    tracing::warn!(?gid, error = ?e, "serialize advanced options failed");
+                    let _ = event_tx.send(EngineEvent::TaskAdvancedApplyFailed { gid });
+                    return Ok(());
+                }
+            };
+            match client
+                .call_and_wait::<serde_json::Value>("changeOption", params)
+                .await
+            {
+                Ok(_) => {
+                    let _ = client.save_session().await;
+                    let _ = event_tx.send(EngineEvent::TaskAdvancedApplied {
+                        gid,
+                        options: advanced,
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!(?gid, error = ?e, "changeOption advanced failed");
+                    let _ = event_tx.send(EngineEvent::TaskAdvancedApplyFailed { gid });
+                }
+            }
+        }
         EngineCmd::ReaddTask {
             gid,
             url,
@@ -974,6 +1059,7 @@ async fn handle_client_cmd(
                         url,
                         dir,
                         info_hash: None,
+                        advanced: TaskAdvancedOptions::default(),
                     });
                     if let Ok(status) = client.tell_status(&gid).await {
                         emit_progress(event_tx, &status).await;
@@ -1005,7 +1091,7 @@ async fn handle_client_cmd(
             {
                 Ok(_) => {
                     if let Ok(status) = client.tell_status(&gid).await {
-                        emit_added(event_tx, &status).await;
+                        emit_added(event_tx, &status, TaskAdvancedOptions::default()).await;
                         emit_progress(event_tx, &status).await;
                     }
                 }
@@ -1406,7 +1492,7 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
                     for s in &all {
                         current.insert(s.gid.as_str());
                         if seen.insert(s.gid.clone()) {
-                            emit_added(&poll_event_tx, s).await;
+                            emit_added(&poll_event_tx, s, TaskAdvancedOptions::default()).await;
                         }
                         let is_terminal = matches!(
                             s.status,

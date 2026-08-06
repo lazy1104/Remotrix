@@ -14,6 +14,11 @@ impl Db {
             std::fs::create_dir_all(parent).map_err(|e| format!("create db dir: {e}"))?;
         }
         let conn = Connection::open(path).map_err(|e| format!("open db: {e}"))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+        }
         conn.execute_batch(
             "PRAGMA journal_mode=WAL;
              PRAGMA synchronous=NORMAL;
@@ -62,6 +67,31 @@ impl Db {
             conn.execute_batch("ALTER TABLE tasks ADD COLUMN info_hash TEXT NOT NULL DEFAULT '';")
                 .map_err(|e| format!("add column: {e}"))?;
         }
+        let advanced_cols = [
+            "user_agent",
+            "http_user",
+            "http_passwd",
+            "referer",
+            "cookie",
+            "proxy_server",
+            "proxy_username",
+            "proxy_password",
+        ];
+        for col in advanced_cols {
+            let has: bool = conn
+                .prepare("PRAGMA table_info(tasks)")
+                .map_err(|e| format!("pragma: {e}"))?
+                .query_map([], |row| row.get::<_, String>(1))
+                .map_err(|e| format!("query map: {e}"))?
+                .filter_map(|r| r.ok())
+                .any(|c| c == col);
+            if !has {
+                conn.execute_batch(&format!(
+                    "ALTER TABLE tasks ADD COLUMN {col} TEXT NOT NULL DEFAULT '';"
+                ))
+                .map_err(|e| format!("add column {col}: {e}"))?;
+            }
+        }
         Ok(Db {
             conn: std::sync::Mutex::new(conn),
         })
@@ -70,7 +100,8 @@ impl Db {
     pub fn load_all(&self) -> Vec<DownloadTask> {
         let conn = self.conn.lock().expect("db lock");
         let mut stmt = match conn.prepare(
-            "SELECT gid, name, url, dir, downloaded, total, speed, upload_speed, connections, status, added_at, info_hash
+            "SELECT gid, name, url, dir, downloaded, total, speed, upload_speed, connections, status, added_at, info_hash,
+                   user_agent, http_user, http_passwd, referer, cookie, proxy_server, proxy_username, proxy_password
              FROM tasks ORDER BY added_at DESC",
         ) {
             Ok(s) => s,
@@ -91,6 +122,17 @@ impl Db {
                 _ => TaskStatus::Waiting,
             };
             let info_hash: String = row.get(11)?;
+            let advanced = crate::task::TaskAdvancedOptions {
+                out: String::new(),
+                user_agent: row.get(12)?,
+                http_user: row.get(13)?,
+                http_passwd: row.get(14)?,
+                referer: row.get(15)?,
+                cookie: row.get(16)?,
+                proxy_server: row.get(17)?,
+                proxy_username: row.get(18)?,
+                proxy_password: row.get(19)?,
+            };
             Ok(DownloadTask {
                 gid: row.get(0)?,
                 name: row.get(1)?,
@@ -110,6 +152,11 @@ impl Db {
                 },
                 metadata_probe_size: None,
                 is_seeding: false,
+                advanced: if advanced.is_empty() {
+                    None
+                } else {
+                    Some(advanced)
+                },
             })
         }) {
             Ok(r) => r,
@@ -138,14 +185,45 @@ impl Db {
         status: &str,
         added_at: i64,
         info_hash: &str,
+        advanced: Option<&crate::task::TaskAdvancedOptions>,
     ) {
         let conn = self.conn.lock().expect("db lock");
+        let (
+            user_agent,
+            http_user,
+            http_passwd,
+            referer,
+            cookie,
+            proxy_server,
+            proxy_username,
+            proxy_password,
+        ) = match advanced {
+            Some(a) => (
+                a.user_agent.as_str(),
+                a.http_user.as_str(),
+                a.http_passwd.as_str(),
+                a.referer.as_str(),
+                a.cookie.as_str(),
+                a.proxy_server.as_str(),
+                a.proxy_username.as_str(),
+                a.proxy_password.as_str(),
+            ),
+            None => ("", "", "", "", "", "", "", ""),
+        };
         if let Err(e) = conn.execute(
-            "INSERT INTO tasks (gid, name, url, dir, downloaded, total, speed, connections, status, added_at, info_hash)
-             VALUES (?1, ?2, ?3, ?4, 0, 0, 0, 0, ?5, ?6, ?7)
+            "INSERT INTO tasks (gid, name, url, dir, downloaded, total, speed, connections, status, added_at, info_hash,
+                                user_agent, http_user, http_passwd, referer, cookie, proxy_server, proxy_username, proxy_password)
+             VALUES (?1, ?2, ?3, ?4, 0, 0, 0, 0, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
              ON CONFLICT(gid) DO UPDATE SET
-                name=excluded.name, url=excluded.url, dir=excluded.dir, status=excluded.status, info_hash=excluded.info_hash",
-            rusqlite::params![gid, name, url, dir, status, added_at, info_hash],
+                name=excluded.name, url=excluded.url, dir=excluded.dir, status=excluded.status, info_hash=excluded.info_hash,
+                user_agent=excluded.user_agent, http_user=excluded.http_user, http_passwd=excluded.http_passwd,
+                referer=excluded.referer, cookie=excluded.cookie, proxy_server=excluded.proxy_server,
+                proxy_username=excluded.proxy_username, proxy_password=excluded.proxy_password",
+            rusqlite::params![
+                gid, name, url, dir, status, added_at, info_hash,
+                user_agent, http_user, http_passwd, referer, cookie,
+                proxy_server, proxy_username, proxy_password
+            ],
         ) {
             tracing::error!(?gid, error = %e, "db upsert_meta failed");
         }

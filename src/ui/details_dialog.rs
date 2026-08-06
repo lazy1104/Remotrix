@@ -1,12 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
-use iced::widget::{button, column, container, progress_bar, row, text};
+use iced::widget::{button, column, container, progress_bar, row, rule, text, text_input};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
-use crate::message::{DetailsTab, Message, NavMsg, TaskMsg};
+use crate::message::{AddField, DetailsTab, Message, NavMsg, TaskMsg};
 use crate::task::{
-    completed_pieces, format_add_time, format_size, format_speed, DownloadTask, TaskDetails,
+    completed_pieces, format_add_time, format_size, format_speed, DownloadTask,
+    TaskAdvancedOptions, TaskDetails,
 };
 use crate::ui::components::dialog::overlay;
 use crate::ui::components::file_tree;
@@ -30,6 +31,17 @@ pub struct DetailsDialogState {
     pub files_scroll_offset: f32,
     pub pending_select: Option<(String, Vec<u64>)>,
     pub select_gen: u64,
+    pub user_agent: String,
+    pub http_user: String,
+    pub http_passwd: String,
+    pub referer: String,
+    pub cookie: String,
+    pub proxy_server: String,
+    pub proxy_username: String,
+    pub proxy_password: String,
+    pub advanced_loaded: bool,
+    pub advanced_saving: bool,
+    pub advanced_dirty: bool,
 }
 
 impl DetailsDialogState {
@@ -46,6 +58,17 @@ impl DetailsDialogState {
             files_scroll_offset: 0.0,
             pending_select: None,
             select_gen: 0,
+            user_agent: String::new(),
+            http_user: String::new(),
+            http_passwd: String::new(),
+            referer: String::new(),
+            cookie: String::new(),
+            proxy_server: String::new(),
+            proxy_username: String::new(),
+            proxy_password: String::new(),
+            advanced_loaded: false,
+            advanced_saving: false,
+            advanced_dirty: false,
         }
     }
 
@@ -58,6 +81,17 @@ impl DetailsDialogState {
         self.fetch_failed = false;
         self.files_expanded.clear();
         self.files_scroll_offset = 0.0;
+        self.user_agent.clear();
+        self.http_user.clear();
+        self.http_passwd.clear();
+        self.referer.clear();
+        self.cookie.clear();
+        self.proxy_server.clear();
+        self.proxy_username.clear();
+        self.proxy_password.clear();
+        self.advanced_loaded = false;
+        self.advanced_saving = false;
+        self.advanced_dirty = false;
     }
 
     pub fn close(&mut self) {
@@ -69,10 +103,46 @@ impl DetailsDialogState {
         self.files_expanded.clear();
         self.files_tree.clear();
         self.files_scroll_offset = 0.0;
+        self.user_agent.clear();
+        self.http_user.clear();
+        self.http_passwd.clear();
+        self.referer.clear();
+        self.cookie.clear();
+        self.proxy_server.clear();
+        self.proxy_username.clear();
+        self.proxy_password.clear();
+        self.advanced_loaded = false;
+        self.advanced_saving = false;
+        self.advanced_dirty = false;
     }
 
     pub fn is_visible(&self) -> bool {
         self.visible
+    }
+
+    pub fn to_advanced(&self) -> TaskAdvancedOptions {
+        TaskAdvancedOptions {
+            out: String::new(),
+            user_agent: self.user_agent.clone(),
+            http_user: self.http_user.clone(),
+            http_passwd: self.http_passwd.clone(),
+            referer: self.referer.clone(),
+            cookie: self.cookie.clone(),
+            proxy_server: self.proxy_server.clone(),
+            proxy_username: self.proxy_username.clone(),
+            proxy_password: self.proxy_password.clone(),
+        }
+    }
+
+    pub fn apply_advanced(&mut self, a: &TaskAdvancedOptions) {
+        self.user_agent = a.user_agent.clone();
+        self.http_user = a.http_user.clone();
+        self.http_passwd = a.http_passwd.clone();
+        self.referer = a.referer.clone();
+        self.cookie = a.cookie.clone();
+        self.proxy_server = a.proxy_server.clone();
+        self.proxy_username = a.proxy_username.clone();
+        self.proxy_password = a.proxy_password.clone();
     }
 }
 
@@ -101,6 +171,7 @@ pub fn view<'a>(
             (DetailsTab::Summary, Tr::TabSummary),
             (DetailsTab::Activity, Tr::TabActivity),
             (DetailsTab::Files, Tr::TabFiles),
+            (DetailsTab::Advanced, Tr::TabAdvanced),
         ];
         let mut bar = row![].spacing(SPACE_SM);
         for (tab, tr) in tabs {
@@ -142,6 +213,9 @@ pub fn view<'a>(
             }
             DetailsTab::Activity => activity_tab(fluent, theme, task, state),
             DetailsTab::Files => files_tab(fluent, theme, task, state),
+            DetailsTab::Advanced => slim_scrollable(advanced_tab(fluent, theme, task, state))
+                .height(Length::Fill)
+                .into(),
         },
     };
 
@@ -450,4 +524,116 @@ fn details_tree_expand(path: String) -> Message {
 
 fn details_files_scroll(y: f32) -> Message {
     Message::Task(TaskMsg::DetailsFilesScroll(y))
+}
+
+fn advanced_field<'a>(
+    fluent: &'a Fluent,
+    label: Tr,
+    value: &'a str,
+    field: AddField,
+    secure: bool,
+) -> Element<'a, Message> {
+    let mut input = theme::input_layout(
+        text_input("", value)
+            .on_input(move |s| Message::Task(TaskMsg::DetailsAdvancedFieldChanged(field, s)))
+            .width(Length::Fill)
+            .style(theme::style::input::standard),
+    );
+    if secure {
+        input = input.secure(true);
+    }
+    row![
+        text(fluent.get(label))
+            .size(FONT_SMALL)
+            .style(theme::style::text::secondary)
+            .width(Length::Fixed(140.0)),
+        input,
+    ]
+    .align_y(Alignment::Center)
+    .width(Length::Fill)
+    .into()
+}
+
+fn advanced_tab<'a>(
+    fluent: &'a Fluent,
+    theme: &'a iced::Theme,
+    task: &'a DownloadTask,
+    state: &'a DetailsDialogState,
+) -> Element<'a, Message> {
+    let apply_enabled = {
+        let task_active = !matches!(
+            task.status,
+            crate::task::TaskStatus::Completed | crate::task::TaskStatus::Removed
+        );
+        state.advanced_loaded && state.advanced_dirty && !state.advanced_saving && task_active
+    };
+    let apply_btn = button(text(fluent.get(Tr::Apply)).size(FONT_MEDIUM))
+        .padding(PADDING_TAB)
+        .style(theme::style::button::primary());
+    let apply_btn = if apply_enabled {
+        apply_btn.on_press(Message::Task(TaskMsg::DetailsAdvancedSave))
+    } else {
+        apply_btn
+    };
+
+    column![
+        advanced_field(
+            fluent,
+            Tr::UserAgent,
+            &state.user_agent,
+            AddField::UserAgent,
+            false
+        ),
+        advanced_field(
+            fluent,
+            Tr::HttpAuthAccount,
+            &state.http_user,
+            AddField::HttpUser,
+            false
+        ),
+        advanced_field(
+            fluent,
+            Tr::HttpAuthPassword,
+            &state.http_passwd,
+            AddField::HttpPasswd,
+            true
+        ),
+        advanced_field(
+            fluent,
+            Tr::Referer,
+            &state.referer,
+            AddField::Referer,
+            false
+        ),
+        advanced_field(fluent, Tr::Cookie, &state.cookie, AddField::Cookie, false),
+        rule::horizontal(1),
+        text(fluent.get(Tr::Proxy))
+            .size(FONT_TITLE)
+            .color(theme::accent(theme)),
+        advanced_field(
+            fluent,
+            Tr::ProxyAddress,
+            &state.proxy_server,
+            AddField::ProxyServer,
+            false
+        ),
+        advanced_field(
+            fluent,
+            Tr::ProxyUsername,
+            &state.proxy_username,
+            AddField::ProxyUsername,
+            false
+        ),
+        advanced_field(
+            fluent,
+            Tr::ProxyPassword,
+            &state.proxy_password,
+            AddField::ProxyPassword,
+            true
+        ),
+        row![iced::widget::Space::new().width(Length::Fill), apply_btn,].align_y(Alignment::Center),
+    ]
+    .spacing(SPACE_XL)
+    .width(Length::Fill)
+    .into()
 }

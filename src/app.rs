@@ -12,14 +12,14 @@ use iced::{Element, Length, Padding, Subscription, Task};
 
 use crate::config::{self, Settings};
 use crate::db::Db;
-use crate::engine::{EngineCmd, EngineEvent, EngineHandle, EventRx, TaskAdvancedOptions};
+use crate::engine::{EngineCmd, EngineEvent, EngineHandle, EventRx};
 use crate::i18n::{Fluent, Tr};
 use crate::message::{
     AddField, AddMsg, AddTab, CloseDialogChoice, ConfirmAction, DialogMsg, EngineMsg, Message,
     NavMsg, Page, PathPickerId, SettingKey, SettingValue, SettingsCategory, SettingsMsg, SortField,
     SortMsg, SortOrder, TaskFilter, TaskMsg, ToastMsg, TrayMsg, WindowCmd, WindowMsg,
 };
-use crate::task::{DownloadTask, TaskStatus};
+use crate::task::{DownloadTask, TaskAdvancedOptions, TaskStatus};
 use crate::ui::add_dialog::AddDialogState;
 use crate::ui::category_bar::Counts;
 use crate::ui::components::file_tree::FileTreeNode;
@@ -1621,7 +1621,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 state.toasts.push(toast);
             }
         },
-        Message::Engine(EngineMsg::Event(event)) => match event {
+        Message::Engine(EngineMsg::Event(event)) => match *event {
             EngineEvent::EngineReady => {
                 tracing::info!("engine ready");
                 state.engine_ui.aria2_fetch_error = None;
@@ -1797,6 +1797,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 url,
                 dir,
                 info_hash,
+                advanced,
             } => {
                 tracing::info!(?gid, ?name, "ui: task added");
                 state.tracking.synced_gids.insert(gid.clone());
@@ -1811,8 +1812,16 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     if info_hash.is_some() {
                         existing.info_hash = info_hash;
                     }
+                    if !advanced.is_empty() {
+                        existing.advanced = Some(advanced);
+                    }
                     state.tracking.dirty.insert(gid.clone());
                 } else if !gid_recently_removed(state, &gid) {
+                    let saved_advanced = if advanced.is_empty() {
+                        None
+                    } else {
+                        Some(advanced)
+                    };
                     let task = DownloadTask {
                         gid: gid.clone(),
                         name,
@@ -1828,6 +1837,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         info_hash,
                         metadata_probe_size: None,
                         is_seeding: false,
+                        advanced: saved_advanced.clone(),
                     };
                     state.tasks.insert(gid.clone(), task);
                     state.task_order.insert(0, gid.clone());
@@ -1840,6 +1850,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             "waiting",
                             now,
                             &state.tasks[&gid].info_hash.clone().unwrap_or_default(),
+                            saved_advanced.as_ref(),
                         );
                     }
                 }
@@ -1910,6 +1921,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             info_hash: info_hash.clone(),
                             metadata_probe_size: None,
                             is_seeding,
+                            advanced: None,
                         },
                     );
                     state.task_order.insert(0, gid.clone());
@@ -1922,6 +1934,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             &status,
                             now,
                             info_hash.as_deref().unwrap_or_default(),
+                            None,
                         );
                     }
                 }
@@ -2110,6 +2123,72 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     ToastGroup::Task,
                     ToastKind::Warning,
                     state.fluent.get(crate::i18n::Tr::SelectFilesFailed),
+                    Some(Duration::from_secs(4)),
+                    false,
+                );
+                return Task::none();
+            }
+            EngineEvent::TaskAdvancedLoaded { gid, options } => {
+                tracing::debug!(?gid, "task advanced options received");
+                if state.details.gid.as_deref() == Some(&gid) && !state.details.advanced_dirty {
+                    state.details.apply_advanced(&options);
+                    state.details.advanced_loaded = true;
+                    state.details.advanced_dirty = false;
+                    state.details.advanced_saving = false;
+                }
+            }
+            EngineEvent::TaskAdvancedLoadFailed { gid } => {
+                tracing::debug!(?gid, "task advanced options fetch failed");
+                if state.details.gid.as_deref() == Some(&gid) {
+                    state.details.advanced_loaded = false;
+                    state.details.advanced_saving = false;
+                }
+            }
+            EngineEvent::TaskAdvancedApplied { gid, options } => {
+                tracing::info!(?gid, "task advanced options applied");
+                if state.details.gid.as_deref() == Some(&gid) {
+                    state.details.advanced_dirty = false;
+                    state.details.advanced_saving = false;
+                }
+                if let Some(t) = state.tasks.get_mut(&gid) {
+                    t.advanced = if options.is_empty() {
+                        None
+                    } else {
+                        Some(options.clone())
+                    };
+                    if let Some(ref db) = state.db {
+                        db.upsert_meta(
+                            &gid,
+                            &t.name,
+                            &t.url,
+                            &t.save_dir.to_string_lossy(),
+                            crate::task::TaskStatus::to_str(t.status),
+                            t.added_at,
+                            t.info_hash.clone().unwrap_or_default().as_str(),
+                            Some(&options),
+                        );
+                    }
+                }
+                spawn_toast(
+                    state,
+                    ToastGroup::Task,
+                    ToastKind::Success,
+                    state.fluent.get(crate::i18n::Tr::AdvancedApplied),
+                    Some(Duration::from_secs(3)),
+                    false,
+                );
+                return Task::none();
+            }
+            EngineEvent::TaskAdvancedApplyFailed { gid } => {
+                tracing::warn!(?gid, "task advanced options apply failed");
+                if state.details.gid.as_deref() == Some(&gid) {
+                    state.details.advanced_saving = false;
+                }
+                spawn_toast(
+                    state,
+                    ToastGroup::Task,
+                    ToastKind::Warning,
+                    state.fluent.get(crate::i18n::Tr::AdvancedApplyFailed),
                     Some(Duration::from_secs(4)),
                     false,
                 );
@@ -2886,6 +2965,12 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.details.select_gen = 0;
             state.details.pending_select = None;
             state.details.open(gid.clone());
+            if let Some(a) = state.tasks.get(&gid).and_then(|t| t.advanced.as_ref()) {
+                state.details.apply_advanced(a);
+                state.details.advanced_loaded = true;
+                state.details.advanced_dirty = false;
+                state.details.advanced_saving = false;
+            }
             if state
                 .tasks
                 .get(&gid)
@@ -2896,10 +2981,17 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             } else if state
                 .handle
                 .cmd_tx
-                .send(EngineCmd::FetchTaskDetails(gid))
+                .send(EngineCmd::FetchTaskDetails(gid.clone()))
                 .is_err()
             {
                 tracing::warn!("fetch task details cmd send failed");
+            } else if state
+                .handle
+                .cmd_tx
+                .send(EngineCmd::FetchTaskAdvanced(gid))
+                .is_err()
+            {
+                tracing::warn!("fetch task advanced cmd send failed");
             }
         }
         Message::Task(TaskMsg::CloseTaskDetails) => {
@@ -2929,6 +3021,49 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     {
                         tracing::warn!("refresh task details cmd send failed");
                     }
+                    if queryable
+                        && !state.details.advanced_dirty
+                        && state
+                            .handle
+                            .cmd_tx
+                            .send(EngineCmd::FetchTaskAdvanced(gid.clone()))
+                            .is_err()
+                    {
+                        tracing::warn!("refresh task advanced cmd send failed");
+                    }
+                }
+            }
+        }
+        Message::Task(TaskMsg::DetailsAdvancedFieldChanged(field, value)) => {
+            let d = &mut state.details;
+            match field {
+                AddField::UserAgent => d.user_agent = value,
+                AddField::HttpUser => d.http_user = value,
+                AddField::HttpPasswd => d.http_passwd = value,
+                AddField::Referer => d.referer = value,
+                AddField::Cookie => d.cookie = value,
+                AddField::ProxyServer => d.proxy_server = value,
+                AddField::ProxyUsername => d.proxy_username = value,
+                AddField::ProxyPassword => d.proxy_password = value,
+                AddField::Out => {}
+            }
+            state.details.advanced_dirty = true;
+        }
+        Message::Task(TaskMsg::DetailsAdvancedSave) => {
+            if let Some(ref gid) = state.details.gid {
+                let advanced = state.details.to_advanced();
+                state.details.advanced_saving = true;
+                if state
+                    .handle
+                    .cmd_tx
+                    .send(EngineCmd::ChangeTaskAdvanced {
+                        gid: gid.clone(),
+                        advanced,
+                    })
+                    .is_err()
+                {
+                    tracing::warn!("change task advanced cmd send failed");
+                    state.details.advanced_saving = false;
                 }
             }
         }
@@ -3645,7 +3780,9 @@ fn build_engine_stream(slot: &EventSlot) -> impl iced::futures::Stream<Item = Me
         move |mut sender: iced::futures::channel::mpsc::Sender<Message>| async move {
             if let Some(mut rx) = rx {
                 while let Some(ev) = rx.recv().await {
-                    let _ = sender.send(Message::Engine(EngineMsg::Event(ev))).await;
+                    let _ = sender
+                        .send(Message::Engine(EngineMsg::Event(Box::new(ev))))
+                        .await;
                 }
             }
         },
