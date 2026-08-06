@@ -831,7 +831,7 @@ fn escape_exec(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-fn data_home() -> Option<PathBuf> {
+pub(crate) fn data_home() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("XDG_DATA_HOME") {
         if !dir.is_empty() {
             return Some(PathBuf::from(dir));

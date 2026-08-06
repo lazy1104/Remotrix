@@ -44,10 +44,14 @@ fn main() -> iced::Result {
         "remotrix starting"
     );
 
-    if let Ok(Some(version)) = crate::app_updater::apply_pending_app_update() {
-        tracing::info!(%version, "app self-update applied, relaunching");
-        crate::app_updater::relaunch_after_update();
-        return Ok(());
+    match crate::app_updater::apply_pending_app_update() {
+        Ok(Some(version)) => {
+            tracing::info!(%version, "app self-update applied, relaunching");
+            crate::app_updater::relaunch_after_update();
+            return Ok(());
+        }
+        Ok(None) => {}
+        Err(e) => tracing::error!("app self-update apply failed: {e}"),
     }
 
     let w = cfg.window_width.max(800.0);

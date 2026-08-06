@@ -21,8 +21,7 @@ struct PendingInfo {
 const PENDING_FILE: &str = ".pending-update";
 
 pub fn app_update_dir() -> Option<PathBuf> {
-    let proj = directories::ProjectDirs::from("dev", "remotrix", "Remotrix")?;
-    let dir = proj.data_dir().join("app");
+    let dir = crate::config::data_home()?.join("remotrix").join("app");
     let _ = std::fs::create_dir_all(&dir);
     Some(dir)
 }
@@ -31,12 +30,30 @@ pub async fn stage_app_update(
     download: &AppUpdateDownload,
     proxy: Option<String>,
 ) -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
+    let dir = exe.parent().ok_or("cannot determine install directory")?;
+    let probe = dir.join(format!(".remotrix-swap-probe-{}", std::process::id()));
+    if std::fs::write(&probe, b"").is_err() {
+        return Err(
+            "installed in a protected directory; self-update is not supported — please reinstall via the package"
+                .into(),
+        );
+    }
+    let _ = std::fs::remove_file(&probe);
+
     let dir = app_update_dir().ok_or("cannot determine app data directory")?;
     let bin_name = format!("remotrix-{}-{}", download.version, download.slug);
     let part_path = dir.join(format!("{bin_name}.part"));
     let bin_path = dir.join(&bin_name);
 
     aria2_fetcher::download_file(&download.download_url, &part_path, proxy.as_deref()).await?;
+
+    if download.sha256.is_none() {
+        tracing::warn!(
+            "app update {} has no checksum; will be applied unverified",
+            download.version
+        );
+    }
 
     if let Some(expected) = &download.sha256 {
         let digest = aria2_fetcher::sha256_file(&part_path).map_err(|e| format!("sha256: {e}"))?;
@@ -85,12 +102,26 @@ pub fn apply_pending_app_update() -> Result<Option<String>, String> {
         let _ = std::fs::remove_file(&pending_path);
         return Ok(None);
     }
-    match aria2_fetcher::sha256_file(&staged) {
-        Ok(digest) if digest == pending.sha256 => {}
-        _ => {
-            let _ = std::fs::remove_file(&staged);
-            let _ = std::fs::remove_file(&pending_path);
-            return Ok(None);
+    if pending.sha256.is_empty() {
+        tracing::warn!(
+            "app update {} has no recorded checksum; applying unverified",
+            pending.version
+        );
+    } else {
+        match aria2_fetcher::sha256_file(&staged) {
+            Ok(digest) if digest == pending.sha256 => {}
+            Ok(digest) => {
+                tracing::warn!(expected=%pending.sha256, got=digest, "app update checksum mismatch; discarding");
+                let _ = std::fs::remove_file(&staged);
+                let _ = std::fs::remove_file(&pending_path);
+                return Ok(None);
+            }
+            Err(e) => {
+                tracing::warn!(error=%e, "app update staged file unreadable; discarding");
+                let _ = std::fs::remove_file(&staged);
+                let _ = std::fs::remove_file(&pending_path);
+                return Ok(None);
+            }
         }
     }
 
@@ -130,6 +161,7 @@ fn swap_in_pending(current_exe: &Path, staged: &Path) -> Result<(), String> {
     std::fs::rename(current_exe, &bak).map_err(|e| format!("rename current->bak: {e}"))?;
     std::fs::rename(staged, current_exe).map_err(|e| format!("rename staged->current: {e}"))?;
     aria2_fetcher::set_perms(current_exe)?;
+    let _ = std::fs::remove_file(&bak);
     Ok(())
 }
 
@@ -154,6 +186,7 @@ fn swap_in_pending(current_exe: &Path, staged: &Path) -> Result<(), String> {
          )\r\n\
          move /Y \"{current}\" \"{bak}\" >nul\r\n\
          move /Y \"{staged}\" \"{current}\" >nul\r\n\
+         set REMOTRIX_RESTART=1\r\n\
          start \"\" \"{current}\"\r\n"
     );
     let mut f = std::fs::File::create(&helper).map_err(|e| format!("create swap helper: {e}"))?;
