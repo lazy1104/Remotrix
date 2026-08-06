@@ -100,6 +100,10 @@ impl DownloadTask {
     }
 }
 
+pub(crate) fn is_download_complete(status: &str, is_seeding: bool) -> bool {
+    status == "complete" || (status == "active" && is_seeding)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskStatus {
     Waiting,

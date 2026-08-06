@@ -1968,11 +1968,8 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             } => {
                 refresh_tray(state);
                 state.tracking.synced_gids.insert(gid.clone());
-                let was_completed = state
-                    .tasks
-                    .get(&gid)
-                    .map(|t| t.status == TaskStatus::Completed)
-                    .unwrap_or(false);
+                let was_download_complete = state.tracking.completion_toasted.contains(&gid);
+                let is_download_complete = crate::task::is_download_complete(&status, is_seeding);
                 let was_error = state
                     .tasks
                     .get(&gid)
@@ -2121,54 +2118,52 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         }
                     }
                 }
-                if was_completed && status != "complete" {
+                if !is_download_complete {
                     state.tracking.completion_toasted.remove(&gid);
-                }
-                if status == "complete" && !was_completed {
+                } else if !state.tracking.sync_done {
+                    state.tracking.completion_toasted.insert(gid.clone());
+                } else if !was_download_complete {
                     if let Some(t) = state.tasks.get(&gid) {
                         let name = t.name.clone();
                         let open_path = t.save_dir.join(&t.name);
-                        if state.tracking.completion_toasted.insert(gid.clone()) {
-                            let mut args = std::collections::HashMap::new();
-                            args.insert(
-                                std::borrow::Cow::from("name"),
-                                std::borrow::Cow::from(name).into(),
-                            );
-                            spawn_toast(
+                        state.tracking.completion_toasted.insert(gid.clone());
+                        let mut args = std::collections::HashMap::new();
+                        args.insert(
+                            std::borrow::Cow::from("name"),
+                            std::borrow::Cow::from(name).into(),
+                        );
+                        spawn_toast(
+                            state,
+                            ToastGroup::Task,
+                            ToastKind::Success,
+                            state.fluent.get_args(Tr::DownloadComplete, &args),
+                            Some(Duration::from_secs(4)),
+                            false,
+                        );
+                        if state.settings.notifications.download_complete {
+                            let title = state.fluent.get(Tr::DownloadCompleteTitle);
+                            let body = state.fluent.get_args(Tr::DownloadComplete, &args);
+                            let open_path_clone = open_path.clone();
+                            send_system_notification(
                                 state,
-                                ToastGroup::Task,
-                                ToastKind::Success,
-                                state.fluent.get_args(Tr::DownloadComplete, &args),
-                                Some(Duration::from_secs(4)),
-                                false,
+                                title,
+                                body,
+                                vec![
+                                    (
+                                        state.fluent.get(Tr::Open),
+                                        crate::notify::NotifyAction::OpenFile(
+                                            open_path_clone.clone(),
+                                        ),
+                                    ),
+                                    (
+                                        state.fluent.get(Tr::Locate),
+                                        crate::notify::NotifyAction::RevealDir(open_path_clone),
+                                    ),
+                                ],
+                                crate::notify::NotifyAction::OpenFile(open_path),
                             );
-                            if state.tracking.sync_done
-                                && state.settings.notifications.download_complete
-                            {
-                                let title = state.fluent.get(Tr::DownloadCompleteTitle);
-                                let body = state.fluent.get_args(Tr::DownloadComplete, &args);
-                                let open_path_clone = open_path.clone();
-                                send_system_notification(
-                                    state,
-                                    title,
-                                    body,
-                                    vec![
-                                        (
-                                            state.fluent.get(Tr::Open),
-                                            crate::notify::NotifyAction::OpenFile(
-                                                open_path_clone.clone(),
-                                            ),
-                                        ),
-                                        (
-                                            state.fluent.get(Tr::Locate),
-                                            crate::notify::NotifyAction::RevealDir(open_path_clone),
-                                        ),
-                                    ],
-                                    crate::notify::NotifyAction::OpenFile(open_path),
-                                );
-                            }
-                            return Task::none();
                         }
+                        return Task::none();
                     }
                 }
                 if was_error && status != "error" {
