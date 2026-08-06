@@ -27,7 +27,7 @@ futures = "0.3"
 base64 = "0.23"
 hex = "0.4"
 num-traits = "0.2"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "socks"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "socks"] }
 sha2 = "0.11"
 rusqlite = { version = "0.32", features = ["bundled"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
