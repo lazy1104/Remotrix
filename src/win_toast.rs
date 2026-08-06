@@ -23,7 +23,11 @@ const PKEY_APPUSERMODEL_ID: PROPERTYKEY = PROPERTYKEY {
 
 pub fn init() {
     set_process_aumid();
-    ensure_shortcut();
+    let _ = std::thread::Builder::new()
+        .name("remotrix-win-toast".into())
+        .spawn(|| {
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(ensure_shortcut));
+        });
 }
 
 fn set_process_aumid() {
@@ -51,10 +55,19 @@ pub fn ensure_shortcut() -> bool {
         return false;
     };
     let shortcut_path = programs_dir.join("Remotrix.lnk");
+    if shortcut_path.exists() {
+        return true;
+    }
 
-    let _ = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    if !hr.is_ok() {
+        tracing::debug!(error = %hr, "win_toast: CoInitializeEx failed");
+        return false;
+    }
     let result = build_shortcut(&exe, &shortcut_path);
-    unsafe { CoUninitialize() };
+    if hr.0 == 0 {
+        unsafe { CoUninitialize() };
+    }
     result
 }
 
