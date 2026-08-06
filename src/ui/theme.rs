@@ -17,7 +17,10 @@ pub enum ThemeMode {
 }
 
 pub fn detect_dark() -> bool {
-    matches!(dark_light::detect(), dark_light::Mode::Dark)
+    matches!(
+        dark_light::detect().unwrap_or(dark_light::Mode::Light),
+        dark_light::Mode::Dark
+    )
 }
 
 pub fn resolve_mode(mode: ThemeMode, system_dark: Option<bool>) -> bool {

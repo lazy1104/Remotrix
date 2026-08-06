@@ -311,7 +311,7 @@ pub(crate) fn sha256_file(path: &Path) -> Result<String, String> {
     let data = std::fs::read(path).map_err(|e| format!("read file for sha256: {e}"))?;
     let mut hasher = Sha256::new();
     hasher.update(&data);
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hex::encode(hasher.finalize()))
 }
 
 pub(crate) async fn download_file(

@@ -18,22 +18,22 @@ serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
-directories = "5"
+directories = "6"
 rfd = "0.15"
-image = { version = "0.24", default-features = false, features = ["png"] }
-dark-light = "1.1"
-fluent-templates = "0.14.0"
+image = { version = "0.25", default-features = false, features = ["png"] }
+dark-light = "2.0"
+fluent-templates = "0.15.1"
 futures = "0.3"
-base64 = "0.22"
+base64 = "0.23"
 hex = "0.4"
 num-traits = "0.2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "socks"] }
-sha2 = "0.10"
+sha2 = "0.11"
 rusqlite = { version = "0.32", features = ["bundled"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 open = "5"
 libc = "0.2"
-fontdb = "0.23"
+fontdb = "0.24"
 sys-locale = "0.3"
 iced_aw = { version = "0.14", default-features = false, features = ["time_picker"] }
 iced_anim = "=0.3.1"
