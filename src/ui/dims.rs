@@ -72,9 +72,9 @@ pub const PADDING_BOTTOM_HEADER: Padding = Padding {
 };
 pub const PADDING_HUD: Padding = Padding {
     // 速度 HUD 胶囊
-    top: 8.0,
+    top: 4.0,
     right: 12.0,
-    bottom: 8.0,
+    bottom: 4.0,
     left: 0.0,
 };
 pub const PADDING_TOAST: Padding = Padding {

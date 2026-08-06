@@ -301,6 +301,7 @@ pub struct Remotrix {
     anim_now: Instant,
     progress_anim: HashMap<String, crate::ui::animation::ProgressTween>,
     filter_pill: crate::ui::category_bar::FilterPill,
+    hud_anim: crate::ui::components::speed_hud::HudTween,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
@@ -419,6 +420,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         anim_now: Instant::now(),
         progress_anim: HashMap::new(),
         filter_pill: crate::ui::category_bar::FilterPill::new(0.0),
+        hud_anim: crate::ui::components::speed_hud::HudTween::new(),
     };
 
     refresh_tray(&mut state);
@@ -3461,8 +3463,25 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.anim_now = now;
             state.progress_anim.retain(|_, a| a.is_animating(now));
             state.filter_pill.tick(now);
+            state.hud_anim.towards(
+                if state.tracking.active_count > 0 {
+                    1.0
+                } else {
+                    0.0
+                },
+                now,
+            );
         }
     }
+    state.anim_now = Instant::now();
+    state.hud_anim.towards(
+        if state.tracking.active_count > 0 {
+            1.0
+        } else {
+            0.0
+        },
+        state.anim_now,
+    );
     Task::none()
 }
 
@@ -3614,9 +3633,10 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
     };
     let hud_overlay = container(crate::ui::components::speed_hud::view(
         t,
-        state.tracking.active_count > 0,
         dl,
         up,
+        state.anim_now,
+        &state.hud_anim,
     ))
     .width(Length::Fill)
     .height(Length::Fill)
@@ -3939,6 +3959,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         .values()
         .any(|p| p.is_animating(state.anim_now))
         || state.filter_pill.is_animating()
+        || state.hud_anim.is_animating(state.anim_now)
     {
         iced::time::every(Duration::from_millis(16)).map(Message::AnimTick)
     } else {
