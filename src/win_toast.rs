@@ -6,7 +6,7 @@ use windows::Win32::Foundation::PROPERTYKEY;
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, IPersistFile,
     StructuredStorage::{PROPVARIANT, PROPVARIANT_0, PROPVARIANT_0_0, PROPVARIANT_0_0_0},
-    CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
+    CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, STGM_READ,
 };
 use windows::Win32::System::Variant::VT_LPWSTR;
 use windows::Win32::UI::Shell::{
@@ -54,9 +54,14 @@ pub fn ensure_shortcut() -> bool {
     let Some(programs_dir) = start_menu_programs_dir() else {
         return false;
     };
-    let shortcut_path = programs_dir.join("Remotrix.lnk");
-    if shortcut_path.exists() {
+    let shortcut_path = programs_dir.join("Remotrix").join("Remotrix.lnk");
+    if shortcut_aumid(&shortcut_path).as_deref() == Some(AUMID) {
         return true;
+    }
+
+    if let Err(e) = std::fs::create_dir_all(shortcut_path.parent().unwrap_or(&programs_dir)) {
+        tracing::debug!(error = %e, "win_toast: failed to create shortcut directory");
+        return false;
     }
 
     let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
@@ -65,6 +70,31 @@ pub fn ensure_shortcut() -> bool {
         return false;
     }
     let result = build_shortcut(&exe, &shortcut_path);
+    if hr.0 == 0 {
+        unsafe { CoUninitialize() };
+    }
+    result
+}
+
+fn shortcut_aumid(path: &std::path::Path) -> Option<String> {
+    let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    if !hr.is_ok() {
+        return None;
+    }
+    let result = (|| -> Option<String> {
+        let shell: IShellLinkW =
+            unsafe { CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER) }.ok()?;
+        let persist: IPersistFile = shell.cast().ok()?;
+        let path_h = HSTRING::from(path.to_string_lossy().as_ref());
+        unsafe { persist.Load(&path_h, STGM_READ) }.ok()?;
+        let store: IPropertyStore = shell.cast().ok()?;
+        let propvar = unsafe { store.GetValue(&PKEY_APPUSERMODEL_ID) }.ok()?;
+        if propvar.Anonymous.Anonymous.vt != VT_LPWSTR {
+            return None;
+        }
+        let pwsz = propvar.Anonymous.Anonymous.Anonymous.pwszVal;
+        Some(unsafe { HSTRING::from_ptr(pwsz.0) }.to_string())
+    })();
     if hr.0 == 0 {
         unsafe { CoUninitialize() };
     }
@@ -81,10 +111,6 @@ fn build_shortcut(exe: &std::path::Path, shortcut_path: &std::path::Path) -> boo
         unsafe { shell.SetPath(&exe_h) }.map_err(|e| format!("SetPath: {e:?}"))?;
         unsafe { shell.SetIconLocation(&exe_h, 0) }
             .map_err(|e| format!("SetIconLocation: {e:?}"))?;
-
-        let persist: IPersistFile = shell.cast().map_err(|e| format!("cast: {e:?}"))?;
-        let path_h = HSTRING::from(shortcut_path.to_string_lossy().as_ref());
-        unsafe { persist.Save(&path_h, true) }.map_err(|e| format!("Save: {e:?}"))?;
 
         let store: IPropertyStore = shell
             .cast()
@@ -106,6 +132,10 @@ fn build_shortcut(exe: &std::path::Path, shortcut_path: &std::path::Path) -> boo
         unsafe { store.SetValue(&PKEY_APPUSERMODEL_ID, &propvar) }
             .map_err(|e| format!("SetValue: {e:?}"))?;
         unsafe { store.Commit() }.map_err(|e| format!("Commit: {e:?}"))?;
+
+        let persist: IPersistFile = shell.cast().map_err(|e| format!("cast: {e:?}"))?;
+        let path_h = HSTRING::from(shortcut_path.to_string_lossy().as_ref());
+        unsafe { persist.Save(&path_h, true) }.map_err(|e| format!("Save: {e:?}"))?;
         Ok(())
     };
 
