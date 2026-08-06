@@ -418,12 +418,18 @@ fn general_view<'a>(
             ]
             .align_y(Alignment::Center),
         )
-        .push(last_check_row(fluent, settings, update_check_in_flight))
+        .push(last_check_row(
+            fluent,
+            theme,
+            settings,
+            update_check_in_flight,
+        ))
         .into()
 }
 
 fn last_check_row<'a>(
     fluent: &'a Fluent,
+    theme: &iced::Theme,
     settings: &'a Settings,
     update_check_in_flight: bool,
 ) -> Element<'a, Message> {
@@ -442,7 +448,11 @@ fn last_check_row<'a>(
     let check_btn = if update_check_in_flight {
         button(
             row![
-                icon::hourglass().size(FONT_ICON),
+                crate::ui::components::spinner::Spinner::hourglass(
+                    theme::accent(theme),
+                    FONT_ICON as f32
+                )
+                .view(),
                 text(fluent.get(Tr::CheckingUpdate)).size(FONT_SMALL),
             ]
             .spacing(SPACE_SM)
@@ -1049,7 +1059,12 @@ fn bittorrent_view<'a>(
         fluent.get(Tr::BtTrackerSync),
         button(
             row![
-                icon::refresh().size(FONT_ICON),
+                if syncing_trackers {
+                    crate::ui::components::spinner::Spinner::refresh(accent, FONT_ICON as f32)
+                        .view()
+                } else {
+                    icon::refresh().size(FONT_ICON).into()
+                },
                 text(fluent.get(Tr::BtTrackerSync)).size(FONT_BODY),
             ]
             .spacing(SPACE_SM)

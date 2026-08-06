@@ -218,6 +218,7 @@ pending-update-hint = New version downloaded, restart engine to apply
 update-dialog-title = Updates available
 update-dialog-changelog = Changelog
 update-changelog-empty = No changelog
+update-changelog-failed = Failed to load changelog
 update-app-restart = Downloaded — restart the app to finish updating
 update-engine-restart = Downloaded — restart the engine to apply
 aria2-silent-update = Silent aria2-next updates

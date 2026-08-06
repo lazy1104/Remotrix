@@ -29,6 +29,7 @@ pub struct UpdateOffer {
 pub struct ChangelogState {
     pub md: iced::widget::markdown::Content,
     pub loading: bool,
+    pub failed: bool,
 }
 
 fn component_label(fluent: &Fluent, c: UpdateComponent) -> String {
@@ -113,10 +114,41 @@ pub fn view<'a>(
 
     body = body.push(text(fluent.get(Tr::UpdateDialogChangelog)).size(FONT_MEDIUM));
     let changelog: Element<'a, Message> = if changelogs[active_tab].loading {
-        column![text(fluent.get(Tr::Loading))
-            .size(FONT_SMALL)
-            .style(theme::style::text::secondary),]
+        container(
+            row![
+                crate::ui::components::spinner::Spinner::refresh(
+                    theme::accent(theme),
+                    FONT_ICON as f32
+                )
+                .view(),
+                text(fluent.get(Tr::Loading))
+                    .size(FONT_SMALL)
+                    .style(theme::style::text::secondary),
+            ]
+            .spacing(SPACE_SM)
+            .align_y(Alignment::Center),
+        )
         .width(Length::Fill)
+        .center_x(Length::Fill)
+        .into()
+    } else if changelogs[active_tab].failed {
+        column![
+            text(fluent.get(Tr::UpdateChangelogFailed))
+                .size(FONT_SMALL)
+                .style(theme::style::text::secondary),
+            button(
+                row![
+                    icon::refresh().size(FONT_ICON),
+                    text(fluent.get(Tr::Retry)).size(FONT_BODY),
+                ]
+                .spacing(SPACE_SM)
+                .align_y(Alignment::Center),
+            )
+            .on_press(Message::Settings(SettingsMsg::RetryChangelog(active_tab)))
+            .padding(PADDING_BUTTON_SM)
+            .style(theme::style::button::secondary()),
+        ]
+        .spacing(SPACE_SM)
         .align_x(Alignment::Center)
         .into()
     } else if offer.changelog.trim().is_empty() {

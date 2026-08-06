@@ -9,7 +9,7 @@ use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
-pub fn view<'a>(fluent: &'a Fluent, theme: &'a iced::Theme, page: Page) -> Element<'a, Message> {
+pub fn view<'a>(fluent: &'a Fluent, theme: &'a iced::Theme, _page: Page) -> Element<'a, Message> {
     let logo = container(logo::view(theme, SIDEBAR_LOGO_W, SIDEBAR_LOGO_H))
         .center_x(Length::Fill)
         .width(Length::Fill)

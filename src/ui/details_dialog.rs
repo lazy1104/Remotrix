@@ -410,11 +410,28 @@ fn activity_tab<'a>(
         } else {
             fluent.get(Tr::TaskGone)
         };
-        let empty: Element<'a, Message> =
-            container(text(fallback_text).size(FONT_BODY).style(text_secondary_fn))
-                .center_x(Length::Fill)
-                .center_y(Length::Fill)
-                .into();
+        let empty_widget: Element<'a, Message> = if state.loading {
+            row![
+                crate::ui::components::spinner::Spinner::refresh(
+                    theme::accent(theme),
+                    FONT_ICON as f32
+                )
+                .view(),
+                text(fallback_text).size(FONT_BODY).style(text_secondary_fn),
+            ]
+            .spacing(SPACE_SM)
+            .align_y(Alignment::Center)
+            .into()
+        } else {
+            text(fallback_text)
+                .size(FONT_BODY)
+                .style(text_secondary_fn)
+                .into()
+        };
+        let empty: Element<'a, Message> = container(empty_widget)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into();
         return empty;
     };
 
@@ -492,8 +509,26 @@ fn files_tab<'a>(
         } else {
             fluent.get(Tr::TaskGone)
         };
+        let fallback_widget: Element<'a, Message> = if state.loading {
+            row![
+                crate::ui::components::spinner::Spinner::refresh(
+                    theme::accent(theme),
+                    FONT_ICON as f32
+                )
+                .view(),
+                text(fallback_text).size(FONT_BODY).style(text_secondary_fn),
+            ]
+            .spacing(SPACE_SM)
+            .align_y(Alignment::Center)
+            .into()
+        } else {
+            text(fallback_text)
+                .size(FONT_BODY)
+                .style(text_secondary_fn)
+                .into()
+        };
         container(
-            container(text(fallback_text).size(FONT_BODY).style(text_secondary_fn))
+            container(fallback_widget)
                 .center_x(Length::Fill)
                 .center_y(Length::Fill),
         )

@@ -193,6 +193,7 @@ pub enum SettingsMsg {
     UpdateDialogTab(usize),
     UpdateDialogCancel,
     UpdateDialogApply,
+    RetryChangelog(usize),
     UpdateDownloadStarted(Result<String, String>),
     UpdateResult {
         offers: Vec<crate::ui::update_dialog::UpdateOffer>,

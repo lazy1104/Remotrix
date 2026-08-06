@@ -10,6 +10,7 @@ pub mod path_picker;
 pub mod piece_map;
 pub mod slim_scrollable;
 pub mod speed_hud;
+pub mod spinner;
 pub mod tag_picker;
 pub mod toast;
 pub mod tooltip;

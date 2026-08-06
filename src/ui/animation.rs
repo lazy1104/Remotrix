@@ -55,21 +55,17 @@ impl ProgressTween {
     }
 }
 
-#[allow(dead_code)]
 static ANIM_EPOCH: OnceLock<Instant> = OnceLock::new();
-#[allow(dead_code)]
 fn epoch() -> Instant {
     *ANIM_EPOCH.get_or_init(Instant::now)
 }
 
-#[allow(dead_code)]
 pub fn cycle(now: Instant, period: Duration) -> f32 {
     let p = period.as_secs_f32();
     let t = now.duration_since(epoch()).as_secs_f32() % p;
     t / p
 }
 
-#[allow(dead_code)]
 pub fn spin(now: Instant, period: Duration) -> f32 {
     cycle(now, period) * 360.0
 }

@@ -218,6 +218,7 @@ pending-update-hint = 已下载，重启引擎以应用
 update-dialog-title = 发现可用更新
 update-dialog-changelog = 更新日志
 update-changelog-empty = 暂无更新日志
+update-changelog-failed = 更新日志加载失败
 update-app-restart = 已下载，重启应用以完成更新
 update-engine-restart = 已下载，重启引擎以应用
 aria2-silent-update = aria2-next 静默更新

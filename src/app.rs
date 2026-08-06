@@ -2741,12 +2741,22 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 dialog.active_tab = i;
             }
         }
+        Message::Settings(SettingsMsg::RetryChangelog(tab)) => {
+            if let Some(dialog) = &mut state.update_dialog {
+                if let Some(changelog) = dialog.changelogs.get_mut(tab) {
+                    changelog.loading = true;
+                    changelog.failed = false;
+                }
+            }
+            return changelog_fetch_task(state, tab);
+        }
         Message::Settings(SettingsMsg::UpdateChangelogLoaded { tab, releases }) => {
             if let Some(dialog) = &mut state.update_dialog {
                 if let Some(changelog) = dialog.changelogs.get_mut(tab) {
                     changelog.loading = false;
                     match releases {
                         Ok(rels) => {
+                            changelog.failed = false;
                             let text = concat_changelog(&rels);
                             changelog.md = iced::widget::markdown::Content::parse(&text);
                             if let Some(offer) = dialog.offers.get_mut(tab) {
@@ -2754,6 +2764,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             }
                         }
                         Err(e) => {
+                            changelog.failed = true;
                             spawn_toast(
                                 state,
                                 ToastGroup::General,
@@ -2824,6 +2835,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     .map(|_| crate::ui::update_dialog::ChangelogState {
                         md: iced::widget::markdown::Content::default(),
                         loading: true,
+                        failed: false,
                     })
                     .collect();
                 state.update_dialog = Some(UpdateDialogState {
@@ -2831,29 +2843,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     offers,
                     active_tab: 0,
                 });
-                let slug = crate::updater::platform_slug();
-                let proxy = state.settings.aria2.all_proxy_value();
                 let mut tasks = Vec::new();
-                for (tab, offer) in state
-                    .update_dialog
-                    .as_ref()
-                    .unwrap()
-                    .offers
-                    .iter()
-                    .enumerate()
-                {
-                    let (repo, prefix) = update_repo(offer.component);
-                    let current = offer.current.clone();
-                    let proxy = proxy.clone();
-                    tasks.push(Task::perform(
-                        crate::updater::fetch_changelog(repo, prefix, slug, current, proxy),
-                        move |r| {
-                            Message::Settings(SettingsMsg::UpdateChangelogLoaded {
-                                tab,
-                                releases: r,
-                            })
-                        },
-                    ));
+                for tab in 0..state.update_dialog.as_ref().unwrap().offers.len() {
+                    tasks.push(changelog_fetch_task(state, tab));
                 }
                 return Task::batch(tasks);
             } else if checked_any && errors.is_empty() {
@@ -4320,6 +4312,23 @@ fn update_repo(
             ("AnInsomniacy/aria2-next", "aria2-next")
         }
     }
+}
+
+fn changelog_fetch_task(state: &Remotrix, tab: usize) -> Task<Message> {
+    let Some(dialog) = &state.update_dialog else {
+        return Task::none();
+    };
+    let Some(offer) = dialog.offers.get(tab) else {
+        return Task::none();
+    };
+    let (repo, prefix) = update_repo(offer.component);
+    let current = offer.current.clone();
+    let slug = crate::updater::platform_slug();
+    let proxy = state.settings.aria2.all_proxy_value();
+    Task::perform(
+        crate::updater::fetch_changelog(repo, prefix, slug, current, proxy),
+        move |r| Message::Settings(SettingsMsg::UpdateChangelogLoaded { tab, releases: r }),
+    )
 }
 
 fn concat_changelog(rels: &[crate::updater::ReleaseInfo]) -> String {
