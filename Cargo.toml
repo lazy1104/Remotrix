@@ -19,7 +19,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 directories = "6"
-rfd = "0.15"
+rfd = "0.17"
 image = { version = "0.25", default-features = false, features = ["png"] }
 dark-light = "2.0"
 fluent-templates = "0.15.1"
