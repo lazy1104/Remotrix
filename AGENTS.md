@@ -96,7 +96,7 @@ let status = client.tell_status(&gid).await?;
 
 ## Cargo.toml Dependencies
 ```toml
-[package] name = "remotrix" version = "0.1.0" edition = "2021" license = "MIT"
+[package] name = "remotrix" version = "0.1.1" edition = "2021" license = "MIT"
 [dependencies]
 aria2-ws = "0.5"
 iced = { version = "0.14", features = ["tokio", "advanced", "canvas", "svg"] }

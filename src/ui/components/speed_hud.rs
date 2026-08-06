@@ -128,6 +128,9 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Clip<'a, Mess
         viewport: &Rectangle,
     ) {
         let bounds = layout.bounds();
+        let Some(clipped_viewport) = bounds.intersection(viewport) else {
+            return;
+        };
         renderer.with_layer(bounds, |renderer| {
             self.content.as_widget().draw(
                 tree,
@@ -136,7 +139,7 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Clip<'a, Mess
                 style,
                 layout.children().next().unwrap(),
                 cursor,
-                viewport,
+                &clipped_viewport,
             );
         });
     }

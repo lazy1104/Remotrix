@@ -76,15 +76,24 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Me
             } else {
                 bounds
             };
+            let Some(clipped_viewport) = layer.intersection(viewport) else {
+                return;
+            };
             renderer.with_layer(layer, |renderer| {
                 let child = if self.pinned {
                     layout
                 } else {
                     layout.children().next().unwrap()
                 };
-                self.content
-                    .as_widget()
-                    .draw(tree, renderer, theme, style, child, cursor, viewport);
+                self.content.as_widget().draw(
+                    tree,
+                    renderer,
+                    theme,
+                    style,
+                    child,
+                    cursor,
+                    &clipped_viewport,
+                );
             });
         }
     }
