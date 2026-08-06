@@ -99,6 +99,48 @@ impl CardAnim {
     }
 }
 
+#[derive(Default)]
+pub struct DialogAnim {
+    anim: Option<CardAnim>,
+    dismissing: bool,
+}
+
+impl DialogAnim {
+    pub fn open(&mut self, now: Instant) {
+        self.anim = Some(CardAnim::entering(now));
+        self.dismissing = false;
+    }
+
+    pub fn begin_exit(&mut self, now: Instant) {
+        match &mut self.anim {
+            Some(a) => a.begin_exit(now),
+            None => self.anim = Some(CardAnim::exiting(now)),
+        }
+        self.dismissing = true;
+    }
+
+    pub fn value(&self, now: Instant) -> f32 {
+        self.anim.as_ref().map(|a| a.value(now)).unwrap_or(1.0)
+    }
+
+    pub fn is_dismissing(&self) -> bool {
+        self.dismissing
+    }
+
+    pub fn needs_tick(&self, now: Instant) -> bool {
+        self.dismissing || self.anim.as_ref().is_some_and(|a| a.is_animating(now))
+    }
+
+    pub fn tick(&mut self, now: Instant) -> bool {
+        if self.dismissing && self.anim.as_ref().is_some_and(|a| !a.is_animating(now)) {
+            self.anim = None;
+            self.dismissing = false;
+            return true;
+        }
+        false
+    }
+}
+
 static ANIM_EPOCH: OnceLock<Instant> = OnceLock::new();
 fn epoch() -> Instant {
     *ANIM_EPOCH.get_or_init(Instant::now)

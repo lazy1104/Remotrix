@@ -6,6 +6,7 @@ use crate::i18n::{Fluent, Tr};
 use crate::message::{DialogMsg, Message};
 use crate::ui::components::copyable_text::copyable_text;
 use crate::ui::components::dialog::{overlay, Dialog};
+use crate::ui::components::expand::expand;
 use crate::ui::components::logo;
 use crate::ui::dims::*;
 use crate::ui::icon;
@@ -26,6 +27,7 @@ pub fn view<'a>(
     fluent: &'a Fluent,
     theme: &'a iced::Theme,
     aria2_version: Option<&'a str>,
+    progress: f32,
 ) -> Element<'a, Message> {
     let gui_text = format!("Remotrix {}", env!("CARGO_PKG_VERSION"));
     let engine_text = match aria2_version {
@@ -86,11 +88,12 @@ pub fn view<'a>(
                 .style(theme::style::text::secondary),
         );
 
-    overlay(
+    overlay(expand(
         Dialog::new()
             .width(380.0)
             .with_close(Message::Dialog(DialogMsg::CloseAbout))
             .body(body)
             .build(),
-    )
+        progress,
+    ))
 }

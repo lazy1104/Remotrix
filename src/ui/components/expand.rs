@@ -91,9 +91,6 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Me
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
-        if !cursor.is_over(layout.bounds()) {
-            return;
-        }
         let child = if self.progress >= 1.0 {
             layout
         } else {
@@ -129,9 +126,6 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Me
         viewport: &Rectangle,
         renderer: &iced::Renderer,
     ) -> mouse::Interaction {
-        if !cursor.is_over(layout.bounds()) {
-            return mouse::Interaction::None;
-        }
         let child = if self.progress >= 1.0 {
             layout
         } else {

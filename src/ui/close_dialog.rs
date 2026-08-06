@@ -4,6 +4,7 @@ use iced::{Alignment, Element};
 use crate::i18n::{Fluent, Tr};
 use crate::message::{CloseDialogChoice, Message, WindowMsg};
 use crate::ui::components::dialog::{overlay, Dialog};
+use crate::ui::components::expand::expand;
 use crate::ui::dims::*;
 use crate::ui::theme;
 
@@ -12,6 +13,7 @@ pub fn view<'a>(
     _theme: &iced::Theme,
     tray_available: bool,
     close_to_tray: bool,
+    progress: f32,
 ) -> Element<'a, Message> {
     let body_text = text(fluent.get(Tr::ConfirmCloseBody))
         .size(FONT_MEDIUM)
@@ -58,7 +60,7 @@ pub fn view<'a>(
         .spacing(SPACE_XL)
         .align_y(Alignment::Center);
 
-    overlay(
+    overlay(expand(
         Dialog::new()
             .title(fluent.get(Tr::ConfirmCloseTitle))
             .with_close(Message::Window(WindowMsg::CloseDialog(
@@ -67,5 +69,6 @@ pub fn view<'a>(
             .body(body)
             .footer(buttons)
             .build(),
-    )
+        progress,
+    ))
 }

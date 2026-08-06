@@ -10,6 +10,7 @@ use crate::task::{
     TaskAdvancedOptions, TaskDetails,
 };
 use crate::ui::components::dialog::overlay;
+use crate::ui::components::expand::expand;
 use crate::ui::components::file_tree;
 use crate::ui::components::key_value_list::key_value_list;
 use crate::ui::components::slim_scrollable::slim_scrollable;
@@ -151,6 +152,7 @@ pub fn view<'a>(
     theme: &'a iced::Theme,
     task: Option<&'a DownloadTask>,
     state: &'a DetailsDialogState,
+    progress: f32,
 ) -> Element<'a, Message> {
     let close_btn = button(icon::x().size(FONT_HERO).line_height(1.0))
         .on_press(Message::Task(TaskMsg::CloseTaskDetails))
@@ -219,22 +221,23 @@ pub fn view<'a>(
         },
     };
 
-    let panel = container(
-        column![]
-            .push(header)
-            .push(tab_bar)
-            .push(iced::widget::rule::horizontal(1))
-            .push(body)
-            .spacing(SPACE_LG)
-            .width(Length::Fill)
-            .height(Length::Fill),
-    )
-    .width(Length::Fixed(DETAILS_WIDTH))
-    .height(Length::Fixed(480.0))
-    .padding(PADDING_DETAILS)
-    .style(theme::style::card);
-
-    overlay(panel)
+    overlay(expand(
+        container(
+            column![]
+                .push(header)
+                .push(tab_bar)
+                .push(iced::widget::rule::horizontal(1))
+                .push(body)
+                .spacing(SPACE_LG)
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .width(Length::Fixed(DETAILS_WIDTH))
+        .height(Length::Fixed(480.0))
+        .padding(PADDING_DETAILS)
+        .style(theme::style::card),
+        progress,
+    ))
 }
 
 fn summary_tab<'a>(
