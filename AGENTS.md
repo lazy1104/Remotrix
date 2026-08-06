@@ -8,11 +8,11 @@ Rust-native desktop download manager inspired by Motrix.app. Built with `iced` G
 | GUI | `iced 0.14` (+tokio, advanced, image, canvas) | Pure Rust, widget-based, multi-theme support |
 | Engine | `aria2-next` sidecar + `aria2-ws 0.5` | C++ aria2 fork, JSON-RPC over WebSocket; spawned as subprocess |
 | Async | `tokio 1.x` (full) | Shared runtime for engine + UI |
-| Persistence | `rusqlite 0.32` (bundled) | Embedded SQLite for task metadata / progress |
-| Themes | iced `Theme::custom` (built-in) + `dark-light 1.1` | Accent-color swatches; iced auto-generates light/dark palettes (primary + M3-style surface background) from the accent; system detection |
-| i18n | `fluent-templates 0.14` | Fluent translations (zh/en) |
-| File dialog | `rfd 0.15` | Native OS file picker |
-| Config dirs | `directories 5` | XDG/user data paths |
+| Persistence | `rusqlite 0.40` (bundled + fallible_uint) | Embedded SQLite for task metadata / progress |
+| Themes | iced `Theme::custom` (built-in) + `dark-light 2.0` | Accent-color swatches; iced auto-generates light/dark palettes (primary + M3-style surface background) from the accent; system detection |
+| i18n | `fluent-templates 0.15` | Fluent translations (zh/en) |
+| File dialog | `rfd 0.17` | Native OS file picker |
+| Config dirs | `directories 6` | XDG/user data paths |
 
 ## Architecture: aria2-next sidecar
 - **iced UI loop** runs on the main thread
@@ -107,23 +107,23 @@ anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
-directories = "5"
-rfd = "0.15"
-image = { version = "0.24", default-features = false, features = ["png"] }
-dark-light = "1.1"
-fluent-templates = "0.14.0"
+directories = "6"
+rfd = "0.17"
+image = { version = "0.25", default-features = false, features = ["png"] }
+dark-light = "2.0"
+fluent-templates = "0.15.1"
 futures = "0.3"
-base64 = "0.22"
+base64 = "0.23"
 hex = "0.4"
 num-traits = "0.2"
 iced_aw = { version = "0.14", default-features = false, features = ["time_picker"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-sha2 = "0.10"
-rusqlite = { version = "0.32", features = ["bundled"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
+sha2 = "0.11"
+rusqlite = { version = "0.40", features = ["bundled", "fallible_uint"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 open = "5"
 libc = "0.2"
-fontdb = "0.23"
+fontdb = "0.24"
 
 [build-dependencies]
 iced_lucide = "0.1"

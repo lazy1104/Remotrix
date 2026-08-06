@@ -167,21 +167,21 @@ cargo fmt --check          # 格式检查
 | GUI | `iced 0.14`（+tokio、advanced、canvas、svg、markdown） | 纯 Rust、基于控件、支持深色主题 |
 | 引擎 | `aria2-next` 侧车 + `aria2-ws 0.5` | C++ aria2 分支，WebSocket 上的 JSON-RPC，以子进程方式派生 |
 | 异步 | `tokio 1.x`（full） | 引擎 + UI 共享运行时 |
-| 持久化 | `rusqlite 0.32`（bundled） | 内嵌 SQLite，存储任务元数据 / 进度 |
+| 持久化 | `rusqlite 0.40`（bundled + fallible_uint） | 内嵌 SQLite，存储任务元数据 / 进度 |
 | 主题 | iced `Theme::custom`（内置） | 强调色色块；iced 自动生成浅 / 深色调色板 |
-| i18n | `fluent-templates 0.14` | Fluent 翻译（zh / en） |
-| 系统主题 | `dark-light 1.1` | 检测系统深色 / 浅色偏好 |
-| 文件对话框 | `rfd 0.15` | 原生文件选择器 |
+| i18n | `fluent-templates 0.15` | Fluent 翻译（zh / en） |
+| 系统主题 | `dark-light 2.0` | 检测系统深色 / 浅色偏好 |
+| 文件对话框 | `rfd 0.17` | 原生文件选择器 |
 | 系统托盘 | `ldtray 0.1` | 托盘图标 + 菜单 |
 | 通知 | `notify-rust 4.17`（tokio） | 原生桌面通知 |
 | 单实例 | `app-single-instance 0.1` | 单实例运行并聚焦已有窗口 |
-| HTTP 客户端 | `reqwest 0.12`（rustls、json） | GitHub Releases 获取 / 更新器 |
-| 哈希 | `sha2 0.10` | aria2-next 二进制校验和验证 |
+| HTTP 客户端 | `reqwest 0.13`（rustls、json） | GitHub Releases 获取 / 更新器 |
+| 哈希 | `sha2 0.11` | aria2-next 二进制校验和验证 |
 | 图标 | `iced_lucide 0.1`、`iced_aw 0.14` | 图标字体 + 时间选择器 |
-| 图像 | `image 0.24`（png） | 应用图标加载 |
+| 图像 | `image 0.25`（png） | 应用图标加载 |
 | 日志 | `tracing` + `tracing-appender 0.2` | 滚动文件日志 |
-| 配置目录 | `directories 5` | XDG / 用户数据路径 |
-| 字体 | `fontdb 0.23` | 设置中用到的系统字体枚举 |
+| 配置目录 | `directories 6` | XDG / 用户数据路径 |
+| 字体 | `fontdb 0.24` | 设置中用到的系统字体枚举 |
 | 进程 | `libc 0.2` | 对残留 aria2-next 进程发送 SIGTERM/SIGKILL |
 | 时间 | `chrono 0.4`（clock） | 时间戳格式化 |
 
