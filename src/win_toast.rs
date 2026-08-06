@@ -89,11 +89,11 @@ fn shortcut_aumid(path: &std::path::Path) -> Option<String> {
         unsafe { persist.Load(&path_h, STGM_READ) }.ok()?;
         let store: IPropertyStore = shell.cast().ok()?;
         let propvar = unsafe { store.GetValue(&PKEY_APPUSERMODEL_ID) }.ok()?;
-        if propvar.Anonymous.Anonymous.vt != VT_LPWSTR {
+        if unsafe { propvar.Anonymous.Anonymous.vt } != VT_LPWSTR {
             return None;
         }
-        let pwsz = propvar.Anonymous.Anonymous.Anonymous.pwszVal;
-        Some(unsafe { HSTRING::from_ptr(pwsz.0) }.to_string())
+        let pwsz = unsafe { propvar.Anonymous.Anonymous.Anonymous.pwszVal };
+        Some(unsafe { pwsz.to_string().unwrap_or_default() })
     })();
     if hr.0 == 0 {
         unsafe { CoUninitialize() };
