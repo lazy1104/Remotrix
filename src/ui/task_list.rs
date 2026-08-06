@@ -420,7 +420,7 @@ fn task_card<'a>(
     .padding(PADDING_TOOLBAR_CAPSULE)
     .style(theme::style::toolbar_capsule);
 
-    let bar_color = theme::task_bar_color(theme, t.status);
+    let bar_color = theme::task_bar_color(theme, t.status, t.is_seeding);
     let bar = progress_bar(0.0..=100.0, pct)
         .girth(Length::Fixed(8.0))
         .style(theme::style::progress::task(bar_color));
@@ -456,7 +456,10 @@ fn task_card<'a>(
             .style(theme::style::text::secondary)
     };
 
-    let row3 = row![]
+    let show_upload =
+        t.info_hash.is_some() && matches!(t.status, TaskStatus::Active | TaskStatus::Waiting);
+
+    let mut row3 = row![]
         .push(
             text(downloaded_text)
                 .size(FONT_SMALL)
@@ -476,32 +479,56 @@ fn task_card<'a>(
         )
         .push(sep())
         .push(icon::connections().size(FONT_SMALL).color(text_secondary))
-        .push(text(conn_text).size(FONT_SMALL))
-        .align_y(Alignment::Center)
-        .width(Length::Fill);
+        .push(text(conn_text).size(FONT_SMALL));
+    if show_upload {
+        let up_color = theme::primary_weak(theme);
+        row3 = row3
+            .push(sep())
+            .push(icon::arrow_up().size(FONT_SMALL).color(up_color))
+            .push(
+                text(format_speed(t.upload_speed))
+                    .size(FONT_SMALL)
+                    .color(up_color),
+            );
+    }
+    row3 = row3.align_y(Alignment::Center).width(Length::Fill);
 
-    let name_marker: Element<'a, Message> = match t.status {
-        TaskStatus::Completed => row![
-            icon::circle_check()
-                .size(FONT_ICON)
-                .color(theme::success(theme)),
-            name,
-        ]
-        .spacing(SPACE_SM)
-        .align_y(Alignment::Center)
-        .into(),
-        TaskStatus::Waiting => row![
+    let name_marker: Element<'a, Message> = if t.is_seeding {
+        row![
             tip::standard(
-                icon::hourglass().size(FONT_ICON).color(text_secondary),
-                text(fluent.get(Tr::Waiting)).size(FONT_SMALL),
+                icon::arrow_up().size(FONT_ICON).color(text_secondary),
+                text(fluent.get(Tr::Seeding)).size(FONT_SMALL),
                 tooltip::Position::Bottom,
             ),
             name,
         ]
         .spacing(SPACE_SM)
         .align_y(Alignment::Center)
-        .into(),
-        _ => name.into(),
+        .into()
+    } else {
+        match t.status {
+            TaskStatus::Completed => row![
+                icon::circle_check()
+                    .size(FONT_ICON)
+                    .color(theme::success(theme)),
+                name,
+            ]
+            .spacing(SPACE_SM)
+            .align_y(Alignment::Center)
+            .into(),
+            TaskStatus::Waiting => row![
+                tip::standard(
+                    icon::hourglass().size(FONT_ICON).color(text_secondary),
+                    text(fluent.get(Tr::Waiting)).size(FONT_SMALL),
+                    tooltip::Position::Bottom,
+                ),
+                name,
+            ]
+            .spacing(SPACE_SM)
+            .align_y(Alignment::Center)
+            .into(),
+            _ => name.into(),
+        }
     };
 
     let content = column![]

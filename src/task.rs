@@ -15,6 +15,7 @@ pub struct DownloadTask {
     pub added_at: i64,
     pub info_hash: Option<String>,
     pub metadata_probe_size: Option<u64>,
+    pub is_seeding: bool,
 }
 
 impl DownloadTask {

@@ -261,7 +261,10 @@ pub fn primary_weak(t: &Theme) -> Color {
     t.extended_palette().primary.weak.color
 }
 
-pub fn task_bar_color(t: &Theme, status: crate::task::TaskStatus) -> Color {
+pub fn task_bar_color(t: &Theme, status: crate::task::TaskStatus, is_seeding: bool) -> Color {
+    if is_seeding {
+        return primary_weak(t);
+    }
     match status {
         crate::task::TaskStatus::Paused => primary_weak(t),
         crate::task::TaskStatus::Error => danger(t),

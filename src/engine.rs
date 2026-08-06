@@ -152,6 +152,7 @@ pub enum EngineEvent {
         status: String,
         connections: u64,
         info_hash: Option<String>,
+        is_seeding: bool,
     },
     TorrentAdded {
         gid: String,
@@ -454,6 +455,7 @@ async fn emit_progress(event_tx: &EventTx, s: &aria2_ws::response::Status) {
         status: status_to_string(&s.status).to_string(),
         connections: s.connections,
         info_hash: s.info_hash.clone(),
+        is_seeding: s.seeder.unwrap_or(false),
     });
 }
 

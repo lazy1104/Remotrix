@@ -264,7 +264,7 @@ fn activity_tab<'a>(
         }
 
         let pct = task.progress_pct();
-        let bar_color = theme::task_bar_color(theme, task.status);
+        let bar_color = theme::task_bar_color(theme, task.status, task.is_seeding);
         let bar = progress_bar(0.0..=100.0, pct)
             .girth(Length::Fixed(8.0))
             .style(theme::style::progress::task(bar_color));
@@ -360,7 +360,7 @@ fn files_tab<'a>(
     let text_secondary_fn = theme::style::text::secondary;
 
     let pct = task.progress_pct();
-    let bar_color = theme::task_bar_color(theme, task.status);
+    let bar_color = theme::task_bar_color(theme, task.status, task.is_seeding);
     let overall_bar = progress_bar(0.0..=100.0, pct)
         .girth(Length::Fixed(8.0))
         .style(theme::style::progress::task(bar_color));

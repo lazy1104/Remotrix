@@ -109,6 +109,7 @@ impl Db {
                     Some(info_hash)
                 },
                 metadata_probe_size: None,
+                is_seeding: false,
             })
         }) {
             Ok(r) => r,

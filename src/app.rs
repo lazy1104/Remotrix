@@ -1827,6 +1827,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         added_at: now,
                         info_hash,
                         metadata_probe_size: None,
+                        is_seeding: false,
                     };
                     state.tasks.insert(gid.clone(), task);
                     state.task_order.insert(0, gid.clone());
@@ -1858,6 +1859,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 status,
                 connections,
                 info_hash,
+                is_seeding,
             } => {
                 refresh_tray(state);
                 state.tracking.synced_gids.insert(gid.clone());
@@ -1907,6 +1909,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             added_at: now,
                             info_hash: info_hash.clone(),
                             metadata_probe_size: None,
+                            is_seeding,
                         },
                     );
                     state.task_order.insert(0, gid.clone());
@@ -1933,6 +1936,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         t.speed = speed;
                         t.upload_speed = upload_speed;
                         t.connections = connections;
+                        t.is_seeding = is_seeding;
                     } else {
                         t.downloaded = downloaded;
                         t.total = total;
@@ -1940,6 +1944,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         t.upload_speed = upload_speed;
                         t.status = TaskStatus::from_engine(&status);
                         t.connections = connections;
+                        t.is_seeding = is_seeding;
                     }
                     if state.tracking.paused_gids.contains(&gid) {
                         t.status = TaskStatus::Paused;
@@ -1947,6 +1952,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     if t.status == TaskStatus::Paused {
                         t.speed = 0;
                         t.upload_speed = 0;
+                        t.is_seeding = false;
                     }
                     if was_active != (t.status == TaskStatus::Active) {
                         if t.status == TaskStatus::Active {
