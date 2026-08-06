@@ -460,6 +460,7 @@ fn last_check_row<'a>(
         )
         .on_press_maybe(None)
         .padding(PADDING_BUTTON_SM)
+        .height(Length::Fixed(crate::ui::components::CONTROL_HEIGHT))
         .style(theme::style::button::secondary())
     } else {
         button(
@@ -472,6 +473,7 @@ fn last_check_row<'a>(
         )
         .on_press(Message::Settings(SettingsMsg::CheckUpdatesNow))
         .padding(PADDING_BUTTON_SM)
+        .height(Length::Fixed(crate::ui::components::CONTROL_HEIGHT))
         .style(theme::style::button::secondary())
     };
     setting_row(
@@ -1078,6 +1080,7 @@ fn bittorrent_view<'a>(
             },
         )
         .padding(PADDING_BUTTON_SM)
+        .height(Length::Fixed(crate::ui::components::CONTROL_HEIGHT))
         .style(theme::style::button::secondary())
         .into(),
     ));
