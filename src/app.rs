@@ -300,6 +300,7 @@ pub struct Remotrix {
     app_update_in_flight: bool,
     anim_now: Instant,
     progress_anim: HashMap<String, crate::ui::animation::ProgressTween>,
+    filter_pill: crate::ui::category_bar::FilterPill,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
@@ -417,6 +418,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         app_update_in_flight: false,
         anim_now: Instant::now(),
         progress_anim: HashMap::new(),
+        filter_pill: crate::ui::category_bar::FilterPill::new(0.0),
     };
 
     refresh_tray(&mut state);
@@ -812,6 +814,19 @@ fn read_clipboard(state: &Remotrix) -> Task<Message> {
     iced::clipboard::read().map(|content| Message::Window(WindowMsg::ClipboardRead(content)))
 }
 
+fn pill_to_index(state: &mut Remotrix, index: usize) {
+    state
+        .filter_pill
+        .towards(index as f32 * crate::ui::dims::FILTER_STEP);
+}
+
+fn set_page(state: &mut Remotrix, page: Page) {
+    if state.page != page {
+        state.page = page;
+        pill_to_index(state, 0);
+    }
+}
+
 pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
     match message {
         Message::Nav(NavMsg::NavigatePage(page)) => {
@@ -819,15 +834,17 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             if page == Page::Tasks && state.page == Page::Settings && state.settings_dirty {
                 state.confirm = Some(ConfirmAction::LeaveSettings { target: page });
             } else {
-                state.page = page;
+                set_page(state, page);
             }
         }
         Message::Nav(NavMsg::SetTaskFilter(filter)) => {
             state.task_filter = filter;
+            pill_to_index(state, crate::ui::category_bar::task_filter_index(filter));
         }
         Message::Nav(NavMsg::SetSettingsCategory(cat)) => {
             state.settings_ui.download_picker.close_history();
             state.settings_cat = cat;
+            pill_to_index(state, crate::ui::category_bar::settings_cat_index(cat));
             return iced::widget::operation::scroll_to::<Message>(
                 iced::widget::Id::new(crate::ui::settings_page::SETTINGS_SCROLL_ID),
                 iced::widget::operation::AbsoluteOffset::<f32>::default(),
@@ -1054,7 +1071,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     tracing::info!("ui: torrent submitted");
                     state.add_dialog.close();
                     if nav {
-                        state.page = Page::Tasks;
+                        set_page(state, Page::Tasks);
                     }
                     return Task::none();
                 }
@@ -1087,7 +1104,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     tracing::info!(count = urls.len(), "ui: add download submitted");
                     state.add_dialog.close();
                     if nav {
-                        state.page = Page::Tasks;
+                        set_page(state, Page::Tasks);
                     }
                 } else {
                     tracing::debug!("ui: add download skipped (no urls after filter)");
@@ -3301,14 +3318,14 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::Settings(SettingsMsg::ApplyAndLeaveSettings) => {
             if let Some(ConfirmAction::LeaveSettings { target }) = state.confirm.take() {
                 apply_settings(state);
-                state.page = target;
+                set_page(state, target);
             }
         }
         Message::Settings(SettingsMsg::DiscardAndLeaveSettings) => {
             if let Some(ConfirmAction::LeaveSettings { target }) = state.confirm.take() {
                 revert_apply_settings(state);
                 config::save(&state.settings);
-                state.page = target;
+                set_page(state, target);
             }
         }
         Message::Settings(SettingsMsg::ApplyAndClose) => {
@@ -3426,7 +3443,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 "tray open settings"
             );
             state.settings_ui.download_picker.close_history();
-            state.page = Page::Settings;
+            set_page(state, Page::Settings);
             let attention = state
                 .window
                 .window_id
@@ -3443,6 +3460,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::AnimTick(now) => {
             state.anim_now = now;
             state.progress_anim.retain(|_, a| a.is_animating(now));
+            state.filter_pill.tick(now);
         }
     }
     Task::none()
@@ -3483,6 +3501,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         state.task_filter,
         state.settings_cat,
         &counts,
+        &state.filter_pill,
     );
 
     let right_col: Element<'_, Message> = match state.page {
@@ -3919,6 +3938,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         .progress_anim
         .values()
         .any(|p| p.is_animating(state.anim_now))
+        || state.filter_pill.is_animating()
     {
         iced::time::every(Duration::from_millis(16)).map(Message::AnimTick)
     } else {

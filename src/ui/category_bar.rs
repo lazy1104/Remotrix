@@ -1,8 +1,12 @@
-use iced::widget::{button, column, container, row, text};
+use std::time::{Duration, Instant};
+
+use iced::widget::{button, column, container, row, text, Stack};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, NavMsg, Page, SettingsCategory, TaskFilter};
+use crate::ui::animation::EASE_IN_OUT_QUAD;
+use crate::ui::components::translate::translate;
 use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
@@ -13,6 +17,80 @@ pub struct Counts {
     pub completed: usize,
 }
 
+pub struct FilterPill {
+    from: f32,
+    to: f32,
+    frame: u32,
+    total: u32,
+    head_start: u32,
+    animating: bool,
+}
+
+impl FilterPill {
+    pub fn new(y: f32) -> Self {
+        Self {
+            from: y,
+            to: y,
+            frame: 0,
+            total: 12,
+            head_start: 3,
+            animating: false,
+        }
+    }
+
+    pub fn towards(&mut self, y: f32) {
+        let cur = self.value();
+        if (cur - y).abs() < 0.5 {
+            return;
+        }
+        self.from = cur;
+        self.to = y;
+        self.frame = self.head_start;
+        self.animating = true;
+    }
+
+    pub fn tick(&mut self, now: Instant) {
+        if !self.animating {
+            return;
+        }
+        if Instant::now().saturating_duration_since(now) > Duration::from_millis(40) {
+            return;
+        }
+        self.frame = (self.frame + 1).min(self.total);
+        if self.frame >= self.total {
+            self.animating = false;
+        }
+    }
+
+    pub fn value(&self) -> f32 {
+        let t = self.frame as f32 / self.total as f32;
+        self.from + (self.to - self.from) * EASE_IN_OUT_QUAD.value(t)
+    }
+
+    pub fn is_animating(&self) -> bool {
+        self.animating
+    }
+}
+
+pub fn task_filter_index(f: TaskFilter) -> usize {
+    match f {
+        TaskFilter::All => 0,
+        TaskFilter::Downloading => 1,
+        TaskFilter::Completed => 2,
+    }
+}
+
+pub fn settings_cat_index(c: SettingsCategory) -> usize {
+    match c {
+        SettingsCategory::General => 0,
+        SettingsCategory::Download => 1,
+        SettingsCategory::BitTorrent => 2,
+        SettingsCategory::Ed2k => 3,
+        SettingsCategory::Network => 4,
+        SettingsCategory::Advanced => 5,
+    }
+}
+
 pub fn view<'a>(
     fluent: &'a Fluent,
     _theme: &iced::Theme,
@@ -20,6 +98,7 @@ pub fn view<'a>(
     task_filter: TaskFilter,
     settings_cat: SettingsCategory,
     counts: &Counts,
+    pill: &FilterPill,
 ) -> Element<'a, Message> {
     let title_str = match page {
         Page::Tasks => fluent.get(Tr::TasksList),
@@ -46,7 +125,7 @@ pub fn view<'a>(
                         TaskFilter::Downloading => icon::download_arrow(),
                         TaskFilter::Completed => icon::circle_check(),
                     };
-                    let btn: iced::widget::Button<'_, Message> = button(
+                    button(
                         row![]
                             .push(icon.size(FONT_ICON))
                             .push(text(label_text).size(FONT_BODY))
@@ -57,14 +136,10 @@ pub fn view<'a>(
                     )
                     .on_press(Message::Nav(NavMsg::SetTaskFilter(target)))
                     .padding(PADDING_FILTER)
+                    .height(Length::Fixed(FILTER_ITEM_H))
                     .width(Length::Fill)
-                    .style(theme::style::button::text());
-
-                    if is_active {
-                        container(btn).style(theme::style::active_filter).into()
-                    } else {
-                        container(btn).into()
-                    }
+                    .style(theme::style::button::filter(is_active))
+                    .into()
                 };
 
             column![]
@@ -97,7 +172,7 @@ pub fn view<'a>(
                     SettingsCategory::Network => icon::globe(),
                     SettingsCategory::Advanced => icon::wrench(),
                 };
-                let btn: iced::widget::Button<'_, Message> = button(
+                button(
                     row![]
                         .push(icon.size(FONT_ICON))
                         .push(text(label).size(FONT_BODY))
@@ -107,14 +182,10 @@ pub fn view<'a>(
                 )
                 .on_press(Message::Nav(NavMsg::SetSettingsCategory(target)))
                 .padding(PADDING_FILTER)
+                .height(Length::Fixed(FILTER_ITEM_H))
                 .width(Length::Fill)
-                .style(theme::style::button::text());
-
-                if is_active {
-                    container(btn).style(theme::style::active_filter).into()
-                } else {
-                    container(btn).into()
-                }
+                .style(theme::style::button::filter(is_active))
+                .into()
             };
 
             column![]
@@ -138,11 +209,21 @@ pub fn view<'a>(
         }
     };
 
+    let pill_el = container(iced::widget::Space::new())
+        .width(Length::Fill)
+        .height(Length::Fixed(FILTER_ITEM_H))
+        .style(theme::style::active_filter);
+
+    let items_layer = Stack::new()
+        .push(items)
+        .push_under(translate(pill_el, 0.0, pill.value()))
+        .width(Length::Fill);
+
     container(
         column![]
             .spacing(SPACE_4XL)
             .push(title)
-            .push(items)
+            .push(items_layer)
             .height(Length::Fill),
     )
     .width(Length::Fill)

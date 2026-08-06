@@ -524,6 +524,29 @@ pub mod style {
             }
         }
 
+        pub fn filter<'a>(active: bool) -> impl Fn(&iced::Theme, Status) -> Style + 'a {
+            move |t: &iced::Theme, status: Status| -> Style {
+                let accent = t.extended_palette().primary.base.color;
+                let base_text = t.extended_palette().background.base.text;
+                Style {
+                    background: if active {
+                        None
+                    } else {
+                        match status {
+                            Status::Hovered | Status::Pressed => {
+                                Some(Color::from_rgba(1.0, 1.0, 1.0, 0.08).into())
+                            }
+                            _ => None,
+                        }
+                    },
+                    text_color: if active { accent } else { base_text },
+                    border: iced::border::rounded(super::super::RADIUS_BUTTON),
+                    shadow: Shadow::default(),
+                    ..Default::default()
+                }
+            }
+        }
+
         pub fn copyable<'a>() -> impl Fn(&iced::Theme, Status) -> Style + 'a {
             move |t: &iced::Theme, status: Status| -> Style {
                 let p = t.extended_palette();

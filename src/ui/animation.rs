@@ -7,7 +7,6 @@ pub use iced::time::Instant;
 pub const EASE_OUT_QUAD: Easing = Easing::EaseOutQuad;
 #[allow(dead_code)]
 pub const EASE_OUT_CUBIC: Easing = Easing::EaseOutCubic;
-#[allow(dead_code)]
 pub const EASE_IN_OUT_QUAD: Easing = Easing::EaseInOutQuad;
 #[allow(dead_code)]
 pub const EASE_OUT_BACK: Easing = Easing::EaseOutBack;
