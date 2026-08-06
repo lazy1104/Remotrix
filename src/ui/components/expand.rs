@@ -72,12 +72,7 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Me
         } else {
             let bounds = layout.bounds();
             let layer = if self.pinned {
-                Rectangle {
-                    x: bounds.x,
-                    y: bounds.y,
-                    width: bounds.width,
-                    height: bounds.height * t,
-                }
+                self.visible_rect(bounds)
             } else {
                 bounds
             };
@@ -107,14 +102,8 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Me
     ) {
         if self.pinned && self.progress < 1.0 {
             if let Event::Mouse(_) | Event::Touch(_) = event {
-                let t = self.progress.clamp(0.0, 1.0);
                 let bounds = layout.bounds();
-                if !cursor.is_over(Rectangle {
-                    x: bounds.x,
-                    y: bounds.y,
-                    width: bounds.width,
-                    height: bounds.height * t,
-                }) {
+                if !cursor.is_over(self.visible_rect(bounds)) {
                     return;
                 }
             }
@@ -155,14 +144,8 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Me
         renderer: &iced::Renderer,
     ) -> mouse::Interaction {
         if self.pinned && self.progress < 1.0 {
-            let t = self.progress.clamp(0.0, 1.0);
             let bounds = layout.bounds();
-            if !cursor.is_over(Rectangle {
-                x: bounds.x,
-                y: bounds.y,
-                width: bounds.width,
-                height: bounds.height * t,
-            }) {
+            if !cursor.is_over(self.visible_rect(bounds)) {
                 return mouse::Interaction::None;
             }
         }
@@ -180,6 +163,23 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Me
 impl<'a, Message: 'a> From<Expand<'a, Message>> for Element<'a, Message> {
     fn from(expand: Expand<'a, Message>) -> Self {
         Element::new(expand)
+    }
+}
+
+impl<'a, Message> Expand<'a, Message> {
+    fn visible_rect(&self, bounds: Rectangle) -> Rectangle {
+        let t = self.progress.clamp(0.0, 1.0);
+        if self.pinned && t < 1.0 {
+            let h = bounds.height * t;
+            Rectangle {
+                x: bounds.x,
+                y: bounds.y + (bounds.height - h) / 2.0,
+                width: bounds.width,
+                height: h,
+            }
+        } else {
+            bounds
+        }
     }
 }
 

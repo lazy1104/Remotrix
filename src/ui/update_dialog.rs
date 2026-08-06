@@ -118,7 +118,9 @@ pub fn view<'a>(
     body = body.push(transition);
 
     body = body.push(text(fluent.get(Tr::UpdateDialogChangelog)).size(FONT_MEDIUM));
-    let changelog: Element<'a, Message> = if changelogs[active_tab].loading {
+    let changelog: Element<'a, Message> = if progress < 1.0 {
+        iced::widget::Space::new().into()
+    } else if changelogs[active_tab].loading {
         container(
             row![
                 crate::ui::components::spinner::Spinner::refresh(
