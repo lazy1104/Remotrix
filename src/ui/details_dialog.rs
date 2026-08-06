@@ -9,7 +9,6 @@ use crate::task::{
     completed_pieces, format_add_time, format_size, format_speed, DownloadTask,
     TaskAdvancedOptions, TaskDetails,
 };
-use crate::ui::components::dialog::overlay;
 use crate::ui::components::expand::expand_pinned;
 use crate::ui::components::file_tree;
 use crate::ui::components::key_value_list::key_value_list;
@@ -221,7 +220,7 @@ pub fn view<'a>(
         },
     };
 
-    overlay(expand_pinned(
+    expand_pinned(
         container(
             column![]
                 .push(header)
@@ -237,7 +236,7 @@ pub fn view<'a>(
         .padding(PADDING_DETAILS)
         .style(theme::style::card),
         progress,
-    ))
+    )
 }
 
 fn summary_tab<'a>(

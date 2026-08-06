@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::time::Instant;
 
 use crate::ui::components::drop_down;
 use iced::widget::{
@@ -12,7 +11,7 @@ use crate::message::{
     AddMsg, ConfirmAction, DialogMsg, Message, SortField, SortMsg, SortOrder, TaskMsg,
 };
 use crate::task::{format_duration, format_size, format_speed, DownloadTask, TaskStatus};
-use crate::ui::animation::ProgressTween;
+use crate::ui::animation::{animation, Animated};
 use crate::ui::components::expand::expand;
 use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::components::tooltip as tip;
@@ -30,9 +29,8 @@ pub fn view<'a>(
     sort_order: SortOrder,
     sort_menu_open: bool,
     search_query: &str,
-    now: Instant,
-    progress_anim: &HashMap<String, ProgressTween>,
-    card_anim: &HashMap<String, crate::ui::animation::CardAnim>,
+    progress_anim: &'a HashMap<String, Animated<f32>>,
+    card_anim: &'a HashMap<String, Animated<f32>>,
 ) -> Element<'a, Message> {
     let toolbar_btn = |glyph: iced::widget::Text<'a>,
                        tip: String,
@@ -245,14 +243,21 @@ pub fn view<'a>(
     let mut list = column![].spacing(0.0);
 
     for t in tasks {
-        let tween = card_anim.get(&t.gid).map(|a| a.value(now)).unwrap_or(1.0);
-        let card = container(task_card(fluent, theme, t, now, progress_anim))
+        let gid = t.gid.clone();
+        let card = container(task_card(fluent, theme, t, progress_anim))
             .width(Length::Fill)
             .style(theme::style::card);
         let spaced = container(card)
             .width(Length::Fill)
             .padding(iced::padding::bottom(SPACE_XL));
-        list = list.push(expand(spaced, tween));
+        let card_el: Element<'a, Message> = if let Some(anim) = card_anim.get(&gid) {
+            animation(anim, expand(spaced, *anim.value()))
+                .on_update(move |e| Message::CardAnim(gid.clone(), e))
+                .into()
+        } else {
+            expand(spaced, 1.0)
+        };
+        list = list.push(card_el);
     }
 
     let body = slim_scrollable(
@@ -274,13 +279,12 @@ fn task_card<'a>(
     fluent: &'a Fluent,
     theme: &iced::Theme,
     t: &DownloadTask,
-    now: Instant,
-    progress_anim: &HashMap<String, ProgressTween>,
+    progress_anim: &'a HashMap<String, Animated<f32>>,
 ) -> Element<'a, Message> {
     let text_secondary = theme::text_secondary(theme);
     let pct = progress_anim
         .get(&t.gid)
-        .map(|p| p.value(now))
+        .map(|p| *p.value())
         .unwrap_or_else(|| t.progress_pct());
     let name = mouse_area(tip::standard(
         truncated_text(t.name.clone())
@@ -442,9 +446,17 @@ fn task_card<'a>(
     .style(theme::style::toolbar_capsule);
 
     let bar_color = theme::task_bar_color(theme, t.status, t.is_seeding);
-    let bar = progress_bar(0.0..=100.0, pct)
+    let base_bar = progress_bar(0.0..=100.0, pct)
         .girth(Length::Fixed(8.0))
         .style(theme::style::progress::task(bar_color));
+    let bar: Element<'a, Message> = if let Some(anim) = progress_anim.get(&t.gid) {
+        let gid = t.gid.clone();
+        animation(anim, base_bar)
+            .on_update(move |e| Message::ProgressAnim(gid.clone(), e))
+            .into()
+    } else {
+        base_bar.into()
+    };
 
     let downloaded_text = format!(
         "{} / {}",

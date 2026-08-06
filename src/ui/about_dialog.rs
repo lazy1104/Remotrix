@@ -5,7 +5,7 @@ use iced::{Element, Length};
 use crate::i18n::{Fluent, Tr};
 use crate::message::{DialogMsg, Message};
 use crate::ui::components::copyable_text::copyable_text;
-use crate::ui::components::dialog::{overlay, Dialog};
+use crate::ui::components::dialog::Dialog;
 use crate::ui::components::expand::expand_pinned;
 use crate::ui::components::logo;
 use crate::ui::dims::*;
@@ -88,12 +88,12 @@ pub fn view<'a>(
                 .style(theme::style::text::secondary),
         );
 
-    overlay(expand_pinned(
+    expand_pinned(
         Dialog::new()
             .width(380.0)
             .with_close(Message::Dialog(DialogMsg::CloseAbout))
             .body(body)
             .build(),
         progress,
-    ))
+    )
 }

@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer;
 use iced::advanced::widget::{self, tree, Widget};
@@ -9,55 +7,18 @@ use iced::{Element, Event, Length, Padding, Rectangle, Size};
 
 use crate::message::Message;
 use crate::task::format_speed;
-use crate::ui::animation::{Animation, Instant, EASE_OUT_CUBIC};
+use crate::ui::animation::{animation, Animated};
 use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
 const HUD_SIZE: f32 = 44.0;
-const HUD_ANIM_MS: u64 = 220;
-
-pub struct HudTween {
-    anim: Animation<f32>,
-    last_target: f32,
-}
-
-impl HudTween {
-    pub fn new() -> Self {
-        Self {
-            anim: Animation::new(0.0),
-            last_target: 0.0,
-        }
-    }
-
-    pub fn towards(&mut self, target: f32, now: Instant) {
-        if (target - self.last_target).abs() < 1e-3 {
-            return;
-        }
-        self.last_target = target;
-        self.anim = self
-            .anim
-            .clone()
-            .easing(EASE_OUT_CUBIC)
-            .duration(Duration::from_millis(HUD_ANIM_MS))
-            .go(target, now);
-    }
-
-    pub fn value(&self, now: Instant) -> f32 {
-        self.anim.interpolate_with(|v| v, now).clamp(0.0, 1.0)
-    }
-
-    pub fn is_animating(&self, now: Instant) -> bool {
-        self.anim.is_animating(now)
-    }
-}
 
 pub fn view<'a>(
     theme: &'a iced::Theme,
     download: u64,
     upload: u64,
-    now: Instant,
-    hud: &HudTween,
+    hud: &'a Animated<f32>,
 ) -> Element<'a, Message> {
     let palette = theme.extended_palette();
     let primary_weak = palette.primary.weak.color;
@@ -88,19 +49,25 @@ pub fn view<'a>(
         .spacing(SPACE_LG)
         .align_y(iced::alignment::Vertical::Center);
 
-    let button = button(Clip {
-        content: content.into(),
-        progress: hud.value(now),
-    })
-    .on_press(Message::Noop)
-    .padding(Padding {
-        top: PADDING_HUD.top,
-        right: 0.0,
-        bottom: PADDING_HUD.bottom,
-        left: 0.0,
-    })
-    .height(Length::Fixed(HUD_SIZE))
-    .style(theme::style::button::speed_hud());
+    let hud_content = animation(
+        hud,
+        Clip {
+            content: content.into(),
+            progress: *hud.value(),
+        },
+    )
+    .on_update(Message::HudAnim);
+
+    let button = button(hud_content)
+        .on_press(Message::Noop)
+        .padding(Padding {
+            top: PADDING_HUD.top,
+            right: 0.0,
+            bottom: PADDING_HUD.bottom,
+            left: 0.0,
+        })
+        .height(Length::Fixed(HUD_SIZE))
+        .style(theme::style::button::speed_hud());
 
     button.into()
 }

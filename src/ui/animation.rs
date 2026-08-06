@@ -1,139 +1,78 @@
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-pub use iced::animation::{Animation, Easing};
-pub use iced::time::Instant;
-
-pub const EASE_OUT_QUAD: Easing = Easing::EaseOutQuad;
-#[allow(dead_code)]
-pub const EASE_OUT_CUBIC: Easing = Easing::EaseOutCubic;
-pub const EASE_IN_OUT_QUAD: Easing = Easing::EaseInOutQuad;
-#[allow(dead_code)]
-pub const EASE_OUT_BACK: Easing = Easing::EaseOutBack;
-#[allow(dead_code)]
-pub const EASE_OUT_ELASTIC: Easing = Easing::EaseOutElastic;
-pub const EASE_PROGRESS: Easing = EASE_OUT_QUAD;
-
-pub const PROGRESS_MS_MIN: f32 = 100.0;
-pub const PROGRESS_MS_MAX: f32 = 400.0;
-
-pub fn progress_duration(delta_pct: f32) -> Duration {
-    let ms = (100.0 + delta_pct * 12.0).clamp(PROGRESS_MS_MIN, PROGRESS_MS_MAX);
-    Duration::from_millis(ms as u64)
-}
-
-pub struct ProgressTween {
-    anim: Animation<f32>,
-    last_target: f32,
-}
-
-impl ProgressTween {
-    pub fn new(v: f32) -> Self {
-        Self {
-            anim: Animation::new(v),
-            last_target: v,
-        }
-    }
-
-    pub fn towards(&mut self, target: f32, now: Instant) {
-        let delta = (target - self.last_target).abs();
-        self.last_target = target;
-        self.anim = self
-            .anim
-            .clone()
-            .easing(EASE_PROGRESS)
-            .duration(progress_duration(delta))
-            .go(target, now);
-    }
-
-    pub fn value(&self, now: Instant) -> f32 {
-        self.anim.interpolate_with(|v| v, now)
-    }
-
-    pub fn is_animating(&self, now: Instant) -> bool {
-        self.anim.is_animating(now)
-    }
-}
+pub use iced_anim::animation::animation;
+pub use iced_anim::event::Event;
+pub use iced_anim::transition::{Curve, Easing};
+pub use iced_anim::Animated;
 
 pub const CARD_ENTER_MS: u64 = 280;
 pub const CARD_EXIT_MS: u64 = 200;
+pub const HUD_ANIM_MS: u64 = 220;
+pub const PROGRESS_MS: u64 = 250;
+pub const PILL_MS: u64 = 200;
 
-pub struct CardAnim {
-    anim: Animation<f32>,
+pub fn ease_out_quad(duration_ms: u64) -> Easing {
+    Easing::new(Curve::Custom(|p| 1.0 - (1.0 - p).powi(2)))
+        .with_duration(Duration::from_millis(duration_ms))
+        .reversible(false)
 }
 
-impl CardAnim {
-    pub fn entering(now: Instant) -> Self {
-        Self {
-            anim: Animation::new(0.0)
-                .easing(EASE_OUT_CUBIC)
-                .duration(Duration::from_millis(CARD_ENTER_MS))
-                .go(1.0, now),
+pub fn ease_out_cubic(duration_ms: u64) -> Easing {
+    Easing::new(Curve::Custom(|p| 1.0 - (1.0 - p).powi(3)))
+        .with_duration(Duration::from_millis(duration_ms))
+        .reversible(false)
+}
+
+pub fn ease_in_out_quad(duration_ms: u64) -> Easing {
+    Easing::new(Curve::Custom(|p| {
+        if p < 0.5 {
+            2.0 * p * p
+        } else {
+            1.0 - (-2.0 * p + 2.0).powi(2) / 2.0
         }
-    }
-
-    pub fn exiting(now: Instant) -> Self {
-        Self {
-            anim: Animation::new(1.0)
-                .easing(EASE_OUT_QUAD)
-                .duration(Duration::from_millis(CARD_EXIT_MS))
-                .go(0.0, now),
-        }
-    }
-
-    pub fn begin_exit(&mut self, now: Instant) {
-        self.anim = self
-            .anim
-            .clone()
-            .easing(EASE_OUT_QUAD)
-            .duration(Duration::from_millis(CARD_EXIT_MS))
-            .go(0.0, now);
-    }
-
-    pub fn value(&self, now: Instant) -> f32 {
-        self.anim.interpolate_with(|v| v, now).clamp(0.0, 1.0)
-    }
-
-    pub fn is_animating(&self, now: Instant) -> bool {
-        self.anim.is_animating(now)
-    }
+    }))
+    .with_duration(Duration::from_millis(duration_ms))
+    .reversible(false)
 }
 
 #[derive(Default)]
 pub struct DialogAnim {
-    anim: Option<CardAnim>,
+    anim: Animated<f32>,
     dismissing: bool,
 }
 
 impl DialogAnim {
-    pub fn open(&mut self, now: Instant) {
-        self.anim = Some(CardAnim::entering(now));
+    pub fn open(&mut self) {
+        self.anim.set_target(1.0);
         self.dismissing = false;
     }
 
-    pub fn begin_exit(&mut self, now: Instant) {
-        match &mut self.anim {
-            Some(a) => a.begin_exit(now),
-            None => self.anim = Some(CardAnim::exiting(now)),
-        }
+    pub fn begin_exit(&mut self) {
+        self.anim.set_target(0.0);
         self.dismissing = true;
     }
 
-    pub fn value(&self, now: Instant) -> f32 {
-        self.anim.as_ref().map(|a| a.value(now)).unwrap_or(1.0)
+    pub fn value(&self) -> f32 {
+        *self.anim.value()
+    }
+
+    pub fn anim(&self) -> &Animated<f32> {
+        &self.anim
     }
 
     pub fn is_dismissing(&self) -> bool {
         self.dismissing
     }
 
-    pub fn needs_tick(&self, now: Instant) -> bool {
-        self.dismissing || self.anim.as_ref().is_some_and(|a| a.is_animating(now))
+    pub fn update(&mut self, event: Event<f32>) {
+        self.anim.update(event);
     }
 
-    pub fn tick(&mut self, now: Instant) -> bool {
-        if self.dismissing && self.anim.as_ref().is_some_and(|a| !a.is_animating(now)) {
-            self.anim = None;
+    /// Call after each `update`; returns `true` once the exit animation has
+    /// finished, resetting the dismissing flag.
+    pub fn completed_dismiss(&mut self) -> bool {
+        if self.dismissing && !self.anim.is_animating() {
             self.dismissing = false;
             return true;
         }

@@ -3,7 +3,7 @@ use iced::{Alignment, Element};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{ConfirmAction, DialogMsg, EngineMsg, Message, SettingsMsg, TaskMsg};
-use crate::ui::components::dialog::{overlay, Dialog};
+use crate::ui::components::dialog::Dialog;
 use crate::ui::components::expand::expand_pinned;
 use crate::ui::dims::*;
 use crate::ui::theme;
@@ -143,7 +143,7 @@ pub fn view<'a>(
         }
     };
 
-    overlay(expand_pinned(
+    expand_pinned(
         Dialog::new()
             .title(fluent.get(title_key))
             .with_close(Message::Dialog(DialogMsg::ConfirmCancel))
@@ -151,5 +151,5 @@ pub fn view<'a>(
             .footer(buttons)
             .build(),
         progress,
-    ))
+    )
 }

@@ -1,11 +1,9 @@
-use std::time::{Duration, Instant};
-
 use iced::widget::{button, column, container, row, text, Stack};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, NavMsg, Page, SettingsCategory, TaskFilter};
-use crate::ui::animation::EASE_IN_OUT_QUAD;
+use crate::ui::animation::{animation, Animated};
 use crate::ui::components::translate::translate;
 use crate::ui::dims::*;
 use crate::ui::icon;
@@ -15,61 +13,6 @@ pub struct Counts {
     pub all: usize,
     pub downloading: usize,
     pub completed: usize,
-}
-
-pub struct FilterPill {
-    from: f32,
-    to: f32,
-    frame: u32,
-    total: u32,
-    head_start: u32,
-    animating: bool,
-}
-
-impl FilterPill {
-    pub fn new(y: f32) -> Self {
-        Self {
-            from: y,
-            to: y,
-            frame: 0,
-            total: 12,
-            head_start: 3,
-            animating: false,
-        }
-    }
-
-    pub fn towards(&mut self, y: f32) {
-        let cur = self.value();
-        if (cur - y).abs() < 0.5 {
-            return;
-        }
-        self.from = cur;
-        self.to = y;
-        self.frame = self.head_start;
-        self.animating = true;
-    }
-
-    pub fn tick(&mut self, now: Instant) {
-        if !self.animating {
-            return;
-        }
-        if Instant::now().saturating_duration_since(now) > Duration::from_millis(40) {
-            return;
-        }
-        self.frame = (self.frame + 1).min(self.total);
-        if self.frame >= self.total {
-            self.animating = false;
-        }
-    }
-
-    pub fn value(&self) -> f32 {
-        let t = self.frame as f32 / self.total as f32;
-        self.from + (self.to - self.from) * EASE_IN_OUT_QUAD.value(t)
-    }
-
-    pub fn is_animating(&self) -> bool {
-        self.animating
-    }
 }
 
 pub fn task_filter_index(f: TaskFilter) -> usize {
@@ -98,7 +41,7 @@ pub fn view<'a>(
     task_filter: TaskFilter,
     settings_cat: SettingsCategory,
     counts: &Counts,
-    pill: &FilterPill,
+    pill: &'a Animated<f32>,
 ) -> Element<'a, Message> {
     let title_str = match page {
         Page::Tasks => fluent.get(Tr::TasksList),
@@ -214,9 +157,12 @@ pub fn view<'a>(
         .height(Length::Fixed(FILTER_ITEM_H))
         .style(theme::style::active_filter);
 
+    let pill_layer =
+        animation(pill, translate(pill_el, 0.0, *pill.value())).on_update(Message::PillAnim);
+
     let items_layer = Stack::new()
         .push(items)
-        .push_under(translate(pill_el, 0.0, pill.value()))
+        .push_under(pill_layer)
         .width(Length::Fill);
 
     container(

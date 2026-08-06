@@ -3,7 +3,7 @@ use iced::{Alignment, Element};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{CloseDialogChoice, Message, WindowMsg};
-use crate::ui::components::dialog::{overlay, Dialog};
+use crate::ui::components::dialog::Dialog;
 use crate::ui::components::expand::expand_pinned;
 use crate::ui::dims::*;
 use crate::ui::theme;
@@ -60,7 +60,7 @@ pub fn view<'a>(
         .spacing(SPACE_XL)
         .align_y(Alignment::Center);
 
-    overlay(expand_pinned(
+    expand_pinned(
         Dialog::new()
             .title(fluent.get(Tr::ConfirmCloseTitle))
             .with_close(Message::Window(WindowMsg::CloseDialog(
@@ -70,5 +70,5 @@ pub fn view<'a>(
             .footer(buttons)
             .build(),
         progress,
-    ))
+    )
 }

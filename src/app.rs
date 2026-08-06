@@ -164,7 +164,7 @@ struct UpdateDialogState {
 struct WindowState {
     maximized: bool,
     show_close_dialog: bool,
-    close_dialog_anim: Option<crate::ui::animation::CardAnim>,
+    close_dialog_anim: Option<crate::ui::animation::Animated<f32>>,
     close_dialog_dismissing: bool,
     window_id: Option<Id>,
     window_size: iced::Size,
@@ -302,12 +302,11 @@ pub struct Remotrix {
     tracking: TaskTracking,
     update_dialog: Option<UpdateDialogState>,
     app_update_in_flight: bool,
-    anim_now: Instant,
-    progress_anim: HashMap<String, crate::ui::animation::ProgressTween>,
-    card_anim: HashMap<String, crate::ui::animation::CardAnim>,
+    progress_anim: HashMap<String, crate::ui::animation::Animated<f32>>,
+    card_anim: HashMap<String, crate::ui::animation::Animated<f32>>,
     pending_removals: HashSet<String>,
-    filter_pill: crate::ui::category_bar::FilterPill,
-    hud_anim: crate::ui::components::speed_hud::HudTween,
+    filter_pill: crate::ui::animation::Animated<f32>,
+    hud_anim: crate::ui::animation::Animated<f32>,
     add_dialog_anim: crate::ui::animation::DialogAnim,
     about_dialog_anim: crate::ui::animation::DialogAnim,
     details_anim: crate::ui::animation::DialogAnim,
@@ -428,12 +427,17 @@ pub fn init() -> (Remotrix, Task<Message>) {
         tracking: TaskTracking::new(active_count),
         update_dialog: None,
         app_update_in_flight: false,
-        anim_now: Instant::now(),
         progress_anim: HashMap::new(),
         card_anim: HashMap::new(),
         pending_removals: HashSet::new(),
-        filter_pill: crate::ui::category_bar::FilterPill::new(0.0),
-        hud_anim: crate::ui::components::speed_hud::HudTween::new(),
+        filter_pill: crate::ui::animation::Animated::transition(
+            0.0,
+            crate::ui::animation::ease_in_out_quad(crate::ui::animation::PILL_MS),
+        ),
+        hud_anim: crate::ui::animation::Animated::transition(
+            0.0,
+            crate::ui::animation::ease_out_cubic(crate::ui::animation::HUD_ANIM_MS),
+        ),
         add_dialog_anim: Default::default(),
         about_dialog_anim: Default::default(),
         details_anim: Default::default(),
@@ -567,13 +571,16 @@ fn begin_task_exit(state: &mut Remotrix, gid: &str, delete_db: bool) {
         .tracking
         .removed_gids
         .insert(gid.to_string(), Instant::now());
-    let now = Instant::now();
     match state.card_anim.get_mut(gid) {
-        Some(a) => a.begin_exit(now),
+        Some(a) => a.set_target(0.0),
         None => {
             state.card_anim.insert(
                 gid.to_string(),
-                crate::ui::animation::CardAnim::exiting(now),
+                crate::ui::animation::Animated::transition(
+                    1.0,
+                    crate::ui::animation::ease_out_quad(crate::ui::animation::CARD_EXIT_MS),
+                )
+                .to(0.0),
             );
         }
     }
@@ -850,7 +857,7 @@ fn read_clipboard(state: &Remotrix) -> Task<Message> {
 fn pill_to_index(state: &mut Remotrix, index: usize) {
     state
         .filter_pill
-        .towards(index as f32 * crate::ui::dims::FILTER_STEP);
+        .set_target(index as f32 * crate::ui::dims::FILTER_STEP);
 }
 
 fn set_page(state: &mut Remotrix, page: Page) {
@@ -866,7 +873,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.settings_ui.download_picker.close_history();
             if page == Page::Tasks && state.page == Page::Settings && state.settings_dirty {
                 state.confirm = Some(ConfirmAction::LeaveSettings { target: page });
-                state.confirm_anim.open(Instant::now());
+                state.confirm_anim.open();
             } else {
                 set_page(state, page);
             }
@@ -889,7 +896,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         }
         Message::Add(AddMsg::CancelAdd) => {
             state.add_dialog.save_picker.close_history();
-            state.add_dialog_anim.begin_exit(Instant::now());
+            state.add_dialog_anim.begin_exit();
         }
         Message::Add(AddMsg::SelectAddTab(tab)) => {
             state.add_dialog.active_tab = tab;
@@ -990,7 +997,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 state.settings.split,
                 payload,
             );
-            state.add_dialog_anim.open(Instant::now());
+            state.add_dialog_anim.open();
             spawn_toast(
                 state,
                 ToastGroup::Task,
@@ -1107,7 +1114,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         tracing::warn!("ui: add torrent cmd send failed");
                     }
                     tracing::info!("ui: torrent submitted");
-                    state.add_dialog_anim.begin_exit(Instant::now());
+                    state.add_dialog_anim.begin_exit();
                     if nav {
                         set_page(state, Page::Tasks);
                     }
@@ -1140,7 +1147,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         tracing::warn!("ui: add download cmd send failed");
                     }
                     tracing::info!(count = urls.len(), "ui: add download submitted");
-                    state.add_dialog_anim.begin_exit(Instant::now());
+                    state.add_dialog_anim.begin_exit();
                     if nav {
                         set_page(state, Page::Tasks);
                     }
@@ -1221,7 +1228,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             {
                 tracing::warn!("ui: remove cmd send failed");
             }
-            state.confirm_anim.begin_exit(Instant::now());
+            state.confirm_anim.begin_exit();
             let _ = spawn_toast(
                 state,
                 ToastGroup::Task,
@@ -1247,7 +1254,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             {
                 tracing::warn!("ui: delete cmd send failed");
             }
-            state.confirm_anim.begin_exit(Instant::now());
+            state.confirm_anim.begin_exit();
             let _ = spawn_toast(
                 state,
                 ToastGroup::Task,
@@ -1290,7 +1297,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 tracing::warn!("ui: remove all cmd send failed");
             }
             clear_all_local(state);
-            state.confirm_anim.begin_exit(Instant::now());
+            state.confirm_anim.begin_exit();
             let _ = spawn_toast(
                 state,
                 ToastGroup::Task,
@@ -1315,7 +1322,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 tracing::warn!("ui: remove all records cmd send failed");
             }
             clear_all_local(state);
-            state.confirm_anim.begin_exit(Instant::now());
+            state.confirm_anim.begin_exit();
             let _ = spawn_toast(
                 state,
                 ToastGroup::Task,
@@ -1336,7 +1343,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 .map(|(gid, _)| gid.clone())
                 .collect();
             clear_completed_local(state, &completed);
-            state.confirm_anim.begin_exit(Instant::now());
+            state.confirm_anim.begin_exit();
         }
         Message::Task(TaskMsg::Refresh) => {
             if state.handle.cmd_tx.send(EngineCmd::Snapshot).is_err() {
@@ -1363,10 +1370,10 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         }
         Message::Dialog(DialogMsg::OpenAbout) => {
             state.about_dialog_visible = true;
-            state.about_dialog_anim.open(Instant::now());
+            state.about_dialog_anim.open();
         }
         Message::Dialog(DialogMsg::CloseAbout) => {
-            state.about_dialog_anim.begin_exit(Instant::now());
+            state.about_dialog_anim.begin_exit();
         }
         Message::Settings(SettingsMsg::SettingChanged(key, value)) => {
             state.settings_dirty = true;
@@ -1920,7 +1927,13 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     state.task_order.insert(0, gid.clone());
                     state.card_anim.insert(
                         gid.clone(),
-                        crate::ui::animation::CardAnim::entering(Instant::now()),
+                        crate::ui::animation::Animated::transition(
+                            0.0,
+                            crate::ui::animation::ease_out_cubic(
+                                crate::ui::animation::CARD_ENTER_MS,
+                            ),
+                        )
+                        .to(1.0),
                     );
                     if let Some(ref db) = state.db {
                         db.upsert_meta(
@@ -2008,7 +2021,13 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     state.task_order.insert(0, gid.clone());
                     state.card_anim.insert(
                         gid.clone(),
-                        crate::ui::animation::CardAnim::entering(Instant::now()),
+                        crate::ui::animation::Animated::transition(
+                            0.0,
+                            crate::ui::animation::ease_out_cubic(
+                                crate::ui::animation::CARD_ENTER_MS,
+                            ),
+                        )
+                        .to(1.0),
                     );
                     if let Some(ref db) = state.db {
                         db.upsert_meta(
@@ -2061,13 +2080,19 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         }
                     }
                     state.tracking.dirty.insert(gid.clone());
-                    state.anim_now = Instant::now();
                     let pct = t.progress_pct();
                     state
                         .progress_anim
                         .entry(gid.clone())
-                        .or_insert_with(|| crate::ui::animation::ProgressTween::new(pct))
-                        .towards(pct, state.anim_now);
+                        .or_insert_with(|| {
+                            crate::ui::animation::Animated::transition(
+                                pct,
+                                crate::ui::animation::ease_out_quad(
+                                    crate::ui::animation::PROGRESS_MS,
+                                ),
+                            )
+                        })
+                        .set_target(pct);
                 }
                 if status == "complete" && state.tracking.sync_done {
                     if let Some(t) = state.tasks.get(&gid) {
@@ -2483,7 +2508,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 state.settings.split,
                 payload,
             );
-            state.add_dialog_anim.open(Instant::now());
+            state.add_dialog_anim.open();
             spawn_toast(
                 state,
                 ToastGroup::Task,
@@ -2521,7 +2546,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             if state.settings_dirty {
                 state.confirm = Some(ConfirmAction::UnsavedOnClose);
-                state.confirm_anim.open(Instant::now());
+                state.confirm_anim.open();
                 return Task::none();
             }
             if state.settings.close_to_tray && state.tray.enabled() {
@@ -2546,7 +2571,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 }
                 CloseDialogChoice::Cancel => {
                     if let Some(anim) = &mut state.window.close_dialog_anim {
-                        anim.begin_exit(Instant::now());
+                        anim.set_target(0.0);
                         state.window.close_dialog_dismissing = true;
                     }
                     Task::none()
@@ -2852,7 +2877,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
         }
         Message::Settings(SettingsMsg::UpdateDialogCancel) => {
-            state.update_dialog_anim.begin_exit(Instant::now());
+            state.update_dialog_anim.begin_exit();
         }
         Message::Settings(SettingsMsg::UpdateDownloadStarted(result)) => {
             state.app_update_in_flight = false;
@@ -2916,7 +2941,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     offers,
                     active_tab: 0,
                 });
-                state.update_dialog_anim.open(Instant::now());
+                state.update_dialog_anim.open();
                 let mut tasks = Vec::new();
                 for tab in 0..state.update_dialog.as_ref().unwrap().offers.len() {
                     tasks.push(changelog_fetch_task(state, tab));
@@ -2948,7 +2973,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             else {
                 return Task::none();
             };
-            state.update_dialog_anim.begin_exit(Instant::now());
+            state.update_dialog_anim.begin_exit();
             let mut tasks = Vec::new();
             for offer in offers {
                 match offer.component {
@@ -3020,13 +3045,13 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             let has_active = state.tasks.values().any(|t| t.status == TaskStatus::Active);
             state.confirm = Some(ConfirmAction::RestartEngine { has_active });
-            state.confirm_anim.open(Instant::now());
+            state.confirm_anim.open();
         }
         Message::Engine(EngineMsg::ConfirmRestartEngine) => {
             if state.confirm_anim.is_dismissing() {
                 return Task::none();
             }
-            state.confirm_anim.begin_exit(Instant::now());
+            state.confirm_anim.begin_exit();
             state.restart.engine_restart_in_progress = true;
             state.restart.restart_resume_gids = state
                 .tasks
@@ -3075,7 +3100,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.details.select_gen = 0;
             state.details.pending_select = None;
             state.details.open(gid.clone());
-            state.details_anim.open(Instant::now());
+            state.details_anim.open();
             if let Some(a) = state.tasks.get(&gid).and_then(|t| t.advanced.as_ref()) {
                 state.details.apply_advanced(a);
                 state.details.advanced_loaded = true;
@@ -3113,7 +3138,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     .cmd_tx
                     .send(EngineCmd::SelectFiles { gid, files });
             }
-            state.details_anim.begin_exit(Instant::now());
+            state.details_anim.begin_exit();
         }
         Message::Task(TaskMsg::RefreshTaskDetails) => {
             if state.details.is_visible() && !state.details.fetch_failed {
@@ -3291,7 +3316,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 };
                 state.add_dialog.save_picker.close_history();
                 state.add_dialog.open(default_dir, state.settings.split);
-                state.add_dialog_anim.open(Instant::now());
+                state.add_dialog_anim.open();
                 state
                     .add_dialog
                     .set_torrent_path(path.to_string_lossy().to_string());
@@ -3319,7 +3344,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 state
                     .add_dialog
                     .open(state.settings.download_dir.clone(), state.settings.split);
-                state.add_dialog_anim.open(Instant::now());
+                state.add_dialog_anim.open();
                 let link = if !t.url.is_empty() {
                     t.url.clone()
                 } else {
@@ -3349,7 +3374,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     return Task::none();
                 }
                 state.confirm = Some(ConfirmAction::RemoveMissingFileTask(gid));
-                state.confirm_anim.open(Instant::now());
+                state.confirm_anim.open();
                 return Task::none();
             }
             spawn_toast(
@@ -3395,13 +3420,13 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         }
         Message::Dialog(DialogMsg::RequestConfirm(action)) => {
             state.confirm = Some(action);
-            state.confirm_anim.open(Instant::now());
+            state.confirm_anim.open();
         }
         Message::Dialog(DialogMsg::ConfirmCancel) => {
             if state.confirm_anim.is_dismissing() {
                 return Task::none();
             }
-            state.confirm_anim.begin_exit(Instant::now());
+            state.confirm_anim.begin_exit();
         }
         Message::Settings(SettingsMsg::ApplyAndLeaveSettings) => {
             if state.confirm_anim.is_dismissing() {
@@ -3409,7 +3434,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             if let Some(ConfirmAction::LeaveSettings { target }) = state.confirm.as_ref() {
                 let target = *target;
-                state.confirm_anim.begin_exit(Instant::now());
+                state.confirm_anim.begin_exit();
                 apply_settings(state);
                 set_page(state, target);
             }
@@ -3420,7 +3445,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             if let Some(ConfirmAction::LeaveSettings { target }) = state.confirm.as_ref() {
                 let target = *target;
-                state.confirm_anim.begin_exit(Instant::now());
+                state.confirm_anim.begin_exit();
                 revert_apply_settings(state);
                 config::save(&state.settings);
                 set_page(state, target);
@@ -3431,7 +3456,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 return Task::none();
             }
             if matches!(state.confirm, Some(ConfirmAction::UnsavedOnClose)) {
-                state.confirm_anim.begin_exit(Instant::now());
+                state.confirm_anim.begin_exit();
                 apply_settings(state);
                 return continue_close_flow(state);
             }
@@ -3441,7 +3466,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 return Task::none();
             }
             if matches!(state.confirm, Some(ConfirmAction::UnsavedOnClose)) {
-                state.confirm_anim.begin_exit(Instant::now());
+                state.confirm_anim.begin_exit();
                 revert_apply_settings(state);
                 config::save(&state.settings);
                 return continue_close_flow(state);
@@ -3561,69 +3586,76 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             return restore_window_from_tray_wayland(state).chain(attention);
         }
         Message::Noop => {}
-        Message::AnimTick(now) => {
-            state.anim_now = now;
-            let finished: Vec<String> = state
-                .pending_removals
-                .iter()
-                .filter(|gid| {
-                    state
-                        .card_anim
-                        .get(*gid)
-                        .map(|a| !a.is_animating(now))
-                        .unwrap_or(true)
-                })
-                .cloned()
-                .collect();
-            for gid in finished {
+        Message::ProgressAnim(gid, event) => {
+            if let Some(anim) = state.progress_anim.get_mut(&gid) {
+                anim.update(event);
+            }
+        }
+        Message::CardAnim(gid, event) => {
+            let done = if let Some(anim) = state.card_anim.get_mut(&gid) {
+                anim.update(event);
+                !anim.is_animating()
+            } else {
+                true
+            };
+            if done && state.pending_removals.contains(&gid) {
                 finalize_task_removal(state, &gid);
             }
-            state.card_anim.retain(|_, a| a.is_animating(now));
-            state.progress_anim.retain(|_, a| a.is_animating(now));
-            if state.window.close_dialog_dismissing {
-                if let Some(anim) = &state.window.close_dialog_anim {
-                    if !anim.is_animating(now) {
-                        state.window.show_close_dialog = false;
-                        state.window.close_dialog_anim = None;
-                        state.window.close_dialog_dismissing = false;
-                    }
-                }
-            }
-            if state.confirm_anim.tick(now) {
-                state.confirm = None;
-            }
-            if state.add_dialog_anim.tick(now) {
+        }
+        Message::HudAnim(event) => {
+            state.hud_anim.update(event);
+        }
+        Message::PillAnim(event) => {
+            state.filter_pill.update(event);
+        }
+        Message::AddDialogAnim(event) => {
+            state.add_dialog_anim.update(event);
+            if state.add_dialog_anim.completed_dismiss() {
                 state.add_dialog.close();
             }
-            if state.about_dialog_anim.tick(now) {
+        }
+        Message::AboutDialogAnim(event) => {
+            state.about_dialog_anim.update(event);
+            if state.about_dialog_anim.completed_dismiss() {
                 state.about_dialog_visible = false;
             }
-            if state.details_anim.tick(now) {
+        }
+        Message::DetailsAnim(event) => {
+            state.details_anim.update(event);
+            if state.details_anim.completed_dismiss() {
                 state.details.close();
             }
-            if state.update_dialog_anim.tick(now) {
+        }
+        Message::ConfirmAnim(event) => {
+            state.confirm_anim.update(event);
+            if state.confirm_anim.completed_dismiss() {
+                state.confirm = None;
+            }
+        }
+        Message::UpdateDialogAnim(event) => {
+            state.update_dialog_anim.update(event);
+            if state.update_dialog_anim.completed_dismiss() {
                 state.update_dialog = None;
             }
-            state.filter_pill.tick(now);
-            state.hud_anim.towards(
-                if state.tracking.active_count > 0 {
-                    1.0
-                } else {
-                    0.0
-                },
-                now,
-            );
+        }
+        Message::CloseDialogAnim(event) => {
+            if let Some(anim) = &mut state.window.close_dialog_anim {
+                anim.update(event);
+                if state.window.close_dialog_dismissing && !anim.is_animating() {
+                    state.window.show_close_dialog = false;
+                    state.window.close_dialog_anim = None;
+                    state.window.close_dialog_dismissing = false;
+                }
+            }
         }
     }
-    state.anim_now = Instant::now();
-    state.hud_anim.towards(
-        if state.tracking.active_count > 0 {
+    state
+        .hud_anim
+        .set_target(if state.tracking.active_count > 0 {
             1.0
         } else {
             0.0
-        },
-        state.anim_now,
-    );
+        });
     Task::none()
 }
 
@@ -3695,7 +3727,6 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                 state.sort_order,
                 state.sort_menu_open,
                 &state.search_query,
-                state.anim_now,
                 &state.progress_anim,
                 &state.card_anim,
             )
@@ -3778,7 +3809,6 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         t,
         dl,
         up,
-        state.anim_now,
         &state.hud_anim,
     ))
     .width(Length::Fill)
@@ -3797,43 +3827,51 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         .into();
 
     let add_layer: iced::Element<'_, Message> = if state.add_dialog.is_visible() {
-        crate::ui::add_dialog::view(
+        let content = crate::ui::add_dialog::view(
             &state.fluent,
             t,
             &state.add_dialog,
             &state.settings.path_history,
-            state.add_dialog_anim.value(state.anim_now),
+            state.add_dialog_anim.value(),
+        );
+        crate::ui::components::dialog::overlay(
+            crate::ui::animation::animation(state.add_dialog_anim.anim(), content)
+                .on_update(Message::AddDialogAnim),
         )
     } else {
         iced::widget::Space::new().into()
     };
 
     let about_layer: iced::Element<'_, Message> = if state.about_dialog_visible {
-        crate::ui::about_dialog::view(
+        let content = crate::ui::about_dialog::view(
             &state.fluent,
             t,
             state.engine_ui.aria2_version.as_deref(),
-            state.about_dialog_anim.value(state.anim_now),
+            state.about_dialog_anim.value(),
+        );
+        crate::ui::components::dialog::overlay(
+            crate::ui::animation::animation(state.about_dialog_anim.anim(), content)
+                .on_update(Message::AboutDialogAnim),
         )
     } else {
         iced::widget::Space::new().into()
     };
 
-    let close_progress = state
-        .window
-        .close_dialog_anim
-        .as_ref()
-        .map(|a| a.value(state.anim_now))
-        .unwrap_or(1.0);
-
     let close_layer: iced::Element<'_, Message> = if state.window.show_close_dialog {
-        crate::ui::close_dialog::view(
-            &state.fluent,
-            t,
-            state.tray.enabled(),
-            state.settings.close_to_tray,
-            close_progress,
-        )
+        if let Some(anim) = &state.window.close_dialog_anim {
+            let content = crate::ui::close_dialog::view(
+                &state.fluent,
+                t,
+                state.tray.enabled(),
+                state.settings.close_to_tray,
+                *anim.value(),
+            );
+            crate::ui::components::dialog::overlay(
+                crate::ui::animation::animation(anim, content).on_update(Message::CloseDialogAnim),
+            )
+        } else {
+            iced::widget::Space::new().into()
+        }
     } else {
         iced::widget::Space::new().into()
     };
@@ -3844,36 +3882,44 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             .gid
             .as_deref()
             .and_then(|g| state.tasks.get(g));
-        crate::ui::details_dialog::view(
+        let content = crate::ui::details_dialog::view(
             &state.fluent,
             t,
             task,
             &state.details,
-            state.details_anim.value(state.anim_now),
+            state.details_anim.value(),
+        );
+        crate::ui::components::dialog::overlay(
+            crate::ui::animation::animation(state.details_anim.anim(), content)
+                .on_update(Message::DetailsAnim),
         )
     } else {
         iced::widget::Space::new().into()
     };
 
     let confirm_layer: iced::Element<'_, Message> = if let Some(action) = &state.confirm {
-        crate::ui::confirm_dialog::view(
-            &state.fluent,
-            t,
-            action,
-            state.confirm_anim.value(state.anim_now),
+        let content =
+            crate::ui::confirm_dialog::view(&state.fluent, t, action, state.confirm_anim.value());
+        crate::ui::components::dialog::overlay(
+            crate::ui::animation::animation(state.confirm_anim.anim(), content)
+                .on_update(Message::ConfirmAnim),
         )
     } else {
         iced::widget::Space::new().into()
     };
 
     let update_layer: iced::Element<'_, Message> = if let Some(dialog) = &state.update_dialog {
-        crate::ui::update_dialog::view(
+        let content = crate::ui::update_dialog::view(
             &state.fluent,
             t,
             &dialog.offers,
             &dialog.changelogs,
             dialog.active_tab,
-            state.update_dialog_anim.value(state.anim_now),
+            state.update_dialog_anim.value(),
+        );
+        crate::ui::components::dialog::overlay(
+            crate::ui::animation::animation(state.update_dialog_anim.anim(), content)
+                .on_update(Message::UpdateDialogAnim),
         )
     } else {
         iced::widget::Space::new().into()
@@ -4123,35 +4169,6 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         Subscription::none()
     };
 
-    let anim_tick = if state
-        .progress_anim
-        .values()
-        .any(|p| p.is_animating(state.anim_now))
-        || state.filter_pill.is_animating()
-        || state.hud_anim.is_animating(state.anim_now)
-        || state
-            .card_anim
-            .values()
-            .any(|a| a.is_animating(state.anim_now))
-        || !state.pending_removals.is_empty()
-        || state
-            .window
-            .close_dialog_anim
-            .as_ref()
-            .map(|a| a.is_animating(state.anim_now))
-            .unwrap_or(false)
-        || state.window.close_dialog_dismissing
-        || state.add_dialog_anim.needs_tick(state.anim_now)
-        || state.about_dialog_anim.needs_tick(state.anim_now)
-        || state.details_anim.needs_tick(state.anim_now)
-        || state.confirm_anim.needs_tick(state.anim_now)
-        || state.update_dialog_anim.needs_tick(state.anim_now)
-    {
-        iced::time::every(Duration::from_millis(16)).map(Message::AnimTick)
-    } else {
-        Subscription::none()
-    };
-
     let signals = Subscription::run_with((), |_| signal_stream());
 
     let tracker_auto_sync = if state.settings.tracker.auto_sync {
@@ -4185,7 +4202,6 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         persist_periodic,
         refresh,
         toast_tick,
-        anim_tick,
         signals,
         tracker_auto_sync,
         auto_update,
@@ -4640,7 +4656,13 @@ fn continue_close_flow(state: &mut Remotrix) -> Task<Message> {
 }
 
 fn open_close_dialog(state: &mut Remotrix) {
-    state.window.close_dialog_anim = Some(crate::ui::animation::CardAnim::entering(Instant::now()));
+    state.window.close_dialog_anim = Some(
+        crate::ui::animation::Animated::transition(
+            0.0,
+            crate::ui::animation::ease_out_cubic(crate::ui::animation::CARD_ENTER_MS),
+        )
+        .to(1.0),
+    );
     state.window.close_dialog_dismissing = false;
 }
 
@@ -4699,7 +4721,7 @@ fn open_add_dialog(state: &mut Remotrix) {
     state
         .add_dialog
         .open(state.settings.download_dir.clone(), state.settings.split);
-    state.add_dialog_anim.open(Instant::now());
+    state.add_dialog_anim.open();
 }
 
 fn refresh_tray(state: &mut Remotrix) {

@@ -3,7 +3,7 @@ use iced::{Alignment, Element, Font, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, SettingsMsg};
-use crate::ui::components::dialog::{overlay, Dialog};
+use crate::ui::components::dialog::Dialog;
 use crate::ui::components::expand::expand_pinned;
 use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::dims::*;
@@ -61,7 +61,7 @@ pub fn view<'a>(
     progress: f32,
 ) -> Element<'a, Message> {
     if offers.is_empty() {
-        return overlay(expand_pinned(iced::widget::Space::new(), progress));
+        return expand_pinned(iced::widget::Space::new(), progress);
     }
     let active_tab = active_tab.min(offers.len().saturating_sub(1));
     let offer = &offers[active_tab];
@@ -201,7 +201,7 @@ pub fn view<'a>(
     .spacing(SPACE_2XL)
     .align_y(Alignment::Center);
 
-    overlay(expand_pinned(
+    expand_pinned(
         Dialog::new()
             .width(460.0)
             .title(fluent.get(Tr::UpdateDialogTitle))
@@ -210,5 +210,5 @@ pub fn view<'a>(
             .footer(footer)
             .build(),
         progress,
-    ))
+    )
 }
