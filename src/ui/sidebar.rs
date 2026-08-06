@@ -36,7 +36,7 @@ pub fn view<'a>(fluent: &'a Fluent, theme: &'a iced::Theme, page: Page) -> Eleme
         icon::list().size(FONT_DIALOG_TITLE).line_height(1.0),
         fluent.get(Tr::Tasks),
         Message::Nav(NavMsg::NavigatePage(Page::Tasks)),
-        page == Page::Tasks,
+        false,
     );
     let new_area = icon_btn(
         icon::plus().size(FONT_DIALOG_TITLE).line_height(1.0),
@@ -54,7 +54,7 @@ pub fn view<'a>(fluent: &'a Fluent, theme: &'a iced::Theme, page: Page) -> Eleme
         icon::settings().size(FONT_DIALOG_TITLE).line_height(1.0),
         fluent.get(Tr::Settings),
         Message::Nav(NavMsg::NavigatePage(Page::Settings)),
-        page == Page::Settings,
+        false,
     );
 
     let col = column![]
