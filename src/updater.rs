@@ -62,35 +62,50 @@ pub async fn fetch_changelog(
     proxy: Option<String>,
 ) -> Result<Vec<ReleaseInfo>, String> {
     let client = http_client(proxy.as_deref())?;
-    let api_url = format!("https://api.github.com/repos/{repo}/releases?per_page=30");
-    let resp = client
-        .get(&api_url)
-        .send()
-        .await
-        .map_err(|e| format!("fetch releases: {e}"))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("GitHub API HTTP {status}: {body}"));
-    }
-
-    let body: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("parse releases json: {e}"))?;
-    let releases = body
-        .as_array()
-        .ok_or_else(|| "expected releases array".to_string())?;
-
     let mut out = Vec::new();
-    for rel in releases {
-        let Some(info) = release_from_json(&client, rel, asset_prefix, slug, false).await else {
-            continue;
-        };
-        if version_gt(&info.version, &current) {
-            out.push(info);
+    let mut page = 1u32;
+    // Fetch a few releases at a time (releases are newest-first) and stop as soon
+    // as we reach a version that is not newer than `current`, so we only pull the
+    // pages needed to cover the releases this component is actually behind on.
+    loop {
+        let api_url =
+            format!("https://api.github.com/repos/{repo}/releases?per_page=5&page={page}");
+        let resp = client
+            .get(&api_url)
+            .send()
+            .await
+            .map_err(|e| format!("fetch releases: {e}"))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("GitHub API HTTP {status}: {body}"));
         }
+
+        let body: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("parse releases json: {e}"))?;
+        let releases = body
+            .as_array()
+            .ok_or_else(|| "expected releases array".to_string())?;
+        if releases.is_empty() {
+            break;
+        }
+
+        for rel in releases {
+            let Some(info) = release_from_json(&client, rel, asset_prefix, slug, false).await
+            else {
+                continue;
+            };
+            if version_gt(&info.version, &current) {
+                out.push(info);
+            } else {
+                // Releases are newest-first, so nothing later can be newer either.
+                return Ok(out);
+            }
+        }
+        page += 1;
     }
     Ok(out)
 }
