@@ -3326,31 +3326,6 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     |_| Message::Noop,
                 );
             }
-            let has_hash = t
-                .info_hash
-                .as_deref()
-                .map(|h| !h.is_empty())
-                .unwrap_or(false);
-            let is_bt = has_hash
-                || crate::engine::is_magnet_url(&t.url)
-                || crate::engine::is_torrent_url(&t.url);
-            if is_bt {
-                state.add_dialog.save_picker.close_history();
-                state
-                    .add_dialog
-                    .open(state.settings.download_dir.clone(), state.settings.split);
-                state.add_dialog_anim.open();
-                let link = if !t.url.is_empty() {
-                    t.url.clone()
-                } else {
-                    format!(
-                        "magnet:?xt=urn:btih:{}",
-                        t.info_hash.as_deref().unwrap_or_default()
-                    )
-                };
-                state.add_dialog.set_urls(vec![link]);
-                return Task::none();
-            }
             if t.status == TaskStatus::Completed {
                 if state.settings.remove_task_if_files_missing {
                     state.tracking.paused_gids.remove(&gid);

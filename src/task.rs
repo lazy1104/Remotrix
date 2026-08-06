@@ -98,6 +98,10 @@ impl DownloadTask {
     pub fn is_completed(&self) -> bool {
         matches!(self.status, TaskStatus::Completed)
     }
+
+    pub fn is_download_complete(&self) -> bool {
+        is_download_complete(self.status.to_str(), self.is_seeding)
+    }
 }
 
 pub(crate) fn is_download_complete(status: &str, is_seeding: bool) -> bool {

@@ -286,6 +286,7 @@ fn task_card<'a>(
         .get(&t.gid)
         .map(|p| *p.value())
         .unwrap_or_else(|| t.progress_pct());
+    let complete = t.is_download_complete();
     let name = mouse_area(tip::standard(
         truncated_text(t.name.clone())
             .size(FONT_ICON)
@@ -293,9 +294,13 @@ fn task_card<'a>(
             .wrapping(text::Wrapping::Glyph),
         text(t.name.clone()).size(FONT_SMALL),
         tooltip::Position::Bottom,
-    ))
-    .on_double_click(Message::Task(TaskMsg::OpenTaskFile(t.gid.clone())))
-    .interaction(mouse::Interaction::Pointer);
+    ));
+    let name = if complete {
+        name.on_double_click(Message::Task(TaskMsg::OpenTaskFile(t.gid.clone())))
+            .interaction(mouse::Interaction::Pointer)
+    } else {
+        name.interaction(mouse::Interaction::None)
+    };
 
     let toolbar_icon = |glyph: iced::widget::Text<'a>,
                         msg: Option<Message>,
@@ -431,16 +436,17 @@ fn task_card<'a>(
         )
     };
 
+    let mut icons = row![].align_y(Alignment::Center).spacing(SPACE_SM);
+    if complete {
+        icons = icons.push(open_btn);
+    }
     let toolbar = container(
-        row![]
-            .push(open_btn)
+        icons
             .push(pause_resume_btn)
             .push(show_in_folder_btn)
             .push(copy_link_btn)
             .push(details_btn)
-            .push(delete_btn)
-            .spacing(SPACE_SM)
-            .align_y(Alignment::Center),
+            .push(delete_btn),
     )
     .padding(PADDING_TOOLBAR_CAPSULE)
     .style(theme::style::toolbar_capsule);
