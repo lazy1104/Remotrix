@@ -3298,6 +3298,14 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 state.add_dialog.active_tab = AddTab::Torrent;
                 return Task::none();
             }
+            if path.exists() {
+                return Task::perform(
+                    async move {
+                        let _ = open::that(&path);
+                    },
+                    |_| Message::Noop,
+                );
+            }
             let has_hash = t
                 .info_hash
                 .as_deref()
@@ -3322,14 +3330,6 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 };
                 state.add_dialog.set_urls(vec![link]);
                 return Task::none();
-            }
-            if path.exists() {
-                return Task::perform(
-                    async move {
-                        let _ = open::that(&path);
-                    },
-                    |_| Message::Noop,
-                );
             }
             if t.status == TaskStatus::Completed {
                 if state.settings.remove_task_if_files_missing {
