@@ -7,6 +7,7 @@ use iced::{Element, Event, Length, Rectangle, Size};
 pub struct Expand<'a, Message> {
     content: Element<'a, Message>,
     progress: f32,
+    pinned: bool,
 }
 
 impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Message> {
@@ -40,6 +41,9 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Me
             .content
             .as_widget_mut()
             .layout(tree, renderer, &limits.loose());
+        if self.pinned {
+            return node;
+        }
         let t = self.progress.clamp(0.0, 1.0);
         if t >= 1.0 {
             return node;
@@ -60,22 +64,32 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Me
         cursor: mouse::Cursor,
         viewport: &Rectangle,
     ) {
-        if self.progress >= 1.0 {
+        let t = self.progress.clamp(0.0, 1.0);
+        if t >= 1.0 {
             self.content
                 .as_widget()
                 .draw(tree, renderer, theme, style, layout, cursor, viewport);
         } else {
             let bounds = layout.bounds();
-            renderer.with_layer(bounds, |renderer| {
-                self.content.as_widget().draw(
-                    tree,
-                    renderer,
-                    theme,
-                    style,
-                    layout.children().next().unwrap(),
-                    cursor,
-                    viewport,
-                );
+            let layer = if self.pinned {
+                Rectangle {
+                    x: bounds.x,
+                    y: bounds.y,
+                    width: bounds.width,
+                    height: bounds.height * t,
+                }
+            } else {
+                bounds
+            };
+            renderer.with_layer(layer, |renderer| {
+                let child = if self.pinned {
+                    layout
+                } else {
+                    layout.children().next().unwrap()
+                };
+                self.content
+                    .as_widget()
+                    .draw(tree, renderer, theme, style, child, cursor, viewport);
             });
         }
     }
@@ -91,7 +105,21 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Me
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
-        let child = if self.progress >= 1.0 {
+        if self.pinned && self.progress < 1.0 {
+            if let Event::Mouse(_) | Event::Touch(_) = event {
+                let t = self.progress.clamp(0.0, 1.0);
+                let bounds = layout.bounds();
+                if !cursor.is_over(Rectangle {
+                    x: bounds.x,
+                    y: bounds.y,
+                    width: bounds.width,
+                    height: bounds.height * t,
+                }) {
+                    return;
+                }
+            }
+        }
+        let child = if self.pinned || self.progress >= 1.0 {
             layout
         } else {
             layout.children().next().unwrap()
@@ -108,7 +136,7 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Me
         renderer: &iced::Renderer,
         operation: &mut dyn widget::Operation,
     ) {
-        let child = if self.progress >= 1.0 {
+        let child = if self.pinned || self.progress >= 1.0 {
             layout
         } else {
             layout.children().next().unwrap()
@@ -126,7 +154,19 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Me
         viewport: &Rectangle,
         renderer: &iced::Renderer,
     ) -> mouse::Interaction {
-        let child = if self.progress >= 1.0 {
+        if self.pinned && self.progress < 1.0 {
+            let t = self.progress.clamp(0.0, 1.0);
+            let bounds = layout.bounds();
+            if !cursor.is_over(Rectangle {
+                x: bounds.x,
+                y: bounds.y,
+                width: bounds.width,
+                height: bounds.height * t,
+            }) {
+                return mouse::Interaction::None;
+            }
+        }
+        let child = if self.pinned || self.progress >= 1.0 {
             layout
         } else {
             layout.children().next().unwrap()
@@ -150,6 +190,19 @@ pub fn expand<'a, Message: 'a>(
     Expand {
         content: content.into(),
         progress,
+        pinned: false,
+    }
+    .into()
+}
+
+pub fn expand_pinned<'a, Message: 'a>(
+    content: impl Into<Element<'a, Message>>,
+    progress: f32,
+) -> Element<'a, Message> {
+    Expand {
+        content: content.into(),
+        progress,
+        pinned: true,
     }
     .into()
 }

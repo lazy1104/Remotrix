@@ -10,7 +10,7 @@ use crate::task::{
     TaskAdvancedOptions, TaskDetails,
 };
 use crate::ui::components::dialog::overlay;
-use crate::ui::components::expand::expand;
+use crate::ui::components::expand::expand_pinned;
 use crate::ui::components::file_tree;
 use crate::ui::components::key_value_list::key_value_list;
 use crate::ui::components::slim_scrollable::slim_scrollable;
@@ -221,7 +221,7 @@ pub fn view<'a>(
         },
     };
 
-    overlay(expand(
+    overlay(expand_pinned(
         container(
             column![]
                 .push(header)

@@ -8,7 +8,7 @@ use crate::i18n::{Fluent, Tr};
 use crate::message::{AddField, AddMsg, AddTab, Message, PathPickerId};
 use crate::task::format_size;
 use crate::ui::components::dialog::{overlay, Dialog};
-use crate::ui::components::expand::expand;
+use crate::ui::components::expand::expand_pinned;
 use crate::ui::components::file_tree::{self, FileTreeNode};
 use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::path_picker::PathPicker;
@@ -483,7 +483,7 @@ pub fn view<'a>(
         .spacing(SPACE_XL)
         .align_y(Alignment::Center);
 
-    overlay(expand(
+    overlay(expand_pinned(
         Dialog::new()
             .width(520.0)
             .spacing(SPACE_3XL)
