@@ -255,6 +255,10 @@ impl Sidecar {
         #[cfg(unix)]
         cmd.arg("--stop-with-process")
             .arg(std::process::id().to_string());
+        // aria2-next is a console-subsystem binary; without this flag Windows
+        // allocates a new console window for it alongside our GUI.
+        #[cfg(windows)]
+        cmd.creation_flags(0x08000000);
         let settings = crate::config::load();
         for arg in settings.aria2.ed2k_startup_args() {
             cmd.arg(arg);

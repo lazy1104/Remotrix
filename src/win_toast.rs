@@ -21,6 +21,31 @@ const PKEY_APPUSERMODEL_ID: PROPERTYKEY = PROPERTYKEY {
     pid: 5,
 };
 
+// RAII guard for COM apartment initialization: CoUninitialize is guaranteed to
+// run once, exactly when this guard owned the init (S_OK), even on early
+// returns or panics. Prevents the unbalanced init/uninit that can corrupt the
+// process heap on Windows.
+struct ComScope(bool);
+
+impl ComScope {
+    fn new() -> Self {
+        let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+        ComScope(hr.is_ok() && hr.0 == 0)
+    }
+
+    fn active(&self) -> bool {
+        self.0
+    }
+}
+
+impl Drop for ComScope {
+    fn drop(&mut self) {
+        if self.0 {
+            unsafe { CoUninitialize() };
+        }
+    }
+}
+
 pub fn init() {
     set_process_aumid();
     let _ = std::thread::Builder::new()
@@ -64,24 +89,20 @@ pub fn ensure_shortcut() -> bool {
         return false;
     }
 
-    let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
-    if !hr.is_ok() {
-        tracing::debug!(error = %hr, "win_toast: CoInitializeEx failed");
+    let com = ComScope::new();
+    if !com.active() {
+        tracing::debug!("win_toast: CoInitializeEx failed");
         return false;
     }
-    let result = build_shortcut(&exe, &shortcut_path);
-    if hr.0 == 0 {
-        unsafe { CoUninitialize() };
-    }
-    result
+    build_shortcut(&exe, &shortcut_path)
 }
 
 fn shortcut_aumid(path: &std::path::Path) -> Option<String> {
-    let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
-    if !hr.is_ok() {
+    let com = ComScope::new();
+    if !com.active() {
         return None;
     }
-    let result = (|| -> Option<String> {
+    (|| -> Option<String> {
         let shell: IShellLinkW =
             unsafe { CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER) }.ok()?;
         let persist: IPersistFile = shell.cast().ok()?;
@@ -94,11 +115,7 @@ fn shortcut_aumid(path: &std::path::Path) -> Option<String> {
         }
         let pwsz = unsafe { propvar.Anonymous.Anonymous.Anonymous.pwszVal };
         Some(unsafe { pwsz.to_string().unwrap_or_default() })
-    })();
-    if hr.0 == 0 {
-        unsafe { CoUninitialize() };
-    }
-    result
+    })()
 }
 
 fn build_shortcut(exe: &std::path::Path, shortcut_path: &std::path::Path) -> bool {
