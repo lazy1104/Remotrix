@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::time::Instant;
 
 use crate::clipboard_watch::ClipboardPayload;
 use crate::engine::EngineEvent;
@@ -78,6 +79,7 @@ pub enum Message {
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     ActivateWindow,
     Tray(TrayMsg),
+    AnimTick(Instant),
     Noop,
 }
 

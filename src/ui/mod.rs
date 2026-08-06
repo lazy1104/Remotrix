@@ -1,5 +1,6 @@
 pub mod about_dialog;
 pub mod add_dialog;
+pub mod animation;
 pub mod category_bar;
 pub mod close_dialog;
 pub mod components;

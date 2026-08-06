@@ -298,6 +298,8 @@ pub struct Remotrix {
     tracking: TaskTracking,
     update_dialog: Option<UpdateDialogState>,
     app_update_in_flight: bool,
+    anim_now: Instant,
+    progress_anim: HashMap<String, crate::ui::animation::ProgressTween>,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
@@ -413,6 +415,8 @@ pub fn init() -> (Remotrix, Task<Message>) {
         tracking: TaskTracking::new(active_count),
         update_dialog: None,
         app_update_in_flight: false,
+        anim_now: Instant::now(),
+        progress_anim: HashMap::new(),
     };
 
     refresh_tray(&mut state);
@@ -527,6 +531,7 @@ fn clear_all_local(state: &mut Remotrix) {
             .insert(gid.clone(), Instant::now());
     }
     state.tasks.clear();
+    state.progress_anim.clear();
     state.task_order.clear();
     state.tracking.dirty.clear();
     state.tracking.active_count = 0;
@@ -552,6 +557,7 @@ fn remove_task_local(state: &mut Remotrix, gid: &str) {
     state.tracking.error_notified.remove(gid);
     state.tracking.paused_gids.remove(gid);
     state.tasks.remove(gid);
+    state.progress_anim.remove(gid);
     state.task_order.retain(|g| g != gid);
     state.tracking.dirty.remove(gid);
     if let Some(ref db) = state.db {
@@ -1976,6 +1982,13 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         }
                     }
                     state.tracking.dirty.insert(gid.clone());
+                    state.anim_now = Instant::now();
+                    let pct = t.progress_pct();
+                    state
+                        .progress_anim
+                        .entry(gid.clone())
+                        .or_insert_with(|| crate::ui::animation::ProgressTween::new(pct))
+                        .towards(pct, state.anim_now);
                 }
                 if status == "complete" && state.tracking.sync_done {
                     if let Some(t) = state.tasks.get(&gid) {
@@ -3427,6 +3440,10 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             return restore_window_from_tray_wayland(state).chain(attention);
         }
         Message::Noop => {}
+        Message::AnimTick(now) => {
+            state.anim_now = now;
+            state.progress_anim.retain(|_, a| a.is_animating(now));
+        }
     }
     Task::none()
 }
@@ -3498,6 +3515,8 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                 state.sort_order,
                 state.sort_menu_open,
                 &state.search_query,
+                state.anim_now,
+                &state.progress_anim,
             )
         }
         Page::Settings => {
@@ -3896,6 +3915,16 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         Subscription::none()
     };
 
+    let anim_tick = if state
+        .progress_anim
+        .values()
+        .any(|p| p.is_animating(state.anim_now))
+    {
+        iced::time::every(Duration::from_millis(16)).map(Message::AnimTick)
+    } else {
+        Subscription::none()
+    };
+
     let signals = Subscription::run_with((), |_| signal_stream());
 
     let tracker_auto_sync = if state.settings.tracker.auto_sync {
@@ -3929,6 +3958,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         persist_periodic,
         refresh,
         toast_tick,
+        anim_tick,
         signals,
         tracker_auto_sync,
         auto_update,

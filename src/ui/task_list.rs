@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::time::Instant;
+
 use crate::ui::components::drop_down;
 use iced::widget::{
     button, column, container, mouse_area, progress_bar, row, text, text_input, tooltip,
@@ -9,6 +12,7 @@ use crate::message::{
     AddMsg, ConfirmAction, DialogMsg, Message, SortField, SortMsg, SortOrder, TaskMsg,
 };
 use crate::task::{format_duration, format_size, format_speed, DownloadTask, TaskStatus};
+use crate::ui::animation::ProgressTween;
 use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::components::tooltip as tip;
 use crate::ui::components::truncated_text::truncated_text;
@@ -16,6 +20,7 @@ use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
+#[allow(clippy::too_many_arguments)]
 pub fn view<'a>(
     fluent: &'a Fluent,
     theme: &iced::Theme,
@@ -24,6 +29,8 @@ pub fn view<'a>(
     sort_order: SortOrder,
     sort_menu_open: bool,
     search_query: &str,
+    now: Instant,
+    progress_anim: &HashMap<String, ProgressTween>,
 ) -> Element<'a, Message> {
     let toolbar_btn = |glyph: iced::widget::Text<'a>,
                        tip: String,
@@ -236,7 +243,7 @@ pub fn view<'a>(
     let mut list = column![].spacing(SPACE_XL);
 
     for t in tasks {
-        list = list.push(task_card(fluent, theme, t));
+        list = list.push(task_card(fluent, theme, t, now, progress_anim));
     }
 
     let body = slim_scrollable(
@@ -258,9 +265,14 @@ fn task_card<'a>(
     fluent: &'a Fluent,
     theme: &iced::Theme,
     t: &DownloadTask,
+    now: Instant,
+    progress_anim: &HashMap<String, ProgressTween>,
 ) -> Element<'a, Message> {
     let text_secondary = theme::text_secondary(theme);
-    let pct = t.progress_pct();
+    let pct = progress_anim
+        .get(&t.gid)
+        .map(|p| p.value(now))
+        .unwrap_or_else(|| t.progress_pct());
     let name = mouse_area(tip::standard(
         truncated_text(t.name.clone())
             .size(FONT_ICON)
