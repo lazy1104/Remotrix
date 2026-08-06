@@ -13,6 +13,7 @@ use crate::message::{
 };
 use crate::task::{format_duration, format_size, format_speed, DownloadTask, TaskStatus};
 use crate::ui::animation::ProgressTween;
+use crate::ui::components::expand::expand;
 use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::components::tooltip as tip;
 use crate::ui::components::truncated_text::truncated_text;
@@ -31,6 +32,7 @@ pub fn view<'a>(
     search_query: &str,
     now: Instant,
     progress_anim: &HashMap<String, ProgressTween>,
+    card_anim: &HashMap<String, crate::ui::animation::CardAnim>,
 ) -> Element<'a, Message> {
     let toolbar_btn = |glyph: iced::widget::Text<'a>,
                        tip: String,
@@ -240,10 +242,17 @@ pub fn view<'a>(
             .into();
     }
 
-    let mut list = column![].spacing(SPACE_XL);
+    let mut list = column![].spacing(0.0);
 
     for t in tasks {
-        list = list.push(task_card(fluent, theme, t, now, progress_anim));
+        let tween = card_anim.get(&t.gid).map(|a| a.value(now)).unwrap_or(1.0);
+        let card = container(task_card(fluent, theme, t, now, progress_anim))
+            .width(Length::Fill)
+            .style(theme::style::card);
+        let spaced = container(card)
+            .width(Length::Fill)
+            .padding(iced::padding::bottom(SPACE_XL));
+        list = list.push(expand(spaced, tween));
     }
 
     let body = slim_scrollable(

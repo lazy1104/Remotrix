@@ -300,6 +300,8 @@ pub struct Remotrix {
     app_update_in_flight: bool,
     anim_now: Instant,
     progress_anim: HashMap<String, crate::ui::animation::ProgressTween>,
+    card_anim: HashMap<String, crate::ui::animation::CardAnim>,
+    pending_removals: HashSet<String>,
     filter_pill: crate::ui::category_bar::FilterPill,
     hud_anim: crate::ui::components::speed_hud::HudTween,
 }
@@ -419,6 +421,8 @@ pub fn init() -> (Remotrix, Task<Message>) {
         app_update_in_flight: false,
         anim_now: Instant::now(),
         progress_anim: HashMap::new(),
+        card_anim: HashMap::new(),
+        pending_removals: HashSet::new(),
         filter_pill: crate::ui::category_bar::FilterPill::new(0.0),
         hud_anim: crate::ui::components::speed_hud::HudTween::new(),
     };
@@ -528,15 +532,10 @@ fn apply_settings(state: &mut Remotrix) -> bool {
 }
 
 fn clear_all_local(state: &mut Remotrix) {
-    for gid in state.tasks.keys() {
-        state
-            .tracking
-            .removed_gids
-            .insert(gid.clone(), Instant::now());
+    let gids: Vec<String> = state.tasks.keys().cloned().collect();
+    for gid in gids {
+        begin_task_exit(state, &gid, false);
     }
-    state.tasks.clear();
-    state.progress_anim.clear();
-    state.task_order.clear();
     state.tracking.dirty.clear();
     state.tracking.active_count = 0;
     state.tracking.paused_gids.clear();
@@ -545,28 +544,49 @@ fn clear_all_local(state: &mut Remotrix) {
     }
 }
 
-fn remove_task_local(state: &mut Remotrix, gid: &str) {
-    if let Some(t) = state.tasks.get(gid) {
-        if t.status == TaskStatus::Active {
-            state.tracking.active_count = state.tracking.active_count.saturating_sub(1);
-        }
+fn begin_task_exit(state: &mut Remotrix, gid: &str, delete_db: bool) {
+    if !state.tasks.contains_key(gid) || state.pending_removals.contains(gid) {
+        return;
     }
+    state.pending_removals.insert(gid.to_string());
     state
         .tracking
         .removed_gids
         .insert(gid.to_string(), Instant::now());
+    let now = Instant::now();
+    match state.card_anim.get_mut(gid) {
+        Some(a) => a.begin_exit(now),
+        None => {
+            state.card_anim.insert(
+                gid.to_string(),
+                crate::ui::animation::CardAnim::exiting(now),
+            );
+        }
+    }
+    if delete_db {
+        if let Some(ref db) = state.db {
+            db.delete(gid);
+        }
+    }
+    state.tracking.dirty.remove(gid);
+}
+
+fn finalize_task_removal(state: &mut Remotrix, gid: &str) {
+    if let Some(t) = state.tasks.remove(gid) {
+        if t.status == TaskStatus::Active {
+            state.tracking.active_count = state.tracking.active_count.saturating_sub(1);
+        }
+    }
     let _ = state.tracking.torrent_files.remove(gid);
     state.tracking.torrent_followed.remove(gid);
     state.tracking.completion_toasted.remove(gid);
     state.tracking.error_notified.remove(gid);
     state.tracking.paused_gids.remove(gid);
-    state.tasks.remove(gid);
     state.progress_anim.remove(gid);
     state.task_order.retain(|g| g != gid);
     state.tracking.dirty.remove(gid);
-    if let Some(ref db) = state.db {
-        db.delete(gid);
-    }
+    state.pending_removals.remove(gid);
+    state.card_anim.remove(gid);
 }
 
 const REMOVED_GID_GRACE: Duration = Duration::from_secs(60);
@@ -650,11 +670,8 @@ fn clear_completed_local(state: &mut Remotrix, gids: &[String]) {
     }
     for gid in gids {
         state.tracking.dirty.remove(gid);
+        begin_task_exit(state, gid, false);
     }
-    state
-        .tasks
-        .retain(|_k, t| !matches!(t.status, TaskStatus::Completed | TaskStatus::Removed));
-    state.task_order.retain(|gid| state.tasks.contains_key(gid));
 }
 
 fn flush_dirty(state: &mut Remotrix) {
@@ -1724,7 +1741,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     .map(|(gid, _)| gid.clone())
                     .collect();
                 for gid in &purge {
-                    remove_task_local(state, gid);
+                    begin_task_exit(state, gid, true);
                     tracing::info!(?gid, "ui: purged non-terminal ghost task");
                 }
                 let split = state.settings.split;
@@ -1794,7 +1811,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     .collect();
                 for gid in &removed {
                     tracing::info!(?gid, "ui: removed task with missing files");
-                    remove_task_local(state, gid);
+                    begin_task_exit(state, gid, true);
                 }
                 if !removed.is_empty() {
                     if state
@@ -1866,6 +1883,10 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     };
                     state.tasks.insert(gid.clone(), task);
                     state.task_order.insert(0, gid.clone());
+                    state.card_anim.insert(
+                        gid.clone(),
+                        crate::ui::animation::CardAnim::entering(Instant::now()),
+                    );
                     if let Some(ref db) = state.db {
                         db.upsert_meta(
                             &gid,
@@ -1950,6 +1971,10 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         },
                     );
                     state.task_order.insert(0, gid.clone());
+                    state.card_anim.insert(
+                        gid.clone(),
+                        crate::ui::animation::CardAnim::entering(Instant::now()),
+                    );
                     if let Some(ref db) = state.db {
                         db.upsert_meta(
                             &gid,
@@ -2118,7 +2143,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             EngineEvent::Removed(gid) => {
                 tracing::info!(?gid, "ui: task removed");
-                remove_task_local(state, &gid);
+                begin_task_exit(state, &gid, true);
                 refresh_tray(state);
             }
             EngineEvent::TaskDetails { gid, details } => {
@@ -3453,6 +3478,22 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::Noop => {}
         Message::AnimTick(now) => {
             state.anim_now = now;
+            let finished: Vec<String> = state
+                .pending_removals
+                .iter()
+                .filter(|gid| {
+                    state
+                        .card_anim
+                        .get(*gid)
+                        .map(|a| !a.is_animating(now))
+                        .unwrap_or(true)
+                })
+                .cloned()
+                .collect();
+            for gid in finished {
+                finalize_task_removal(state, &gid);
+            }
+            state.card_anim.retain(|_, a| a.is_animating(now));
             state.progress_anim.retain(|_, a| a.is_animating(now));
             state.filter_pill.tick(now);
             state.hud_anim.towards(
@@ -3547,6 +3588,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                 &state.search_query,
                 state.anim_now,
                 &state.progress_anim,
+                &state.card_anim,
             )
         }
         Page::Settings => {
@@ -3952,6 +3994,11 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         .any(|p| p.is_animating(state.anim_now))
         || state.filter_pill.is_animating()
         || state.hud_anim.is_animating(state.anim_now)
+        || state
+            .card_anim
+            .values()
+            .any(|a| a.is_animating(state.anim_now))
+        || !state.pending_removals.is_empty()
     {
         iced::time::every(Duration::from_millis(16)).map(Message::AnimTick)
     } else {

@@ -55,6 +55,50 @@ impl ProgressTween {
     }
 }
 
+pub const CARD_ENTER_MS: u64 = 280;
+pub const CARD_EXIT_MS: u64 = 200;
+
+pub struct CardAnim {
+    anim: Animation<f32>,
+}
+
+impl CardAnim {
+    pub fn entering(now: Instant) -> Self {
+        Self {
+            anim: Animation::new(0.0)
+                .easing(EASE_OUT_CUBIC)
+                .duration(Duration::from_millis(CARD_ENTER_MS))
+                .go(1.0, now),
+        }
+    }
+
+    pub fn exiting(now: Instant) -> Self {
+        Self {
+            anim: Animation::new(1.0)
+                .easing(EASE_OUT_QUAD)
+                .duration(Duration::from_millis(CARD_EXIT_MS))
+                .go(0.0, now),
+        }
+    }
+
+    pub fn begin_exit(&mut self, now: Instant) {
+        self.anim = self
+            .anim
+            .clone()
+            .easing(EASE_OUT_QUAD)
+            .duration(Duration::from_millis(CARD_EXIT_MS))
+            .go(0.0, now);
+    }
+
+    pub fn value(&self, now: Instant) -> f32 {
+        self.anim.interpolate_with(|v| v, now).clamp(0.0, 1.0)
+    }
+
+    pub fn is_animating(&self, now: Instant) -> bool {
+        self.anim.is_animating(now)
+    }
+}
+
 static ANIM_EPOCH: OnceLock<Instant> = OnceLock::new();
 fn epoch() -> Instant {
     *ANIM_EPOCH.get_or_init(Instant::now)

@@ -2,6 +2,7 @@ pub mod copyable_text;
 pub mod dialog;
 pub mod drop_down;
 pub mod drop_overlay;
+pub mod expand;
 pub mod file_tree;
 pub mod key_value_list;
 pub mod logo;
