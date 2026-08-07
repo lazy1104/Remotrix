@@ -11,6 +11,7 @@ pub mod logo;
 pub mod number_stepper;
 pub mod path_picker;
 pub mod piece_map;
+pub mod secret_input;
 pub mod slim_scrollable;
 pub mod speed_hud;
 pub mod spinner;

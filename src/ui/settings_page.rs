@@ -1013,37 +1013,20 @@ fn extension_view<'a>(
             ))
             .push(setting_row(
                 fluent.get(Tr::ExtensionApiSecret),
-                row![]
-                    .spacing(SPACE_SM)
-                    .push(theme::input_layout(
-                        text_input(&port_placeholder, &secret)
-                            .on_input(move |s| {
-                                Message::Settings(SettingsMsg::SettingChanged(
-                                    SettingKey::ExtensionApiSecret,
-                                    SettingValue::Text(s),
-                                ))
-                            })
-                            .width(Length::Fixed(180.0))
-                            .style(theme::style::input::standard),
-                    ))
-                    .push(
-                        button(text(fluent.get(Tr::GenerateSecret)).size(FONT_SMALL))
-                            .on_press(Message::Extension(
-                                crate::message::ExtensionMsg::GenerateSecret,
-                            ))
-                            .padding(PADDING_BUTTON_SM)
-                            .height(Length::Fixed(crate::ui::components::CONTROL_HEIGHT))
-                            .style(theme::style::button::secondary()),
-                    )
-                    .push(
-                        button(text(fluent.get(Tr::Copy)).size(FONT_SMALL))
-                            .on_press(Message::CopyText(secret.clone()))
-                            .padding(PADDING_BUTTON_SM)
-                            .height(Length::Fixed(crate::ui::components::CONTROL_HEIGHT))
-                            .style(theme::style::button::secondary()),
-                    )
-                    .align_y(Alignment::Center)
-                    .into(),
+                crate::ui::components::secret_input::secret_input(
+                    fluent,
+                    theme,
+                    &secret,
+                    &port_placeholder,
+                    move |s| {
+                        Message::Settings(SettingsMsg::SettingChanged(
+                            SettingKey::ExtensionApiSecret,
+                            SettingValue::Text(s),
+                        ))
+                    },
+                    Message::Extension(crate::message::ExtensionMsg::GenerateSecret),
+                    Message::CopyText(secret.clone()),
+                ),
             ))
             .push(labeled_toggle(
                 fluent.get(Tr::ExtensionAutoSubmit),

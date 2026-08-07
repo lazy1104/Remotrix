@@ -1,6 +1,6 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// 647b5725e063c1979992588b2a2f2fa7e7b66fe8fd3214adce30d93547a925be
+// c863300a6b90e19a349e6578ccdd67e590130acea0890429a6aac64d886763f0
 use iced::widget::{text, Text};
 use iced::Font;
 
@@ -21,6 +21,7 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("collapse", "\u{E228}"),
     ("connections", "\u{E37F}"),
     ("copy", "\u{E09E}"),
+    ("dices", "\u{E2C5}"),
     ("download", "\u{E0B2}"),
     ("download_arrow", "\u{E455}"),
     ("eraser", "\u{E28F}"),
@@ -94,6 +95,10 @@ pub fn connections<'a>() -> Text<'a> {
 
 pub fn copy<'a>() -> Text<'a> {
     icon("\u{E09E}")
+}
+
+pub fn dices<'a>() -> Text<'a> {
+    icon("\u{E2C5}")
 }
 
 pub fn download<'a>() -> Text<'a> {
