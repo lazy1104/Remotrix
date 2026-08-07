@@ -11,6 +11,7 @@ pub const CARD_EXIT_MS: u64 = 200;
 pub const HUD_ANIM_MS: u64 = 220;
 pub const PROGRESS_MS: u64 = 250;
 pub const PILL_MS: u64 = 200;
+pub const DIALOG_ANIM_MS: u64 = 240;
 
 pub fn ease_out_quad(duration_ms: u64) -> Easing {
     Easing::new(Curve::Custom(|p| 1.0 - (1.0 - p).powi(2)))
@@ -36,10 +37,18 @@ pub fn ease_in_out_quad(duration_ms: u64) -> Easing {
     .reversible(false)
 }
 
-#[derive(Default)]
 pub struct DialogAnim {
     anim: Animated<f32>,
     dismissing: bool,
+}
+
+impl Default for DialogAnim {
+    fn default() -> Self {
+        Self {
+            anim: Animated::transition(0.0, ease_out_cubic(DIALOG_ANIM_MS)),
+            dismissing: false,
+        }
+    }
 }
 
 impl DialogAnim {
