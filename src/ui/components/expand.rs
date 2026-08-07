@@ -2,7 +2,7 @@ use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer;
 use iced::advanced::widget::{self, tree, Widget};
 use iced::advanced::{mouse, Clipboard, Layout, Renderer, Shell};
-use iced::{Element, Event, Length, Rectangle, Size};
+use iced::{Element, Event, Length, Rectangle, Size, Vector};
 
 pub struct Expand<'a, Message> {
     content: Element<'a, Message>,
@@ -166,6 +166,24 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Me
         self.content
             .as_widget()
             .mouse_interaction(tree, child, cursor, viewport, renderer)
+    }
+
+    fn overlay<'b>(
+        &'b mut self,
+        tree: &'b mut widget::Tree,
+        layout: Layout<'b>,
+        renderer: &iced::Renderer,
+        viewport: &Rectangle,
+        translation: Vector,
+    ) -> Option<iced::overlay::Element<'b, Message, iced::Theme, iced::Renderer>> {
+        let child = if self.pinned || self.progress >= 1.0 {
+            layout
+        } else {
+            layout.children().next().unwrap()
+        };
+        self.content
+            .as_widget_mut()
+            .overlay(tree, child, renderer, viewport, translation)
     }
 }
 
