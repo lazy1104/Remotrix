@@ -25,7 +25,7 @@ with AI assistance.
 - **Embedded persistence** — task metadata and progress are stored in a local SQLite database and survive restarts
 - **Self-managing engine** — aria2-next is fetched at runtime from GitHub Releases (sha256-verified, cached, self-healing), with automatic update checks and staged background updates applied on the next restart
 - **Frameless window** — custom title bar with minimize / maximize / close controls and a close-confirmation dialog
-- **System tray** — tray icon and menu, with minimize-to-tray / close-to-tray (`ldtray`)
+- **System tray** — tray icon and menu, with minimize-to-tray / close-to-tray (`ldtray`). Note: integration is incomplete under Wayland — the window can only be minimized to the taskbar, not fully hidden
 - **System notifications** — native desktop notifications for events like download completion (`notify-rust`)
 - **Single instance** — a second launch focuses the existing window (`app-single-instance`)
 - **Theming** — pick an accent color (a wrapping row of swatches); iced auto-generates the full light / dark palette from it, including a M3-style surface background derived from the accent hue, and the app can follow the system appearance (`dark-light` detection)
@@ -224,7 +224,7 @@ bt-tracker, seed ratio/time, DHT, and more).
 - [x] Task details dialog (piece map, files, BT info)
 - [x] Magnet link support
 - [x] Drag-and-drop file / task support
-- [x] System tray integration (minimize-to-tray / close-to-tray)
+- [x] System tray integration (minimize-to-tray / close-to-tray on X11; incomplete on Wayland — the window can only be minimized, not hidden)
 - [x] System notifications (download completion, etc.)
 - [x] Single-instance run
 
@@ -237,7 +237,7 @@ bt-tracker, seed ratio/time, DHT, and more).
 - [ ] Browser extension — extension / context-menu to send links to Remotrix in one click
 - [ ] Launch at login — start automatically after sign-in
 - [ ] Scheduled / download-complete shutdown — scheduled shutdown and auto-shutdown when all tasks finish
-- [ ] Wayland compatibility polish — improve window, tray, and notification behavior under Wayland
+- [ ] Wayland tray compatibility polish — under Wayland the window can only be minimized and not fully hidden; improve window-hiding / tray / notification behavior
 - [ ] UI/UX polish — continuously refine visuals and interactions
 
 ## Acknowledgements
