@@ -1,5 +1,12 @@
 {
-  "template": "# What's Changed\n\n{{CHANGELOG}}",
+  "template": "# What's Changed\n\n#{{CHANGELOG}}",
+  "label_extractor": [
+    {
+      "pattern": "^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\\([^)]*\\))?(!)?:\\s[\\s\\S]*",
+      "on_property": "title",
+      "target": "$1"
+    }
+  ],
   "categories": [
     {
       "title": "## 🚀 New Features",
