@@ -138,6 +138,15 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
         ctx_mirrors,
     } = ctx;
     let accent = theme::accent(theme);
+    let base_text = theme.extended_palette().background.base.text;
+    let restart_icon_color = if *engine_restart_in_progress {
+        Color {
+            a: base_text.a * 0.5,
+            ..base_text
+        }
+    } else {
+        base_text
+    };
     let dirty = *settings_dirty;
     let content = match category {
         SettingsCategory::General => general_view(
@@ -200,6 +209,7 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
                 None
             })
             .padding(PADDING_BUTTON_XL)
+            .height(Length::Fixed(ACTION_BUTTON_H))
             .style(theme::style::button::primary()),
     );
     actions = actions.push(
@@ -210,12 +220,19 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
                 None
             })
             .padding(PADDING_BUTTON_XL)
+            .height(Length::Fixed(ACTION_BUTTON_H))
             .style(theme::style::button::secondary()),
     );
     actions = actions.push(
         button(
             row![
-                icon::refresh().size(FONT_ICON),
+                crate::ui::components::spinner::Spinner::refresh(
+                    restart_icon_color,
+                    FONT_ICON as f32,
+                )
+                .animate(*engine_restart_in_progress)
+                .box_factor(RESTART_ICON_BOX_FACTOR)
+                .view(),
                 text(fluent.get(Tr::RestartEngine)).size(FONT_BODY),
             ]
             .spacing(SPACE_SM)
@@ -227,6 +244,7 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
             Some(Message::Engine(EngineMsg::RestartEngine))
         })
         .padding(PADDING_BUTTON_XL)
+        .height(Length::Fixed(ACTION_BUTTON_H))
         .style(theme::style::button::secondary()),
     );
     actions = actions.push(iced::widget::Space::new().width(Length::Fill));

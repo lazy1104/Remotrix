@@ -15,6 +15,8 @@ pub struct Spinner {
     codepoint: char,
     color: Color,
     size: f32,
+    animate: bool,
+    box_factor: f32,
 }
 
 impl Spinner {
@@ -23,6 +25,8 @@ impl Spinner {
             codepoint,
             color,
             size,
+            animate: true,
+            box_factor: 1.6,
         }
     }
 
@@ -34,11 +38,22 @@ impl Spinner {
         Self::glyph('\u{E145}', color, size)
     }
 
+    pub fn animate(mut self, animate: bool) -> Self {
+        self.animate = animate;
+        self
+    }
+
+    pub fn box_factor(mut self, factor: f32) -> Self {
+        self.box_factor = factor;
+        self
+    }
+
     pub fn view(self) -> Element<'static, Message> {
         let size = self.size;
+        let box_size = size * self.box_factor;
         canvas::Canvas::new(SpinnerProgram { spinner: self })
-            .width(Length::Fixed(size * 1.6))
-            .height(Length::Fixed(size * 1.6))
+            .width(Length::Fixed(box_size))
+            .height(Length::Fixed(box_size))
             .into()
     }
 }
@@ -57,9 +72,13 @@ impl canvas::Program<Message> for SpinnerProgram {
         _bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Option<canvas::Action<Message>> {
-        Some(canvas::Action::request_redraw_at(
-            Instant::now() + REDRAW_PERIOD,
-        ))
+        if self.spinner.animate {
+            Some(canvas::Action::request_redraw_at(
+                Instant::now() + REDRAW_PERIOD,
+            ))
+        } else {
+            None
+        }
     }
 
     fn draw(
@@ -71,7 +90,11 @@ impl canvas::Program<Message> for SpinnerProgram {
         _cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
         let mut frame = canvas::Frame::new(renderer, bounds.size());
-        let angle = crate::ui::animation::spin(Instant::now(), SPIN_PERIOD);
+        let angle = if self.spinner.animate {
+            crate::ui::animation::spin(Instant::now(), SPIN_PERIOD)
+        } else {
+            0.0
+        };
         frame.with_save(|f| {
             f.translate(Vector::new(bounds.width / 2.0, bounds.height / 2.0));
             f.rotate(iced::Degrees(angle));
