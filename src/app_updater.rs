@@ -1,207 +1,221 @@
 use std::path::{Path, PathBuf};
-#[cfg(unix)]
-use std::process::Stdio;
 
 use crate::aria2_fetcher;
 
-pub struct AppUpdateDownload {
-    pub version: String,
-    pub slug: String,
-    pub download_url: String,
-    pub sha256: Option<String>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallKind {
+    WindowsSetup,
+    Deb,
+    AppImage,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct PendingInfo {
-    version: String,
-    slug: String,
-    sha256: String,
-}
-
-const PENDING_FILE: &str = ".pending-update";
-
-pub fn app_update_dir() -> Option<PathBuf> {
-    let dir = crate::config::data_home()?.join("remotrix").join("app");
-    let _ = std::fs::create_dir_all(&dir);
-    Some(dir)
-}
-
-pub async fn stage_app_update(
-    download: &AppUpdateDownload,
-    proxy: Option<String>,
-) -> Result<String, String> {
-    let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
-    let dir = exe.parent().ok_or("cannot determine install directory")?;
-    let probe = dir.join(format!(".remotrix-swap-probe-{}", std::process::id()));
-    if std::fs::write(&probe, b"").is_err() {
-        return Err(
-            "installed in a protected directory; self-update is not supported — please reinstall via the package"
-                .into(),
-        );
-    }
-    let _ = std::fs::remove_file(&probe);
-
-    let dir = app_update_dir().ok_or("cannot determine app data directory")?;
-    let bin_name = format!("remotrix-{}-{}", download.version, download.slug);
-    let part_path = dir.join(format!("{bin_name}.part"));
-    let bin_path = dir.join(&bin_name);
-
-    aria2_fetcher::download_file(&download.download_url, &part_path, proxy.as_deref()).await?;
-
-    if download.sha256.is_none() {
-        tracing::warn!(
-            "app update {} has no checksum; will be applied unverified",
-            download.version
-        );
-    }
-
-    if let Some(expected) = &download.sha256 {
-        let digest = aria2_fetcher::sha256_file(&part_path).map_err(|e| format!("sha256: {e}"))?;
-        if digest != *expected {
-            let _ = std::fs::remove_file(&part_path);
-            return Err(format!(
-                "sha256 mismatch: expected {expected}, got {digest}"
-            ));
+impl InstallKind {
+    /// Whether an installer asset name belongs to this install kind.
+    pub fn asset_matches(&self, name: &str) -> bool {
+        match self {
+            InstallKind::WindowsSetup => name.contains("setup") && name.ends_with(".exe"),
+            InstallKind::Deb => name.ends_with(".deb"),
+            InstallKind::AppImage => name.ends_with(".AppImage"),
         }
     }
-
-    std::fs::rename(&part_path, &bin_path).map_err(|e| format!("rename: {e}"))?;
-    aria2_fetcher::set_perms(&bin_path)?;
-
-    let pending = PendingInfo {
-        version: download.version.clone(),
-        slug: download.slug.clone(),
-        sha256: download.sha256.clone().unwrap_or_default(),
-    };
-    let json =
-        serde_json::to_string_pretty(&pending).map_err(|e| format!("serialize pending: {e}"))?;
-    std::fs::write(dir.join(PENDING_FILE), &json)
-        .map_err(|e| format!("write {PENDING_FILE}: {e}"))?;
-
-    Ok(download.version.clone())
 }
 
-pub fn apply_pending_app_update() -> Result<Option<String>, String> {
-    let Some(dir) = app_update_dir() else {
-        return Ok(None);
-    };
-    let pending_path = dir.join(PENDING_FILE);
-    let Ok(content) = std::fs::read_to_string(&pending_path) else {
-        return Ok(None);
-    };
-    let pending: PendingInfo = match serde_json::from_str(&content) {
-        Ok(p) => p,
-        Err(_) => {
-            let _ = std::fs::remove_file(&pending_path);
-            return Ok(None);
-        }
-    };
-    let bin_name = format!("remotrix-{}-{}", pending.version, pending.slug);
-    let staged = dir.join(&bin_name);
-    if !staged.exists() {
-        let _ = std::fs::remove_file(&pending_path);
-        return Ok(None);
-    }
-    if pending.sha256.is_empty() {
-        tracing::warn!(
-            "app update {} has no recorded checksum; applying unverified",
-            pending.version
-        );
-    } else {
-        match aria2_fetcher::sha256_file(&staged) {
-            Ok(digest) if digest == pending.sha256 => {}
-            Ok(digest) => {
-                tracing::warn!(expected=%pending.sha256, got=digest, "app update checksum mismatch; discarding");
-                let _ = std::fs::remove_file(&staged);
-                let _ = std::fs::remove_file(&pending_path);
-                return Ok(None);
-            }
-            Err(e) => {
-                tracing::warn!(error=%e, "app update staged file unreadable; discarding");
-                let _ = std::fs::remove_file(&staged);
-                let _ = std::fs::remove_file(&pending_path);
-                return Ok(None);
-            }
-        }
-    }
-
-    let current_exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
-    swap_in_pending(&current_exe, &staged)?;
-    let _ = std::fs::remove_file(&pending_path);
-    Ok(Some(pending.version))
-}
-
-/// Relaunch a fresh instance so a just-swapped binary takes effect.
-/// On Windows the detached swap helper (spawned inside `swap_in_pending`)
-/// is responsible for relaunching, so this is a no-op there.
-pub fn relaunch_after_update() {
-    #[cfg(unix)]
-    {
-        let Ok(exe) = std::env::current_exe() else {
-            return;
+/// How the running app was installed. Prefer the real environment, but allow
+/// overriding via `REMOTRIX_FORCE_INSTALL_KIND` for testing other branches.
+pub fn detect_install_kind() -> InstallKind {
+    if let Ok(k) = std::env::var("REMOTRIX_FORCE_INSTALL_KIND") {
+        return match k.as_str() {
+            "windows-setup" => InstallKind::WindowsSetup,
+            "deb" => InstallKind::Deb,
+            "appimage" => InstallKind::AppImage,
+            _ => default_install_kind(),
         };
-        let args: Vec<String> = std::env::args().skip(1).collect();
-        let _ = std::process::Command::new(exe)
-            .env("REMOTRIX_RESTART", "1")
-            .args(&args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn();
     }
-    #[cfg(windows)]
-    {
-        // swap helper already scheduled the relaunch; nothing to do here.
+    default_install_kind()
+}
+
+#[cfg(target_os = "linux")]
+fn default_install_kind() -> InstallKind {
+    if std::env::var_os("APPIMAGE").is_some() {
+        InstallKind::AppImage
+    } else {
+        InstallKind::Deb
     }
 }
 
-#[cfg(unix)]
-fn swap_in_pending(current_exe: &Path, staged: &Path) -> Result<(), String> {
-    let bak = current_exe.with_extension("bak");
-    std::fs::rename(current_exe, &bak).map_err(|e| format!("rename current->bak: {e}"))?;
-    std::fs::rename(staged, current_exe).map_err(|e| format!("rename staged->current: {e}"))?;
-    aria2_fetcher::set_perms(current_exe)?;
+#[cfg(target_os = "windows")]
+fn default_install_kind() -> InstallKind {
+    InstallKind::WindowsSetup
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+fn default_install_kind() -> InstallKind {
+    InstallKind::Deb
+}
+
+/// The path of the running AppImage (empty when not running as an AppImage).
+pub fn appimage_path() -> Option<PathBuf> {
+    std::env::var_os("APPIMAGE")
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
+}
+
+/// Result of a completed app update download, consumed by the UI to decide
+/// what to show next (restart for AppImage, there is nothing to do for
+/// Windows, locate + notify for deb).
+#[derive(Debug, Clone)]
+pub struct AppUpdateOutcome {
+    pub kind: InstallKind,
+    pub path: Option<PathBuf>,
+}
+
+/// Download an installer package to `dest`, verifying an optional sha256.
+/// The download goes through a sibling `.part` file and is atomically renamed
+/// in place (shared `download_verified` helper in `aria2_fetcher`).
+pub async fn download_package(
+    url: &str,
+    dest: &Path,
+    sha256: Option<&str>,
+    proxy: Option<String>,
+) -> Result<PathBuf, String> {
+    aria2_fetcher::download_verified(url, dest, sha256, proxy.as_deref()).await?;
+    Ok(dest.to_path_buf())
+}
+
+/// Reduce a GitHub asset name to a safe bare filename, rejecting traversal.
+fn sanitize_asset_name(name: &str) -> Result<String, String> {
+    let base = std::path::Path::new(name)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    if base.is_empty() || base == "." || base == ".." {
+        return Err(format!("invalid asset name: {name:?}"));
+    }
+    Ok(base.to_string())
+}
+
+/// Atomically replace the running AppImage at `target` with the newly
+/// downloaded `new`, keeping a `.bak` until the swap succeeds and restoring it
+/// if the swap fails. The new file must live in the same directory as `target`
+/// so the renames stay on one filesystem.
+#[cfg(target_os = "linux")]
+pub fn replace_appimage(new: &Path, target: &Path) -> Result<(), String> {
+    if new == target {
+        return Err("new AppImage path equals target".to_string());
+    }
+    let bak = target.with_extension("bak");
+    std::fs::rename(target, &bak).map_err(|e| format!("rename target->bak: {e}"))?;
+    if let Err(e) = std::fs::rename(new, target) {
+        let _ = std::fs::rename(&bak, target);
+        return Err(format!("rename new->target: {e}"));
+    }
+    aria2_fetcher::set_perms(target)?;
     let _ = std::fs::remove_file(&bak);
     Ok(())
 }
 
-#[cfg(windows)]
-fn swap_in_pending(current_exe: &Path, staged: &Path) -> Result<(), String> {
-    use std::io::Write;
+#[cfg(not(target_os = "linux"))]
+pub fn replace_appimage(_new: &Path, _target: &Path) -> Result<(), String> {
+    Err("AppImage replacement is only supported on Linux".to_string())
+}
 
-    let pid = std::process::id();
-    let dir = app_update_dir().ok_or("cannot determine app data directory")?;
-    let helper = dir.join("swap-update.cmd");
-    let bak = format!("{}.bak", current_exe.display());
-    let current = current_exe.display().to_string();
-    let staged = staged.display().to_string();
-    let autostart_arg = if std::env::args().any(|a| a == "--autostart") {
-        " --autostart"
-    } else {
-        ""
+/// Spawn a fresh instance after an update, using `$APPIMAGE` when running as
+/// an AppImage (the mount point is read-only, so `current_exe()` is invalid),
+/// otherwise the current executable.
+pub fn relaunch_after_update() {
+    let exe = appimage_path()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| std::env::current_exe().unwrap_or_else(|_| PathBuf::new()));
+    if exe.as_os_str().is_empty() {
+        return;
+    }
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let _ = std::process::Command::new(exe)
+        .env("REMOTRIX_RESTART", "1")
+        .args(&args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+}
+
+/// Launch the downloaded setup.exe installer (Windows in-place update).
+#[cfg(target_os = "windows")]
+pub fn run_installer(path: &Path) -> Result<(), String> {
+    std::process::Command::new(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("spawn installer: {e}"))
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn run_installer(_path: &Path) -> Result<(), String> {
+    Err("installer launch is only supported on Windows".to_string())
+}
+
+/// Directory where downloaded packages (.deb) are placed. Falls back to the
+/// data directory when `download_dir` is empty or `.`.
+pub fn packages_dir(download_dir: Option<&Path>) -> PathBuf {
+    if let Some(dir) = download_dir {
+        let s = dir.to_string_lossy();
+        if !s.trim().is_empty() && s.trim() != "." {
+            return dir.to_path_buf();
+        }
+    }
+    crate::config::data_home()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("remotrix")
+        .join("downloads")
+}
+
+/// Download the chosen installer and apply the kind-specific side effects
+/// (replace AppImage, run the Windows installer). Returns the outcome for the
+/// UI to react to (restart / locate / notify).
+pub async fn perform_app_update(
+    kind: InstallKind,
+    url: String,
+    asset_name: String,
+    sha256: Option<String>,
+    proxy: Option<String>,
+    download_dir: Option<&Path>,
+) -> Result<AppUpdateOutcome, String> {
+    let asset_name = sanitize_asset_name(&asset_name)?;
+    if kind == InstallKind::AppImage && appimage_path().is_none() {
+        return Err("not running as an AppImage".to_string());
+    }
+    let download_dest = match kind {
+        InstallKind::AppImage => {
+            let target = appimage_path().expect("checked AppImage above");
+            let parent = target
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .ok_or("invalid AppImage path")?;
+            parent.join(&asset_name)
+        }
+        InstallKind::WindowsSetup => std::env::temp_dir().join(&asset_name),
+        InstallKind::Deb => packages_dir(download_dir).join(&asset_name),
     };
 
-    let script = format!(
-        "@echo off\r\n\
-         :wait\r\n\
-         tasklist /FI \"PID eq {pid}\" 2>nul | find \"{pid}\" >nul\r\n\
-         if not errorlevel 1 (\r\n\
-         \x20 timeout /t 1 /nobreak >nul\r\n\
-         \x20 goto wait\r\n\
-         )\r\n\
-         move /Y \"{current}\" \"{bak}\" >nul\r\n\
-         move /Y \"{staged}\" \"{current}\" >nul\r\n\
-         set REMOTRIX_RESTART=1\r\n\
-         start \"\" \"{current}\"{autostart_arg}\r\n"
-    );
-    let mut f = std::fs::File::create(&helper).map_err(|e| format!("create swap helper: {e}"))?;
-    f.write_all(script.as_bytes())
-        .map_err(|e| format!("write swap helper: {e}"))?;
+    download_package(&url, &download_dest, sha256.as_deref(), proxy).await?;
 
-    let _ = std::process::Command::new("cmd")
-        .args(["/c", "start", "", "/min", helper.to_string_lossy().as_ref()])
-        .spawn();
-    Ok(())
+    match kind {
+        InstallKind::AppImage => {
+            let target = appimage_path().expect("checked AppImage above");
+            replace_appimage(&download_dest, &target)?;
+            Ok(AppUpdateOutcome {
+                kind,
+                path: Some(target),
+            })
+        }
+        InstallKind::WindowsSetup => {
+            run_installer(&download_dest)?;
+            Ok(AppUpdateOutcome { kind, path: None })
+        }
+        InstallKind::Deb => Ok(AppUpdateOutcome {
+            kind,
+            path: Some(download_dest),
+        }),
+    }
 }
 
 pub fn current_app_version() -> &'static str {

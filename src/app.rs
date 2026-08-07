@@ -948,24 +948,7 @@ fn finalize_close(state: &mut Remotrix) -> Task<Message> {
 fn spawn_restart_if_pending(state: &mut Remotrix) {
     if state.restart_pending {
         state.restart_pending = false;
-        spawn_detached_self();
-    }
-}
-
-fn spawn_detached_self() {
-    let Ok(exe) = std::env::current_exe() else {
-        return;
-    };
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if let Err(err) = std::process::Command::new(exe)
-        .env("REMOTRIX_RESTART", "1")
-        .args(&args)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-    {
-        tracing::warn!(error = %err, "ui: failed to spawn restart process");
+        crate::app_updater::relaunch_after_update();
     }
 }
 
@@ -3185,18 +3168,74 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::Settings(SettingsMsg::UpdateDownloadStarted(result)) => {
             state.app_update_in_flight = false;
             match result {
-                Ok(version) => {
-                    spawn_toast(
-                        state,
-                        ToastGroup::General,
-                        ToastKind::Success,
-                        format!("{} v{version}", state.fluent.get(Tr::UpdateAppRestart)),
-                        Some(Duration::from_secs(5)),
-                        false,
-                    );
-                    state.restart_pending = true;
-                    return begin_close(state);
-                }
+                Ok(outcome) => match outcome.kind {
+                    crate::app_updater::InstallKind::AppImage => {
+                        spawn_toast(
+                            state,
+                            ToastGroup::General,
+                            ToastKind::Success,
+                            state.fluent.get(Tr::UpdateAppimageReplaced),
+                            Some(Duration::from_secs(5)),
+                            false,
+                        );
+                        state.restart_pending = true;
+                        return begin_close(state);
+                    }
+                    crate::app_updater::InstallKind::WindowsSetup => {
+                        spawn_toast(
+                            state,
+                            ToastGroup::General,
+                            ToastKind::Success,
+                            state.fluent.get(Tr::UpdateRunInstaller),
+                            Some(Duration::from_secs(5)),
+                            false,
+                        );
+                    }
+                    crate::app_updater::InstallKind::Deb => {
+                        let path = outcome.path.unwrap_or_default();
+                        let download_dir = path
+                            .parent()
+                            .map(std::path::Path::to_path_buf)
+                            .unwrap_or_default();
+                        let mut args = std::collections::HashMap::new();
+                        args.insert(
+                            std::borrow::Cow::from("path"),
+                            std::borrow::Cow::from(path.to_string_lossy().into_owned()).into(),
+                        );
+                        spawn_toast(
+                            state,
+                            ToastGroup::General,
+                            ToastKind::Success,
+                            state.fluent.get_args(Tr::UpdatePackageDownloaded, &args),
+                            Some(Duration::from_secs(5)),
+                            false,
+                        );
+                        if state.settings.notifications.download_complete {
+                            let title = state.fluent.get(Tr::UpdatePackageDownloadedTitle);
+                            let body = state.fluent.get_args(Tr::UpdatePackageDownloaded, &args);
+                            let path_clone = path.clone();
+                            send_system_notification(
+                                state,
+                                title,
+                                body,
+                                vec![
+                                    (
+                                        state.fluent.get(Tr::Open),
+                                        crate::notify::NotifyAction::OpenFile(path_clone),
+                                    ),
+                                    (
+                                        state.fluent.get(Tr::Locate),
+                                        crate::notify::NotifyAction::RevealDir(
+                                            download_dir.clone(),
+                                        ),
+                                    ),
+                                ],
+                                crate::notify::NotifyAction::OpenFile(path),
+                            );
+                        }
+                        return open_path_in_manager(download_dir);
+                    }
+                },
                 Err(e) => {
                     spawn_toast(
                         state,
@@ -3288,11 +3327,13 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             continue;
                         }
                         state.app_update_in_flight = true;
+                        let kind = crate::app_updater::detect_install_kind();
                         let proxy = state.settings.aria2.all_proxy_value();
                         let version = offer.latest.clone();
-                        let slug = crate::updater::platform_slug().to_string();
                         let download_url = offer.download_url.clone();
+                        let asset_name = offer.asset_name.clone();
                         let offer_sha256 = offer.sha256.clone();
+                        let download_dir = state.settings.download_dir.clone();
                         spawn_toast(
                             state,
                             ToastGroup::General,
@@ -3306,7 +3347,6 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                                 let sha256 = match offer_sha256 {
                                     Some(s) => Some(s),
                                     None => {
-                                        let asset_name = format!("remotrix-{version}-{slug}");
                                         crate::updater::fetch_asset_checksum(
                                             crate::updater::APP_REPO,
                                             &version,
@@ -3316,13 +3356,15 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                                         .await
                                     }
                                 };
-                                let download = crate::app_updater::AppUpdateDownload {
-                                    version,
-                                    slug,
+                                crate::app_updater::perform_app_update(
+                                    kind,
                                     download_url,
+                                    asset_name,
                                     sha256,
-                                };
-                                crate::app_updater::stage_app_update(&download, proxy).await
+                                    proxy,
+                                    Some(download_dir.as_path()),
+                                )
+                                .await
                             },
                             |result| Message::Settings(SettingsMsg::UpdateDownloadStarted(result)),
                         ));
@@ -4857,6 +4899,7 @@ fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -> Task<Mess
     let app_current = crate::app_updater::current_app_version().to_string();
     let engine_current = crate::aria2_fetcher::installed_version().unwrap_or_default();
     let slug = crate::updater::platform_slug();
+    let app_kind = crate::app_updater::detect_install_kind();
     let timeout_msg = state.fluent.get(Tr::UpdateCheckTimeout);
 
     Task::perform(
@@ -4902,10 +4945,10 @@ fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -> Task<Mess
                 }
 
                 if scope.covers("remotrix") {
-                    match crate::updater::fetch_latest_release(
+                    let kind = app_kind;
+                    match crate::updater::fetch_latest_asset(
                         crate::updater::APP_REPO,
-                        crate::updater::APP_ASSET_PREFIX,
-                        slug,
+                        move |name| kind.asset_matches(name),
                         false,
                         proxy.clone(),
                     )
@@ -4951,19 +4994,6 @@ fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -> Task<Mess
     )
 }
 
-fn update_repo(
-    component: crate::ui::update_dialog::UpdateComponent,
-) -> (&'static str, &'static str) {
-    match component {
-        crate::ui::update_dialog::UpdateComponent::App => {
-            (crate::updater::APP_REPO, crate::updater::APP_ASSET_PREFIX)
-        }
-        crate::ui::update_dialog::UpdateComponent::Aria2 => {
-            ("AnInsomniacy/aria2-next", "aria2-next")
-        }
-    }
-}
-
 fn changelog_fetch_task(state: &Remotrix, tab: usize) -> Task<Message> {
     let Some(dialog) = &state.update_dialog else {
         return Task::none();
@@ -4971,14 +5001,36 @@ fn changelog_fetch_task(state: &Remotrix, tab: usize) -> Task<Message> {
     let Some(offer) = dialog.offers.get(tab) else {
         return Task::none();
     };
-    let (repo, prefix) = update_repo(offer.component);
     let current = offer.current.clone();
-    let slug = crate::updater::platform_slug();
     let proxy = state.settings.aria2.all_proxy_value();
-    Task::perform(
-        crate::updater::fetch_changelog(repo, prefix, slug, current, proxy),
-        move |r| Message::Settings(SettingsMsg::UpdateChangelogLoaded { tab, releases: r }),
-    )
+    let task: std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Vec<crate::updater::ReleaseInfo>, String>>
+                + Send,
+        >,
+    > = match offer.component {
+        crate::ui::update_dialog::UpdateComponent::App => {
+            let kind = crate::app_updater::detect_install_kind();
+            Box::pin(crate::updater::fetch_changelog(
+                crate::updater::APP_REPO,
+                current,
+                move |name, _| kind.asset_matches(name),
+                proxy,
+            ))
+        }
+        crate::ui::update_dialog::UpdateComponent::Aria2 => {
+            let slug = crate::updater::platform_slug();
+            Box::pin(crate::updater::fetch_changelog(
+                "AnInsomniacy/aria2-next",
+                current,
+                move |name, version| name == format!("aria2-next-{version}-{slug}"),
+                proxy,
+            ))
+        }
+    };
+    Task::perform(task, move |r| {
+        Message::Settings(SettingsMsg::UpdateChangelogLoaded { tab, releases: r })
+    })
 }
 
 fn concat_changelog(rels: &[crate::updater::ReleaseInfo]) -> String {

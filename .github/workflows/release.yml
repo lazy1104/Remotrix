@@ -106,31 +106,20 @@ jobs:
       - name: Build release binary
         run: cargo build --profile dist --locked
 
-      - name: Stage raw binary asset
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          mkdir -p target/release/bundle
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cp target/dist/remotrix.exe "target/release/bundle/remotrix-${VERSION}-windows-x86_64.exe"
-          else
-            cp target/dist/remotrix "target/release/bundle/remotrix-${VERSION}-linux-x86_64"
-          fi
+      - name: Package installers
+        run: cargo packager --release --config packager.toml --formats ${{ matrix.formats }}
 
       - name: Generate checksums
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
           cd target/release/bundle
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            SLUG="windows-x86_64.exe"
-          else
-            SLUG="linux-x86_64"
+          shopt -s nullglob
+          files=( *.deb *.AppImage *.exe )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No installer packages found to checksum" >&2
+            exit 1
           fi
-          sha256sum "remotrix-${VERSION}-${SLUG}" > "remotrix-${VERSION}-${SLUG}.sha256"
-
-      - name: Package installers
-        run: cargo packager --release --config packager.toml --formats ${{ matrix.formats }}
+          sha256sum "${files[@]}" > checksums.sha256
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -147,6 +136,4 @@ jobs:
             target/release/bundle/*.deb
             target/release/bundle/*.AppImage
             target/release/bundle/*.exe
-            target/release/bundle/remotrix-*-linux-x86_64
-            target/release/bundle/remotrix-*-windows-x86_64.exe
-            target/release/bundle/remotrix-*-*.sha256
+            target/release/bundle/checksums.sha256

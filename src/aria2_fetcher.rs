@@ -117,7 +117,6 @@ pub async fn ensure_aria2_next(
     )
     .await?;
     let bin_name = format!("aria2-next-{}-{}", release.version, slug);
-    let part_path = dir.join(format!("{bin_name}.part"));
     let bin_path = dir.join(&bin_name);
 
     emit_status(
@@ -126,21 +125,13 @@ pub async fn ensure_aria2_next(
         &format!("Downloading aria2-next {}...", release.version),
     );
 
-    download_file(&release.download_url, &part_path, proxy.as_deref()).await?;
-
-    if let Some(expected) = &release.sha256 {
-        emit_status(event_tx, "verifying", "Verifying checksum...");
-        let digest = sha256_file(&part_path).map_err(|e| format!("sha256: {e}"))?;
-        if digest != *expected {
-            let _ = std::fs::remove_file(&part_path);
-            return Err(format!(
-                "sha256 mismatch: expected {expected}, got {digest}"
-            ));
-        }
-    }
-
-    std::fs::rename(&part_path, &bin_path).map_err(|e| format!("rename: {e}"))?;
-    set_perms(&bin_path)?;
+    download_verified(
+        &release.download_url,
+        &bin_path,
+        release.sha256.as_deref(),
+        proxy.as_deref(),
+    )
+    .await?;
 
     let installed = InstalledInfo {
         version: release.version.clone(),
@@ -168,7 +159,6 @@ pub async fn stage_update_from(
 ) -> Result<String, String> {
     let dir = aria2_bin_dir().ok_or("cannot determine data directory")?;
     let bin_name = format!("aria2-next-{version}-{slug}");
-    let part_path = dir.join(format!("{bin_name}.part"));
     let bin_path = dir.join(&bin_name);
 
     emit_status(
@@ -177,21 +167,7 @@ pub async fn stage_update_from(
         &format!("Downloading aria2-next {version}..."),
     );
 
-    download_file(download_url, &part_path, proxy.as_deref()).await?;
-
-    if let Some(expected) = sha256 {
-        emit_status(event_tx, "update-verifying", "Verifying checksum...");
-        let digest = sha256_file(&part_path).map_err(|e| format!("sha256: {e}"))?;
-        if digest != *expected {
-            let _ = std::fs::remove_file(&part_path);
-            return Err(format!(
-                "sha256 mismatch: expected {expected}, got {digest}"
-            ));
-        }
-    }
-
-    std::fs::rename(&part_path, &bin_path).map_err(|e| format!("rename: {e}"))?;
-    set_perms(&bin_path)?;
+    download_verified(download_url, &bin_path, sha256, proxy.as_deref()).await?;
 
     let pending = PendingInfo {
         version: version.to_string(),
@@ -308,9 +284,19 @@ fn self_heal_installed(
 }
 
 pub(crate) fn sha256_file(path: &Path) -> Result<String, String> {
-    let data = std::fs::read(path).map_err(|e| format!("read file for sha256: {e}"))?;
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).map_err(|e| format!("open file for sha256: {e}"))?;
     let mut hasher = Sha256::new();
-    hasher.update(&data);
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = file
+            .read(&mut buf)
+            .map_err(|e| format!("read file for sha256: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
     Ok(hex::encode(hasher.finalize()))
 }
 
@@ -319,6 +305,8 @@ pub(crate) async fn download_file(
     dest: &Path,
     proxy: Option<&str>,
 ) -> Result<(), String> {
+    use std::io::Write;
+
     let builder = crate::config::apply_proxy(
         reqwest::Client::builder().user_agent("remotrix-updater"),
         proxy,
@@ -327,7 +315,7 @@ pub(crate) async fn download_file(
         .build()
         .map_err(|e| format!("create download client: {e}"))?;
 
-    let response = client
+    let mut response = client
         .get(url)
         .send()
         .await
@@ -341,11 +329,47 @@ pub(crate) async fn download_file(
     let parent = dest.parent().unwrap();
     std::fs::create_dir_all(parent).map_err(|e| format!("create download dir: {e}"))?;
 
-    let bytes = response
-        .bytes()
+    let mut file = std::fs::File::create(dest).map_err(|e| format!("create {dest:?}: {e}"))?;
+    while let Some(chunk) = response
+        .chunk()
         .await
-        .map_err(|e| format!("read body: {e}"))?;
-    std::fs::write(dest, &bytes).map_err(|e| format!("write to {dest:?}: {e}"))
+        .map_err(|e| format!("read body: {e}"))?
+    {
+        file.write_all(&chunk)
+            .map_err(|e| format!("write to {dest:?}: {e}"))?;
+    }
+    Ok(())
+}
+
+/// Download `url` to `dest` via a sibling `{dest}.part`, optionally verifying
+/// an sha256, then atomically rename and set exec permissions. Shared by the
+/// aria2-next fetch/update paths and app package downloads.
+pub(crate) async fn download_verified(
+    url: &str,
+    dest: &Path,
+    sha256: Option<&str>,
+    proxy: Option<&str>,
+) -> Result<(), String> {
+    let part = std::path::PathBuf::from(format!("{}.part", dest.display()));
+    download_file(url, &part, proxy).await?;
+
+    if let Some(expected) = sha256 {
+        let part_clone = part.clone();
+        let digest = tokio::task::spawn_blocking(move || sha256_file(&part_clone))
+            .await
+            .map_err(|e| format!("sha256 task: {e}"))?
+            .map_err(|e| format!("sha256: {e}"))?;
+        if digest != expected {
+            let _ = std::fs::remove_file(&part);
+            return Err(format!(
+                "sha256 mismatch: expected {expected}, got {digest}"
+            ));
+        }
+    }
+
+    std::fs::rename(&part, dest).map_err(|e| format!("rename: {e}"))?;
+    set_perms(dest)?;
+    Ok(())
 }
 
 pub(crate) fn set_perms(path: &Path) -> Result<(), String> {

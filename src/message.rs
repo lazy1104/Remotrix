@@ -228,7 +228,7 @@ pub enum SettingsMsg {
     UpdateDialogCancel,
     UpdateDialogApply,
     RetryChangelog(usize),
-    UpdateDownloadStarted(Result<String, String>),
+    UpdateDownloadStarted(Result<crate::app_updater::AppUpdateOutcome, String>),
     UpdateResult {
         offers: Vec<crate::ui::update_dialog::UpdateOffer>,
         silent_applied: Vec<crate::ui::update_dialog::UpdateOffer>,

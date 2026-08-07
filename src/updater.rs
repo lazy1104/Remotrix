@@ -9,7 +9,6 @@ pub struct ReleaseInfo {
 }
 
 pub const APP_REPO: &str = "lazy1104/Remotrix";
-pub const APP_ASSET_PREFIX: &str = "remotrix";
 
 fn http_client(proxy: Option<&str>) -> Result<reqwest::Client, String> {
     let builder = crate::config::apply_proxy(
@@ -49,16 +48,60 @@ pub async fn fetch_latest_release(
         .await
         .map_err(|e| format!("parse release json: {e}"))?;
 
-    release_from_json(&client, &body, asset_prefix, slug, fetch_checksum)
+    let prefix = asset_prefix.to_string();
+    let slug = slug.to_string();
+    let not_found = format!("no matching asset '{asset_prefix}-*-{slug}' in latest release");
+    release_from_json(
+        &client,
+        &body,
+        move |name, version| name == format!("{prefix}-{version}-{slug}"),
+        fetch_checksum,
+    )
+    .await
+    .ok_or(not_found)
+}
+
+/// Fetch the latest release whose asset matches `asset_match` (suffix/kind based),
+/// for installer-package releases that no longer ship a raw binary.
+pub async fn fetch_latest_asset(
+    repo: &str,
+    asset_match: impl Fn(&str) -> bool,
+    fetch_checksum: bool,
+    proxy: Option<String>,
+) -> Result<ReleaseInfo, String> {
+    let client = http_client(proxy.as_deref())?;
+    let api_url = format!("https://api.github.com/repos/{repo}/releases/latest");
+    let resp = client
+        .get(&api_url)
+        .send()
         .await
-        .ok_or_else(|| format!("no matching asset '{asset_prefix}-*-{slug}' in latest release"))
+        .map_err(|e| format!("fetch release: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("GitHub API HTTP {status}: {body}"));
+    }
+
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("parse release json: {e}"))?;
+
+    release_from_json(
+        &client,
+        &body,
+        move |name, _| asset_match(name),
+        fetch_checksum,
+    )
+    .await
+    .ok_or_else(|| "no matching installer asset in latest release".to_string())
 }
 
 pub async fn fetch_changelog(
     repo: &str,
-    asset_prefix: &str,
-    slug: &str,
     current: String,
+    asset_match: impl Fn(&str, &str) -> bool,
     proxy: Option<String>,
 ) -> Result<Vec<ReleaseInfo>, String> {
     let client = http_client(proxy.as_deref())?;
@@ -94,8 +137,7 @@ pub async fn fetch_changelog(
         }
 
         for rel in releases {
-            let Some(info) = release_from_json(&client, rel, asset_prefix, slug, false).await
-            else {
+            let Some(info) = release_from_json(&client, rel, &asset_match, false).await else {
                 continue;
             };
             if version_gt(&info.version, &current) {
@@ -131,19 +173,20 @@ pub async fn fetch_asset_checksum(
 async fn release_from_json(
     client: &reqwest::Client,
     body: &serde_json::Value,
-    asset_prefix: &str,
-    slug: &str,
+    asset_match: impl Fn(&str, &str) -> bool,
     fetch_checksum: bool,
 ) -> Option<ReleaseInfo> {
     let tag = body["tag_name"].as_str()?.to_string();
     let version = tag.strip_prefix('v').unwrap_or(&tag).to_string();
     let notes = body["body"].as_str().unwrap_or("").to_string();
 
-    let expected_name = format!("{asset_prefix}-{version}-{slug}");
     let assets = body["assets"].as_array()?;
-    let asset = assets
-        .iter()
-        .find(|a| a["name"].as_str() == Some(&expected_name))?;
+    let asset = assets.iter().find(|a| {
+        a["name"]
+            .as_str()
+            .map(|n| asset_match(n, &version))
+            .unwrap_or(false)
+    })?;
 
     let download_url = asset["browser_download_url"].as_str()?.to_string();
     let asset_name = asset["name"].as_str()?.to_string();
