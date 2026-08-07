@@ -6,6 +6,9 @@
 
 > 名称 "Remotrix" 是 **Rust** 与 **Motrix** 的合成词。
 
+> **⚠ 开发中 / 非稳定版**
+> Remotrix 是一个**由 AI 辅助开发的学习项目**，当前处于开发阶段，功能**尚未完全覆盖、未经全面验证**。部分功能（断点续传、完整性校验、限速、失败重试及跨平台兼容性）尚未经过完整回归测试，可能包含 bug 或数据损失风险。**请仅用于测试，勿用于下载重要文件**。欢迎提交 Issue / PR。
+
 ## 为什么做 Remotrix？
 
 Remotrix 最初是一个学习项目。我喜欢 Motrix / Motrix-next 的设计，但基于 Tauri 的 Motrix-next 在我的 Windows 10 机器上无法正常运行，在 Linux 机器上又有严重的性能问题。我想学习 Rust 和 `iced` GUI 框架，于是决定从零开始做一个原生的 Rust 下载管理器，以 Motrix-next 作为设计参考。本项目由 AI 辅助开发。
@@ -131,6 +134,8 @@ cargo packager --release --config packager.toml --formats nsis           # Windo
 ```
 
 安装包只含二进制（字体、图标、i18n 均为编译期嵌入）。Linux 上运行时**需要 Vulkan**（iced/wgpu 通过 `dlopen` 加载）；aria2-next 二进制在运行时获取，刻意不打包进安装包。`deb.depends` 保持最小，因为 iced 只链接 C 运行时——deb 无法强制依赖 `dlopen` 的 GTK/X11/Vulkan 库。
+
+> 当前 GitHub Releases 中的版本均为**开发中构建**，用于测试更新机制，不代表稳定正式版。
 
 使用本地 aria2-next 二进制而非自动下载：
 

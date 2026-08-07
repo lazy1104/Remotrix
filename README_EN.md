@@ -8,6 +8,9 @@ sidecar engine driven over WebSocket JSON-RPC ([`aria2-ws`](https://crates.io/cr
 
 > The name "Remotrix" is a portmanteau of **Rust** + **Motrix**.
 
+> **⚠ Work in progress / unstable**
+> Remotrix is an **AI-assisted learning project** currently in development. Features are **not complete and not fully verified**; some capabilities (resume, integrity checks, rate limiting, retry, and cross-platform compatibility) have not been thoroughly regression-tested and may contain bugs or risk data loss. **Use for testing only — do not download important files with it.** Issues and PRs are welcome.
+
 ## Why Remotrix?
 
 Remotrix started as a learning project. I liked Motrix / Motrix-next's design, but the Tauri-based
@@ -153,6 +156,8 @@ Packages contain only the binary (fonts, icons, and i18n are compile-time embedd
 required at runtime** on Linux (iced/wgpu loads it via `dlopen`); the aria2-next binary is fetched at
 runtime and is intentionally not bundled. `deb.depends` is minimal because iced links only the C
 runtime — the deb cannot enforce the `dlopen`'d GTK/X11/Vulkan libraries.
+
+> The versions in current GitHub Releases are **development builds**, used to exercise the update mechanism; they do not represent stable releases.
 
 To use a local aria2-next binary instead of the auto-download:
 
