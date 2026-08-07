@@ -185,6 +185,26 @@ Run `/check-docs` (Kilo command) to audit README.md and this file against the co
   packaged `.deb` provides its own desktop entry, so the runtime one may overlap — handle if this becomes
   an issue.
 
+## Version Upgrade (releasing a new version)
+- **Keep `Cargo.lock` in sync with `Cargo.toml`.** Bumping `[package] version` in `Cargo.toml` does NOT
+  auto-update the root package's own `version` field inside `Cargo.lock` (a non-registry path dep). If you
+  commit only `Cargo.toml`, CI's `cargo build --profile dist --locked` fails with:
+  `error: cannot update the lock file ... because --locked was passed`. Symptom of a stale lock: `Cargo.lock`
+  root `remotrix` version differs from `Cargo.toml`.
+- **Recommended order when bumping a version (e.g. 0.1.x → 0.1.y):**
+  1. Bump `version` in `Cargo.toml` (prefer `cargo set-version --workspace` from `cargo-edit`; it keeps
+     `Cargo.toml`/`Cargo.lock` in sync and tags nothing).
+  2. Run `cargo build` (or `cargo update -p remotrix`) once so `Cargo.lock`'s root `remotrix` version is
+     regenerated to match.
+  3. Verify with `git diff` that both `Cargo.toml` and `Cargo.lock` changed, and confirm
+     `cargo metadata --format-version 1` succeeds **without modifying** `Cargo.lock` (run `git status` after).
+  4. Bump `version` in `packager.toml` to the same value (must stay in sync; see above).
+  5. Commit, then push a tag `v<version>`. `release.yml` triggers on tag push and runs `--locked`, so the
+     lock **must** already be in sync — do not create the tag before steps 1–4.
+- **A tag must point to a commit whose lock is in sync.** If a release fails, do NOT just re-tag the same
+  commit: recreate the tag on the commit that actually fixed the lock, or cut a fresh `v0.1.y`. Retagging a
+  stale commit (e.g. `git tag -f v0.1.2 <old-stale-commit>`) will re-fail the same way.
+
 ## Build Process (build.rs)
 - Build-time only generates the icon module (`iced_lucide::build`)
 - **No network access** during build — offline `cargo build` always succeeds
