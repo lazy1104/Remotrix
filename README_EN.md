@@ -206,6 +206,10 @@ Remotrix exposes a local HTTP server (default port `29110`, loopback only) that 
 
 By default `/add` **silently auto-submits** the task and fires a system notification; you can switch to a confirmation dialog in Settings instead. Leaving the secret empty disables authentication (loopback only). Only global pause / resume is exposed; manage individual tasks back in the Remotrix main window.
 
+After changing **Enabled / port / secret / auto-submit**, clicking **Apply** **hot-restarts** the extension service immediately (no app restart needed) and shows a toast ("Restarting… / restarted / restart failed"); toggling the enable switch off stops the service and shows a "stopped" toast. This only happens on Apply — editing the toggles or inputs alone does not restart.
+
+> Known limitation: the `motrixnext://` deep-link protocol is not implemented, so the "Open motrix-next" wake-up button is currently unavailable; download takeover goes over HTTP and is unaffected.
+
 ## Tech Stack
 
 | Component | Choice | Rationale |

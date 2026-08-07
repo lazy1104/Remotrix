@@ -285,6 +285,7 @@ pub struct Remotrix {
     tray: crate::tray::TrayManager,
     tray_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>>,
     ext_msg_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>>,
+    extension_msg_tx: tokio::sync::mpsc::UnboundedSender<Message>,
     stat_cache: Arc<std::sync::Mutex<crate::extension_api::GlobalStatCache>>,
     add_dialog: AddDialogState,
     drop_hover: bool,
@@ -423,6 +424,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         tray,
         tray_rx_slot,
         ext_msg_rx_slot,
+        extension_msg_tx: ext_msg_tx.clone(),
         stat_cache,
         add_dialog,
         drop_hover: false,
@@ -486,6 +488,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         state.handle.cmd_tx.clone(),
         state.stat_cache.clone(),
         ext_on_dialog,
+        None,
     );
 
     refresh_tray(&mut state);
@@ -601,6 +604,41 @@ fn apply_settings(state: &mut Remotrix) -> bool {
     }
     state.restart.engine_restart_pending = restart_needed
         || state.settings.log.engine_level != state.applied_settings.log.engine_level;
+    let ext_changed = state.settings.extension != state.applied_settings.extension;
+    if ext_changed {
+        let msg = if state.settings.extension.enabled {
+            Tr::ExtensionRestarting
+        } else {
+            Tr::ExtensionStopped
+        };
+        spawn_toast(
+            state,
+            ToastGroup::Engine,
+            ToastKind::Normal,
+            state.fluent.get(msg),
+            Some(Duration::from_secs(3)),
+            false,
+        );
+        let on_dialog: Option<
+            Box<dyn Fn(crate::extension_api::ExternalDownload) + Send + Sync + 'static>,
+        > = Some(Box::new({
+            let tx = state.extension_msg_tx.clone();
+            move |download| {
+                let _ = tx.send(Message::Extension(ExtensionMsg::ShowAddDialog(download)));
+            }
+        }));
+        let tx = state.extension_msg_tx.clone();
+        let on_ready: Option<Box<dyn Fn(bool) + Send + Sync + 'static>> =
+            Some(Box::new(move |ok| {
+                let _ = tx.send(Message::Extension(ExtensionMsg::ServerRestarted { ok }));
+            }));
+        crate::extension_api::spawn_server(
+            state.handle.cmd_tx.clone(),
+            state.stat_cache.clone(),
+            on_dialog,
+            on_ready,
+        );
+    }
     state.applied_settings = state.settings.clone();
     state.settings_dirty = false;
     restart_needed
@@ -3865,6 +3903,24 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 state.settings.download_dir.clone(),
                 state.settings.split,
                 download,
+            );
+        }
+        Message::Extension(ExtensionMsg::ServerRestarted { ok }) => {
+            let (msg, kind) = if ok {
+                (state.fluent.get(Tr::ExtensionRestarted), ToastKind::Success)
+            } else {
+                (
+                    state.fluent.get(Tr::ExtensionRestartFailed),
+                    ToastKind::Error,
+                )
+            };
+            spawn_toast(
+                state,
+                ToastGroup::Engine,
+                kind,
+                msg,
+                Some(Duration::from_secs(3)),
+                false,
             );
         }
         Message::ProgressAnim(gid, event) => {

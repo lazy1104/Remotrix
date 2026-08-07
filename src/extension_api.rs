@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use salvo::cors::{AllowOrigin, Cors};
 use salvo::http::{HeaderValue, Method, StatusCode};
@@ -43,7 +43,8 @@ struct Shared {
     on_dialog: Option<Box<dyn Fn(ExternalDownload) + Send + Sync + 'static>>,
 }
 
-static SHARED: OnceLock<Arc<Shared>> = OnceLock::new();
+static SHARED: Mutex<Option<Arc<Shared>>> = Mutex::new(None);
+static TASK: Mutex<Option<tokio::task::JoinHandle<()>>> = Mutex::new(None);
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -126,7 +127,13 @@ pub fn spawn_server(
     cmd_tx: CmdTx,
     stat_cache: Arc<Mutex<GlobalStatCache>>,
     on_dialog: Option<Box<dyn Fn(ExternalDownload) + Send + Sync + 'static>>,
+    on_ready: Option<Box<dyn Fn(bool) + Send + Sync + 'static>>,
 ) -> Option<tokio::task::JoinHandle<()>> {
+    if let Some(handle) = TASK.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        handle.abort();
+    }
+    *SHARED.lock().unwrap_or_else(|e| e.into_inner()) = None;
+
     let settings = crate::config::load();
     if !settings.extension.enabled {
         return None;
@@ -140,17 +147,20 @@ pub fn spawn_server(
         stat_cache,
         on_dialog,
     });
-    if SHARED.set(shared).is_err() {
-        tracing::warn!("extension API server already initialized");
-        return None;
-    }
+    *SHARED.lock().unwrap_or_else(|e| e.into_inner()) = Some(shared);
     let addr = format!("127.0.0.1:{port}");
     tracing::info!(%addr, "spawning extension API server");
-    Some(tokio::spawn(async move {
-        if let Err(e) = serve(addr).await {
+    let handle = tokio::spawn(async move {
+        let result = serve(addr).await;
+        if let Some(on_ready) = on_ready {
+            on_ready(result.is_ok());
+        }
+        if let Err(e) = result {
             tracing::error!(error = %e, "extension API server failed");
         }
-    }))
+    });
+    *TASK.lock().unwrap_or_else(|e| e.into_inner()) = Some(handle);
+    None
 }
 
 async fn serve(addr: String) -> Result<(), String> {
@@ -225,7 +235,7 @@ async fn stat(req: &mut Request, res: &mut Response) {
         deny(res);
         return;
     }
-    let Some(shared) = SHARED.get() else {
+    let Some(shared) = SHARED.lock().unwrap_or_else(|e| e.into_inner()).clone() else {
         res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
         return;
     };
@@ -239,7 +249,7 @@ async fn pause_all(req: &mut Request, res: &mut Response) {
         deny(res);
         return;
     }
-    if let Some(shared) = SHARED.get() {
+    if let Some(shared) = SHARED.lock().unwrap_or_else(|e| e.into_inner()).clone() {
         let _ = shared.cmd_tx.send(EngineCmd::PauseAll);
     }
     res.render(Json(serde_json::json!({ "status": "ok" })));
@@ -251,7 +261,7 @@ async fn resume_all(req: &mut Request, res: &mut Response) {
         deny(res);
         return;
     }
-    if let Some(shared) = SHARED.get() {
+    if let Some(shared) = SHARED.lock().unwrap_or_else(|e| e.into_inner()).clone() {
         let _ = shared.cmd_tx.send(EngineCmd::ResumeAll);
     }
     res.render(Json(serde_json::json!({ "status": "ok" })));
@@ -310,7 +320,7 @@ async fn add(req: &mut Request, res: &mut Response) {
 
     let settings = crate::config::load();
     if !settings.extension.auto_submit {
-        if let Some(shared) = SHARED.get() {
+        if let Some(shared) = SHARED.lock().unwrap_or_else(|e| e.into_inner()).clone() {
             if let Some(on_dialog) = shared.on_dialog.as_ref() {
                 on_dialog(ExternalDownload::from_request(&body));
                 res.render(Json(serde_json::json!({ "action": "prompt" })));
@@ -327,7 +337,7 @@ async fn add(req: &mut Request, res: &mut Response) {
         cookie: external.cookie.clone().unwrap_or_default(),
         ..Default::default()
     };
-    if let Some(shared) = SHARED.get() {
+    if let Some(shared) = SHARED.lock().unwrap_or_else(|e| e.into_inner()).clone() {
         let _ = shared.cmd_tx.send(EngineCmd::AddExternalDownload {
             urls: external.urls,
             save_dir: settings.download_dir.clone(),

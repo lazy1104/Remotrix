@@ -114,6 +114,7 @@ pub enum Message {
 pub enum ExtensionMsg {
     ShowAddDialog(crate::extension_api::ExternalDownload),
     GenerateSecret,
+    ServerRestarted { ok: bool },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
