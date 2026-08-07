@@ -608,6 +608,10 @@ pub struct Settings {
     pub tracker: TrackerPrefs,
     #[serde(default)]
     pub notifications: NotificationPrefs,
+    #[serde(default)]
+    pub autostart_enabled: bool,
+    #[serde(default)]
+    pub start_hidden_on_autostart: bool,
 }
 
 impl Settings {
@@ -654,6 +658,8 @@ impl Default for Settings {
             log: LogPrefs::default(),
             tracker: TrackerPrefs::default(),
             notifications: NotificationPrefs::default(),
+            autostart_enabled: false,
+            start_hidden_on_autostart: false,
         }
     }
 }
@@ -804,15 +810,8 @@ pub fn install_desktop_file() {
         return;
     };
     let content = format!(
-        "[Desktop Entry]\n\
-         Type=Application\n\
-         Name=Remotrix\n\
-         Comment=Download manager\n\
-         Exec=\"{}\"\n\
-         Terminal=false\n\
-         Categories=Network;FileTransfer;\n\
-         StartupWMClass=remotrix\n",
-        escape_exec(&exe.display().to_string())
+        "{}StartupWMClass=remotrix\n",
+        desktop_entry_header(&format!("\"{}\"", escape_exec(&exe.display().to_string())))
     );
     if path.exists() {
         if let Ok(existing) = std::fs::read_to_string(&path) {
@@ -827,7 +826,19 @@ pub fn install_desktop_file() {
     }
 }
 
-fn escape_exec(value: &str) -> String {
+pub(crate) fn desktop_entry_header(exec: &str) -> String {
+    format!(
+        "[Desktop Entry]\n\
+         Type=Application\n\
+         Name=Remotrix\n\
+         Comment=Download manager\n\
+         Exec={exec}\n\
+         Terminal=false\n\
+         Categories=Network;FileTransfer;\n"
+    )
+}
+
+pub(crate) fn escape_exec(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 

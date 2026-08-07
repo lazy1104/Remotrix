@@ -3,6 +3,7 @@
 mod app;
 mod app_updater;
 mod aria2_fetcher;
+mod autostart;
 mod clipboard_watch;
 mod config;
 mod db;
@@ -44,6 +45,11 @@ fn main() -> iced::Result {
         "remotrix starting"
     );
 
+    if let Err(e) = crate::autostart::set_enabled(cfg.autostart_enabled) {
+        tracing::warn!(error = %e, "autostart sync failed");
+    }
+    let hidden_start = crate::autostart::is_autostart_launch() && cfg.start_hidden_on_autostart;
+
     match crate::app_updater::apply_pending_app_update() {
         Ok(Some(version)) => {
             tracing::info!(%version, "app self-update applied, relaunching");
@@ -73,6 +79,7 @@ fn main() -> iced::Result {
             icon: load_icon(),
             decorations: false,
             exit_on_close_request: false,
+            visible: !hidden_start,
             min_size: Some(iced::Size::new(800.0, 560.0)),
             platform_specific: platform_specific_settings(),
             ..Default::default()

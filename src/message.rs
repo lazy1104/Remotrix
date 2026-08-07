@@ -421,6 +421,8 @@ pub enum SettingKey {
     DiskCache,
     EnableProxy,
     NavToTasksAfterAdd,
+    AutoStart,
+    StartHiddenOnAutostart,
     CloseToTray,
     DeleteTorrentAfterComplete,
     CleanupCompletedOnClose,

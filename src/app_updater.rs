@@ -175,6 +175,11 @@ fn swap_in_pending(current_exe: &Path, staged: &Path) -> Result<(), String> {
     let bak = format!("{}.bak", current_exe.display());
     let current = current_exe.display().to_string();
     let staged = staged.display().to_string();
+    let autostart_arg = if std::env::args().any(|a| a == "--autostart") {
+        " --autostart"
+    } else {
+        ""
+    };
 
     let script = format!(
         "@echo off\r\n\
@@ -187,7 +192,7 @@ fn swap_in_pending(current_exe: &Path, staged: &Path) -> Result<(), String> {
          move /Y \"{current}\" \"{bak}\" >nul\r\n\
          move /Y \"{staged}\" \"{current}\" >nul\r\n\
          set REMOTRIX_RESTART=1\r\n\
-         start \"\" \"{current}\"\r\n"
+         start \"\" \"{current}\"{autostart_arg}\r\n"
     );
     let mut f = std::fs::File::create(&helper).map_err(|e| format!("create swap helper: {e}"))?;
     f.write_all(script.as_bytes())

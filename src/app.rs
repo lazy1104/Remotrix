@@ -462,6 +462,9 @@ pub fn init() -> (Remotrix, Task<Message>) {
         update_dialog_anim: Default::default(),
     };
 
+    state.window.hidden_to_tray =
+        crate::autostart::is_autostart_launch() && state.settings.start_hidden_on_autostart;
+
     refresh_tray(&mut state);
 
     if db_open_failed {
@@ -507,6 +510,9 @@ fn sync_geometry_to_settings(state: &mut Remotrix) {
 
 fn revert_apply_settings(state: &mut Remotrix) {
     state.settings = state.applied_settings.clone();
+    if let Err(e) = crate::autostart::set_enabled(state.settings.autostart_enabled) {
+        tracing::warn!(error = %e, "autostart sync failed on revert");
+    }
     state.settings_dirty = false;
     state
         .settings_ui
@@ -529,6 +535,17 @@ fn revert_apply_settings(state: &mut Remotrix) {
 
 fn apply_settings(state: &mut Remotrix) -> bool {
     config::save(&state.settings);
+    if let Err(e) = crate::autostart::set_enabled(state.settings.autostart_enabled) {
+        tracing::warn!(error = %e, "autostart sync failed");
+        spawn_toast(
+            state,
+            ToastGroup::General,
+            ToastKind::Error,
+            state.fluent.get(Tr::LaunchOnStartupFailed),
+            Some(Duration::from_secs(5)),
+            false,
+        );
+    }
     crate::logging::set_app_level(&state.settings.log.app_level);
     let opts = state.settings.effective_task_options();
     tracing::info!(
@@ -1689,6 +1706,16 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         state.settings.close_to_tray = b;
                     }
                 }
+                SettingKey::AutoStart => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.autostart_enabled = b;
+                    }
+                }
+                SettingKey::StartHiddenOnAutostart => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.start_hidden_on_autostart = b;
+                    }
+                }
                 SettingKey::DeleteTorrentAfterComplete => {
                     if let SettingValue::Bool(b) = value {
                         state.settings.delete_torrent_after_complete = b;
@@ -2585,6 +2612,12 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::Window(WindowMsg::WindowOpened(id)) => {
             if state.window.window_id.is_none() {
                 state.window.window_id = Some(id);
+                if state.window.hidden_to_tray && !state.tray.enabled() {
+                    state.window.hidden_to_tray = false;
+                    refresh_tray(state);
+                    return iced::window::set_mode::<Message>(id, iced::window::Mode::Windowed)
+                        .chain(read_clipboard(state));
+                }
                 return read_clipboard(state);
             }
             return Task::none();

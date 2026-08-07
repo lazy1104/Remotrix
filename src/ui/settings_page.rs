@@ -345,6 +345,22 @@ fn general_view<'a>(
             SettingKey::CloseToTray,
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
+        .push(group_title(fluent, Tr::Startup, accent))
+        .push(labeled_toggle(
+            fluent.get(Tr::LaunchOnStartup),
+            settings.autostart_enabled,
+            SettingKey::AutoStart,
+        ))
+        .push(if settings.autostart_enabled {
+            labeled_toggle(
+                fluent.get(Tr::LaunchHiddenOnAutostart),
+                settings.start_hidden_on_autostart,
+                SettingKey::StartHiddenOnAutostart,
+            )
+        } else {
+            iced::widget::Space::new().height(Length::Fixed(0.0)).into()
+        })
+        .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::AutoUpdate, accent))
         .push(labeled_toggle(
             fluent.get(Tr::AutoUpdate),
