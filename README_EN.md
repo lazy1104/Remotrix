@@ -201,7 +201,7 @@ Remotrix exposes a local HTTP server (default port `29110`, loopback only) that 
 **Usage:**
 
 1. Install `motrix-next-extension` from your browser's store (Remotrix does not bundle it).
-2. In Remotrix Settings → "Download" → "Browser Takeover", enable it and copy the port and secret.
+2. In Remotrix Settings → "Advanced" → "Browser Takeover", enable it and copy the port and secret.
 3. In the extension options page, point it at `http://127.0.0.1:<port>` and enter the secret; `checkConnection` should pass.
 
 By default `/add` **silently auto-submits** the task and fires a system notification; you can switch to a confirmation dialog in Settings instead. Leaving the secret empty disables authentication (loopback only). Only global pause / resume is exposed; manage individual tasks back in the Remotrix main window.

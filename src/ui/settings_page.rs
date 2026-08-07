@@ -983,8 +983,6 @@ fn download_view<'a>(
             settings.nav_to_tasks_after_add,
             SettingKey::NavToTasksAfterAdd,
         ))
-        .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
-        .push(extension_view(fluent, theme, settings))
         .into()
 }
 
@@ -1639,6 +1637,7 @@ fn advanced_view<'a>(
 
     column![]
         .spacing(SPACE_2XL)
+        .push(extension_view(fluent, theme, settings))
         .push(clipboard_col)
         .push(group_title(fluent, Tr::Performance, accent))
         .push({
