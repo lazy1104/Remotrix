@@ -41,6 +41,7 @@ pub const PADDING_CARD: u16 = 16; // 任务卡片
 pub const PADDING_DETAILS: u16 = 20; // 详情面板
 pub const PADDING_DIALOG: u16 = 20; // Dialog 容器
 pub const PADDING_GROUPED: f32 = 1.0; // 分组控件（路径选择、数字步进）边框内缩
+pub const SUB_ITEM_INDENT: f32 = 24.0; // 设置页子项左缩进
 pub const PADDING_TOOLBAR_CAPSULE: [u16; 2] = [2, 6]; // 任务卡片工具栏胶囊
 pub const PADDING_BUTTON_XS: [u16; 2] = [6, 8]; // 小菜单/工具栏按钮
 pub const PADDING_BUTTON_SM: [u16; 2] = [6, 12]; // 设置引擎按钮

@@ -352,11 +352,11 @@ fn general_view<'a>(
             SettingKey::AutoStart,
         ))
         .push(if settings.autostart_enabled {
-            labeled_toggle(
+            sub_items([labeled_toggle(
                 fluent.get(Tr::LaunchHiddenOnAutostart),
                 settings.start_hidden_on_autostart,
                 SettingKey::StartHiddenOnAutostart,
-            )
+            )])
         } else {
             iced::widget::Space::new().height(Length::Fixed(0.0)).into()
         })
@@ -386,60 +386,61 @@ fn general_view<'a>(
                     label: fluent.get(Tr::IntervalMonthly),
                 },
             ];
-            labeled_pick(
-                fluent,
-                fluent.get(Tr::UpdateFrequency),
-                freq_opts,
-                Some(settings.update.interval_hours),
-                |opt| {
-                    Message::Settings(SettingsMsg::SettingChanged(
-                        SettingKey::UpdateCheckInterval,
-                        SettingValue::Num(opt.value as u64),
-                    ))
-                },
-            )
+            sub_items([
+                labeled_pick(
+                    fluent,
+                    fluent.get(Tr::UpdateFrequency),
+                    freq_opts,
+                    Some(settings.update.interval_hours),
+                    |opt| {
+                        Message::Settings(SettingsMsg::SettingChanged(
+                            SettingKey::UpdateCheckInterval,
+                            SettingValue::Num(opt.value as u64),
+                        ))
+                    },
+                ),
+                labeled_pick(
+                    fluent,
+                    fluent.get(Tr::UpdateScope),
+                    vec![
+                        Labeled {
+                            value: crate::config::UpdateScope::App,
+                            label: fluent.get(Tr::ScopeApp),
+                        },
+                        Labeled {
+                            value: crate::config::UpdateScope::Engine,
+                            label: fluent.get(Tr::ScopeEngine),
+                        },
+                        Labeled {
+                            value: crate::config::UpdateScope::Both,
+                            label: fluent.get(Tr::ScopeBoth),
+                        },
+                    ],
+                    Some(settings.update.scope),
+                    |opt| {
+                        Message::Settings(SettingsMsg::SettingChanged(
+                            SettingKey::UpdateScope,
+                            SettingValue::Text(opt.value.as_str().into()),
+                        ))
+                    },
+                ),
+                labeled_toggle(
+                    fluent.get(Tr::Aria2SilentUpdate),
+                    settings.update.aria2_silent_update,
+                    SettingKey::Aria2SilentUpdate,
+                ),
+                row![
+                    iced::widget::Space::new().width(Length::Fixed(200.0)),
+                    text(fluent.get(Tr::Aria2SilentUpdateHint))
+                        .size(FONT_TINY)
+                        .style(theme::style::text::secondary),
+                ]
+                .align_y(Alignment::Center)
+                .into(),
+            ])
         } else {
             iced::widget::Space::new().height(Length::Fixed(0.0)).into()
         })
-        .push(labeled_pick(
-            fluent,
-            fluent.get(Tr::UpdateScope),
-            vec![
-                Labeled {
-                    value: crate::config::UpdateScope::App,
-                    label: fluent.get(Tr::ScopeApp),
-                },
-                Labeled {
-                    value: crate::config::UpdateScope::Engine,
-                    label: fluent.get(Tr::ScopeEngine),
-                },
-                Labeled {
-                    value: crate::config::UpdateScope::Both,
-                    label: fluent.get(Tr::ScopeBoth),
-                },
-            ],
-            Some(settings.update.scope),
-            |opt| {
-                Message::Settings(SettingsMsg::SettingChanged(
-                    SettingKey::UpdateScope,
-                    SettingValue::Text(opt.value.as_str().into()),
-                ))
-            },
-        ))
-        .push(labeled_toggle(
-            fluent.get(Tr::Aria2SilentUpdate),
-            settings.update.aria2_silent_update,
-            SettingKey::Aria2SilentUpdate,
-        ))
-        .push(
-            row![
-                iced::widget::Space::new().width(Length::Fixed(200.0)),
-                text(fluent.get(Tr::Aria2SilentUpdateHint))
-                    .size(FONT_TINY)
-                    .style(theme::style::text::secondary),
-            ]
-            .align_y(Alignment::Center),
-        )
         .push(last_check_row(
             fluent,
             theme,
@@ -870,26 +871,30 @@ fn download_view<'a>(
         ))
         .push({
             let el: Element<'_, Message> = if settings.speed_limit_schedule.enabled {
-                column![
+                sub_items([
                     labeled_pick(
                         fluent,
                         fluent.get(Tr::ScheduleStartTime),
                         time_pick_options(),
                         Some(settings.speed_limit_schedule.start.clone()),
-                        move |opt| Message::Settings(SettingsMsg::SettingChanged(
-                            SettingKey::ScheduleStart,
-                            SettingValue::Text(opt.value)
-                        )),
+                        move |opt| {
+                            Message::Settings(SettingsMsg::SettingChanged(
+                                SettingKey::ScheduleStart,
+                                SettingValue::Text(opt.value),
+                            ))
+                        },
                     ),
                     labeled_pick(
                         fluent,
                         fluent.get(Tr::ScheduleEndTime),
                         time_pick_options(),
                         Some(settings.speed_limit_schedule.end.clone()),
-                        move |opt| Message::Settings(SettingsMsg::SettingChanged(
-                            SettingKey::ScheduleEnd,
-                            SettingValue::Text(opt.value)
-                        )),
+                        move |opt| {
+                            Message::Settings(SettingsMsg::SettingChanged(
+                                SettingKey::ScheduleEnd,
+                                SettingValue::Text(opt.value),
+                            ))
+                        },
                     ),
                     {
                         let day_labels = [
@@ -931,9 +936,7 @@ fn download_view<'a>(
                             .style(theme::style::text::secondary)
                             .into(),
                     ),
-                ]
-                .spacing(SPACE_SM)
-                .into()
+                ])
             } else {
                 iced::widget::Space::new().height(Length::Fixed(0.0)).into()
             };
@@ -1003,15 +1006,15 @@ fn extension_view<'a>(
             SettingKey::ExtensionApiEnabled,
         ));
     if settings.extension.enabled {
-        col = col
-            .push(labeled_number(
+        col = col.push(sub_items([
+            labeled_number(
                 fluent.get(Tr::ExtensionApiPort),
                 settings.extension.port,
                 crate::config::EXTENSION_API_MIN_PORT..=crate::config::EXTENSION_API_MAX_PORT,
                 1,
                 SettingKey::ExtensionApiPort,
-            ))
-            .push(setting_row(
+            ),
+            setting_row(
                 fluent.get(Tr::ExtensionApiSecret),
                 crate::ui::components::secret_input::secret_input(
                     fluent,
@@ -1027,13 +1030,13 @@ fn extension_view<'a>(
                     Message::Extension(crate::message::ExtensionMsg::GenerateSecret),
                     Message::CopyText(secret.clone()),
                 ),
-            ))
-            .push(labeled_toggle(
+            ),
+            labeled_toggle(
                 fluent.get(Tr::ExtensionAutoSubmit),
                 settings.extension.auto_submit,
                 SettingKey::ExtensionAutoSubmit,
-            ))
-            .push(setting_row_auto(
+            ),
+            setting_row_auto(
                 String::new(),
                 text(fluent.get_args(Tr::ExtensionSetupHint, &{
                     let mut args = std::collections::HashMap::new();
@@ -1047,7 +1050,8 @@ fn extension_view<'a>(
                 .style(theme::style::text::secondary)
                 .wrapping(text::Wrapping::Glyph)
                 .into(),
-            ));
+            ),
+        ]));
     }
     col.into()
 }
@@ -1234,7 +1238,7 @@ fn bittorrent_view<'a>(
                 label: fluent.get(Tr::IntervalWeekly),
             },
         ];
-        tracker_rows.push(labeled_pick(
+        tracker_rows.push(sub_items([labeled_pick(
             fluent,
             fluent.get(Tr::SyncFrequency),
             freq_opts,
@@ -1245,7 +1249,7 @@ fn bittorrent_view<'a>(
                     SettingValue::Num(opt.value as u64),
                 ))
             },
-        ));
+        )]));
     }
 
     let mut bt_col = column![]
@@ -1435,7 +1439,7 @@ fn proxy_fields<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, M
         let address = fluent.get(Tr::ProxyAddressPlaceholder);
         let username = fluent.get(Tr::ProxyUsernamePlaceholder);
         let password = fluent.get(Tr::ProxyPasswordPlaceholder);
-        column![
+        sub_items([
             labeled_text_input(
                 fluent.get(Tr::ProxyAddress),
                 &settings.aria2.proxy_server,
@@ -1457,9 +1461,7 @@ fn proxy_fields<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, M
                 true,
                 &password,
             ),
-        ]
-        .spacing(SPACE_SM)
-        .into()
+        ])
     } else {
         iced::widget::Space::new().height(Length::Fixed(0.0)).into()
     }
@@ -1585,37 +1587,38 @@ fn advanced_view<'a>(
             SettingKey::DetectClipboardOnStart,
         ));
     if settings.detect_clipboard_on_start {
-        clipboard_col = clipboard_col
-            .push(labeled_checkbox(
+        clipboard_col = clipboard_col.push(sub_items([
+            labeled_checkbox(
                 fluent.get(Tr::LinkTypeHttp),
                 settings.clipboard_types.http,
                 SettingKey::ClipboardHttp,
-            ))
-            .push(labeled_checkbox(
+            ),
+            labeled_checkbox(
                 fluent.get(Tr::LinkTypeFtp),
                 settings.clipboard_types.ftp,
                 SettingKey::ClipboardFtp,
-            ))
-            .push(labeled_checkbox(
+            ),
+            labeled_checkbox(
                 fluent.get(Tr::LinkTypeMagnet),
                 settings.clipboard_types.magnet,
                 SettingKey::ClipboardMagnet,
-            ))
-            .push(labeled_checkbox(
+            ),
+            labeled_checkbox(
                 fluent.get(Tr::LinkTypeEd2k),
                 settings.clipboard_types.ed2k,
                 SettingKey::ClipboardEd2k,
-            ))
-            .push(labeled_checkbox(
+            ),
+            labeled_checkbox(
                 fluent.get(Tr::LinkTypeThunder),
                 settings.clipboard_types.thunder,
                 SettingKey::ClipboardThunder,
-            ))
-            .push(labeled_checkbox(
+            ),
+            labeled_checkbox(
                 fluent.get(Tr::LinkTypeBtInfohash),
                 settings.clipboard_types.bt_infohash,
                 SettingKey::ClipboardBtInfohash,
-            ));
+            ),
+        ]));
     }
 
     column![]
@@ -1834,6 +1837,18 @@ fn setting_row_auto<'a>(label: String, control: Element<'a, Message>) -> Element
         )
         .push(control)
         .align_y(Alignment::Start)
+        .into()
+}
+
+fn sub_items<'a>(children: impl IntoIterator<Item = Element<'a, Message>>) -> Element<'a, Message> {
+    container(column(children).spacing(SPACE_SM))
+        .width(Length::Fill)
+        .padding(iced::Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: SUB_ITEM_INDENT,
+        })
         .into()
 }
 
