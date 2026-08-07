@@ -1,14 +1,16 @@
 use std::collections::{HashMap, HashSet};
 
-use iced::widget::{button, column, container, progress_bar, row, rule, text, text_input};
+use iced::widget::{button, column, container, mouse_area, progress_bar, row, rule, text};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
-use crate::message::{AddField, DetailsTab, Message, NavMsg, TaskMsg};
+use crate::message::{AddField, CtxTarget, DetailsTab, Message, NavMsg, TaskMsg};
 use crate::task::{
     completed_pieces, format_add_time, format_size, format_speed, DownloadTask,
     TaskAdvancedOptions, TaskDetails,
 };
+use crate::ui::components::ctx_input;
+use crate::ui::components::ctx_menu::CtxMirrors;
 use crate::ui::components::expand::expand_pinned;
 use crate::ui::components::file_tree;
 use crate::ui::components::key_value_list::key_value_list;
@@ -152,6 +154,7 @@ pub fn view<'a>(
     task: Option<&'a DownloadTask>,
     state: &'a DetailsDialogState,
     progress: f32,
+    ctx_mirrors: &CtxMirrors,
 ) -> Element<'a, Message> {
     let close_btn = button(icon::x().size(FONT_HERO).line_height(1.0))
         .on_press(Message::Task(TaskMsg::CloseTaskDetails))
@@ -214,9 +217,11 @@ pub fn view<'a>(
             }
             DetailsTab::Activity => activity_tab(fluent, theme, task, state),
             DetailsTab::Files => files_tab(fluent, theme, task, state),
-            DetailsTab::Advanced => slim_scrollable(advanced_tab(fluent, theme, task, state))
-                .height(Length::Fill)
-                .into(),
+            DetailsTab::Advanced => {
+                slim_scrollable(advanced_tab(fluent, theme, task, state, ctx_mirrors))
+                    .height(Length::Fill)
+                    .into()
+            }
         },
     };
 
@@ -569,13 +574,19 @@ fn advanced_field<'a>(
     value: &'a str,
     field: AddField,
     secure: bool,
+    ctx_mirrors: &CtxMirrors,
 ) -> Element<'a, Message> {
-    let mut input = theme::input_layout(
-        text_input("", value)
-            .on_input(move |s| Message::Task(TaskMsg::DetailsAdvancedFieldChanged(field, s)))
-            .width(Length::Fill)
-            .style(theme::style::input::standard),
-    );
+    let target = CtxTarget::DetailsAdvanced(field);
+    let mut input = ctx_input::CtxInput::new(
+        "",
+        value,
+        ctx_mirrors.get(&target).cloned().unwrap_or_default(),
+    )
+    .on_input(move |s| Message::Task(TaskMsg::DetailsAdvancedFieldChanged(field, s)))
+    .padding(theme::INPUT_PADDING)
+    .size(FONT_MEDIUM)
+    .width(Length::Fill)
+    .style(theme::style::input::standard);
     if secure {
         input = input.secure(true);
     }
@@ -584,7 +595,7 @@ fn advanced_field<'a>(
             .size(FONT_SMALL)
             .style(theme::style::text::secondary)
             .width(Length::Fixed(140.0)),
-        input,
+        mouse_area(input).on_right_press(Message::CtxOpen(target)),
     ]
     .align_y(Alignment::Center)
     .width(Length::Fill)
@@ -596,6 +607,7 @@ fn advanced_tab<'a>(
     theme: &'a iced::Theme,
     task: &'a DownloadTask,
     state: &'a DetailsDialogState,
+    ctx_mirrors: &CtxMirrors,
 ) -> Element<'a, Message> {
     let apply_enabled = {
         let task_active = !matches!(
@@ -619,30 +631,41 @@ fn advanced_tab<'a>(
             Tr::UserAgent,
             &state.user_agent,
             AddField::UserAgent,
-            false
+            false,
+            ctx_mirrors
         ),
         advanced_field(
             fluent,
             Tr::HttpAuthAccount,
             &state.http_user,
             AddField::HttpUser,
-            false
+            false,
+            ctx_mirrors
         ),
         advanced_field(
             fluent,
             Tr::HttpAuthPassword,
             &state.http_passwd,
             AddField::HttpPasswd,
-            true
+            true,
+            ctx_mirrors
         ),
         advanced_field(
             fluent,
             Tr::Referer,
             &state.referer,
             AddField::Referer,
-            false
+            false,
+            ctx_mirrors
         ),
-        advanced_field(fluent, Tr::Cookie, &state.cookie, AddField::Cookie, false),
+        advanced_field(
+            fluent,
+            Tr::Cookie,
+            &state.cookie,
+            AddField::Cookie,
+            false,
+            ctx_mirrors
+        ),
         rule::horizontal(1),
         text(fluent.get(Tr::Proxy))
             .size(FONT_TITLE)
@@ -652,21 +675,24 @@ fn advanced_tab<'a>(
             Tr::ProxyAddress,
             &state.proxy_server,
             AddField::ProxyServer,
-            false
+            false,
+            ctx_mirrors
         ),
         advanced_field(
             fluent,
             Tr::ProxyUsername,
             &state.proxy_username,
             AddField::ProxyUsername,
-            false
+            false,
+            ctx_mirrors
         ),
         advanced_field(
             fluent,
             Tr::ProxyPassword,
             &state.proxy_password,
             AddField::ProxyPassword,
-            true
+            true,
+            ctx_mirrors
         ),
         row![iced::widget::Space::new().width(Length::Fill), apply_btn,].align_y(Alignment::Center),
     ]

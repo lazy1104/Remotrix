@@ -1,27 +1,30 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use iced::alignment::{Horizontal, Vertical};
 use iced::futures::SinkExt;
-use iced::widget::{column, container, row, stack, text_editor};
+use iced::widget::{column, container, float, mouse_area, row, stack, text_editor};
 use iced::window::Id;
-use iced::{Element, Length, Padding, Subscription, Task};
+use iced::{Element, Length, Padding, Subscription, Task, Vector};
 
 use crate::config::{self, Settings};
 use crate::db::Db;
 use crate::engine::{EngineCmd, EngineEvent, EngineHandle, EventRx};
 use crate::i18n::{Fluent, Tr};
 use crate::message::{
-    AddField, AddMsg, AddTab, CloseDialogChoice, ConfirmAction, DialogMsg, EngineMsg, Message,
-    NavMsg, Page, PathPickerId, SettingKey, SettingValue, SettingsCategory, SettingsMsg, SortField,
-    SortMsg, SortOrder, TaskFilter, TaskMsg, ToastMsg, TrayMsg, WindowCmd, WindowMsg,
+    AddField, AddMsg, AddTab, CloseDialogChoice, ConfirmAction, CtxTarget, DialogMsg, EngineMsg,
+    Message, NavMsg, Page, PathPickerId, SettingKey, SettingValue, SettingsCategory, SettingsMsg,
+    SortField, SortMsg, SortOrder, TaskFilter, TaskMsg, ToastMsg, TrayMsg, WindowCmd, WindowMsg,
 };
 use crate::task::{DownloadTask, TaskAdvancedOptions, TaskStatus};
 use crate::ui::add_dialog::AddDialogState;
 use crate::ui::category_bar::Counts;
+use crate::ui::components::ctx_menu::{self, CtxCursor, CtxMirrors};
 use crate::ui::components::file_tree::FileTreeNode;
 use crate::ui::components::path_picker::PathPickerAction;
 use crate::ui::components::toast::{Toast, ToastGroup, ToastKind};
@@ -256,6 +259,12 @@ impl TaskTracking {
     }
 }
 
+struct CtxMenuState {
+    target: CtxTarget,
+    position: iced::Point,
+    clipboard: Option<String>,
+}
+
 pub struct Remotrix {
     page: Page,
     task_filter: TaskFilter,
@@ -294,6 +303,10 @@ pub struct Remotrix {
     applied_font_family: String,
     restart_pending: bool,
     settings_ui: SettingsUiState,
+    ctx_menu: Option<CtxMenuState>,
+    ctx_open: Option<(CtxTarget, iced::Point)>,
+    last_cursor: iced::Point,
+    input_cursors: CtxMirrors,
     global_speed: Option<(u64, u64)>,
     toasts: ToastManager,
     engine_ui: EngineUiState,
@@ -419,6 +432,10 @@ pub fn init() -> (Remotrix, Task<Message>) {
         details: DetailsDialogState::new(),
         confirm: None,
         settings_ui,
+        ctx_menu: None,
+        ctx_open: None,
+        last_cursor: iced::Point::ORIGIN,
+        input_cursors: init_ctx_mirrors(),
         global_speed: None,
         toasts: ToastManager::new(),
         engine_ui: EngineUiState::new(),
@@ -852,6 +869,113 @@ fn read_clipboard(state: &Remotrix) -> Task<Message> {
         return Task::none();
     }
     iced::clipboard::read().map(|content| Message::Window(WindowMsg::ClipboardRead(content)))
+}
+
+fn init_ctx_mirrors() -> CtxMirrors {
+    let mut mirrors: CtxMirrors = HashMap::new();
+    for target in [
+        CtxTarget::Search,
+        CtxTarget::AddOut,
+        CtxTarget::SettingsCustomTracker,
+    ] {
+        mirrors.insert(target, Rc::new(RefCell::new(CtxCursor::default())));
+    }
+    for field in [
+        AddField::Out,
+        AddField::UserAgent,
+        AddField::HttpUser,
+        AddField::HttpPasswd,
+        AddField::Referer,
+        AddField::Cookie,
+        AddField::ProxyServer,
+        AddField::ProxyUsername,
+        AddField::ProxyPassword,
+    ] {
+        mirrors.insert(
+            CtxTarget::AddAdvanced(field),
+            Rc::new(RefCell::new(CtxCursor::default())),
+        );
+        mirrors.insert(
+            CtxTarget::DetailsAdvanced(field),
+            Rc::new(RefCell::new(CtxCursor::default())),
+        );
+    }
+    mirrors
+}
+
+fn ctx_value(state: &Remotrix, target: CtxTarget) -> &str {
+    match target {
+        CtxTarget::Search => &state.search_query,
+        CtxTarget::AddOut => &state.add_dialog.out,
+        CtxTarget::AddAdvanced(field) => match field {
+            AddField::Out => &state.add_dialog.out,
+            AddField::UserAgent => &state.add_dialog.user_agent,
+            AddField::HttpUser => &state.add_dialog.http_user,
+            AddField::HttpPasswd => &state.add_dialog.http_passwd,
+            AddField::Referer => &state.add_dialog.referer,
+            AddField::Cookie => &state.add_dialog.cookie,
+            AddField::ProxyServer => &state.add_dialog.proxy_server,
+            AddField::ProxyUsername => &state.add_dialog.proxy_username,
+            AddField::ProxyPassword => &state.add_dialog.proxy_password,
+        },
+        CtxTarget::DetailsAdvanced(field) => match field {
+            AddField::UserAgent => &state.details.user_agent,
+            AddField::HttpUser => &state.details.http_user,
+            AddField::HttpPasswd => &state.details.http_passwd,
+            AddField::Referer => &state.details.referer,
+            AddField::Cookie => &state.details.cookie,
+            AddField::ProxyServer => &state.details.proxy_server,
+            AddField::ProxyUsername => &state.details.proxy_username,
+            AddField::ProxyPassword => &state.details.proxy_password,
+            AddField::Out => "",
+        },
+        CtxTarget::SettingsCustomTracker => &state.settings_ui.custom_tracker_input,
+        CtxTarget::AddUrl | CtxTarget::SettingsUa | CtxTarget::SettingsBtTracker => "",
+    }
+}
+
+fn ctx_cur(state: &Remotrix, target: CtxTarget) -> Option<CtxCursor> {
+    state.input_cursors.get(&target).map(|c| *c.borrow())
+}
+
+fn ctx_paste_message(state: &Remotrix, target: CtxTarget, text: String) -> Message {
+    match target {
+        CtxTarget::AddUrl => Message::Add(AddMsg::UrlEditor(text_editor::Action::Edit(
+            text_editor::Edit::Paste(Arc::new(text)),
+        ))),
+        CtxTarget::SettingsUa => Message::Settings(SettingsMsg::UaEditor(
+            text_editor::Action::Edit(text_editor::Edit::Paste(Arc::new(text))),
+        )),
+        CtxTarget::SettingsBtTracker => Message::Settings(SettingsMsg::BtTrackerEditor(
+            text_editor::Action::Edit(text_editor::Edit::Paste(Arc::new(text))),
+        )),
+        single => {
+            let old = ctx_value(state, single);
+            let (merged, new_caret) = match ctx_cur(state, single) {
+                Some(cur) => ctx_menu::merge_paste(old, &cur, &text),
+                None => (format!("{old}{text}"), old.len() + text.len()),
+            };
+            if let Some(c) = state.input_cursors.get(&single) {
+                c.borrow_mut().pending_caret = Some((new_caret, merged.len()));
+            }
+            match single {
+                CtxTarget::Search => Message::Sort(SortMsg::SearchChanged(merged)),
+                CtxTarget::AddOut => Message::Add(AddMsg::AddFieldChanged(AddField::Out, merged)),
+                CtxTarget::AddAdvanced(field) => {
+                    Message::Add(AddMsg::AddFieldChanged(field, merged))
+                }
+                CtxTarget::DetailsAdvanced(field) => {
+                    Message::Task(TaskMsg::DetailsAdvancedFieldChanged(field, merged))
+                }
+                CtxTarget::SettingsCustomTracker => {
+                    Message::Settings(SettingsMsg::TrackerCustomInputChanged(merged))
+                }
+                CtxTarget::AddUrl | CtxTarget::SettingsUa | CtxTarget::SettingsBtTracker => {
+                    unreachable!()
+                }
+            }
+        }
+    }
 }
 
 fn pill_to_index(state: &mut Remotrix, index: usize) {
@@ -3455,6 +3579,36 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.toasts.tick();
         }
         Message::CopyText(s) => return copy_to_clipboard(state, s),
+        Message::CursorMoved(pos) => {
+            state.last_cursor = pos;
+        }
+        Message::CtxOpen(target) => {
+            state.ctx_open = Some((target, state.last_cursor));
+            return iced::clipboard::read().map(Message::CtxClipboardRead);
+        }
+        Message::CtxClipboardRead(text) => {
+            if let Some((target, position)) = state.ctx_open.take() {
+                state.ctx_menu = Some(CtxMenuState {
+                    target,
+                    position,
+                    clipboard: text,
+                });
+            }
+        }
+        Message::CtxClose => {
+            state.ctx_menu = None;
+            state.ctx_open = None;
+        }
+        Message::CtxCopy(selected) => {
+            state.ctx_menu = None;
+            state.ctx_open = None;
+            return copy_to_clipboard(state, selected);
+        }
+        Message::CtxPaste(target, text) => {
+            state.ctx_menu = None;
+            state.ctx_open = None;
+            return Task::done(ctx_paste_message(state, target, text));
+        }
         Message::OpenLink(url) => {
             let scheme = url.split(':').next().unwrap_or_default();
             if !matches!(scheme, "http" | "https") {
@@ -3699,6 +3853,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                 &state.search_query,
                 &state.progress_anim,
                 &state.card_anim,
+                &state.input_cursors,
             )
         }
         Page::Settings => {
@@ -3724,6 +3879,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                 bt_tracker_editor: &state.bt_tracker_editor,
                 path_history: &state.settings.path_history,
                 font_restart_required: state.settings.font_family != state.applied_font_family,
+                ctx_mirrors: &state.input_cursors,
             };
             crate::ui::settings_page::view(&ctx)
         }
@@ -3803,6 +3959,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             &state.add_dialog,
             &state.settings.path_history,
             state.add_dialog_anim.value(),
+            &state.input_cursors,
         );
         crate::ui::components::dialog::overlay(
             crate::ui::animation::animation(state.add_dialog_anim.anim(), content)
@@ -3858,6 +4015,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             task,
             &state.details,
             state.details_anim.value(),
+            &state.input_cursors,
         );
         crate::ui::components::dialog::overlay(
             crate::ui::animation::animation(state.details_anim.anim(), content)
@@ -3912,6 +4070,51 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         iced::widget::Space::new().into()
     };
 
+    let ctx_layer: iced::Element<'_, Message> = if let Some(menu) = &state.ctx_menu {
+        let selected: Option<String> = match menu.target {
+            CtxTarget::AddUrl => state.add_dialog.url_editor.selection(),
+            CtxTarget::SettingsUa => state.ua_editor.selection(),
+            CtxTarget::SettingsBtTracker => state.bt_tracker_editor.selection(),
+            t => state.input_cursors.get(&t).and_then(|c| {
+                c.borrow().selection.map(|(a, b)| {
+                    iced::widget::text_input::Value::new(ctx_value(state, t))
+                        .select(a, b)
+                        .to_string()
+                })
+            }),
+        };
+        let selected = if ctx_menu::is_secure_target(menu.target) {
+            None
+        } else {
+            selected
+        };
+        let position = menu.position;
+        let menu_el = ctx_menu::menu(&state.fluent, selected, menu.clipboard.clone(), menu.target);
+        stack![
+            mouse_area(
+                iced::widget::Space::new()
+                    .width(Length::Fill)
+                    .height(Length::Fill),
+            )
+            .on_press(Message::CtxClose)
+            .on_right_press(Message::CtxClose),
+            float::Float::new(menu_el).translate(move |bounds, viewport| {
+                let px = position
+                    .x
+                    .clamp(0.0, (viewport.width - bounds.width).max(0.0));
+                let py = position
+                    .y
+                    .clamp(0.0, (viewport.height - bounds.height).max(0.0));
+                Vector::new(px - bounds.x, py - bounds.y)
+            }),
+        ]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
+    } else {
+        iced::widget::Space::new().into()
+    };
+
     let stacked: iced::Element<'_, Message> = stack![
         base_layer,
         add_layer,
@@ -3922,6 +4125,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         update_layer,
         drop_overlay_layer,
         toast_layer,
+        ctx_layer,
     ]
     .width(Length::Fill)
     .height(Length::Fill)
@@ -4096,6 +4300,17 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         _ => None,
     });
 
+    let ctx_cursor = iced::event::listen_with(|event, _status, _window| match event {
+        iced::event::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
+            Some(Message::CursorMoved(position))
+        }
+        iced::event::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+            key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+            ..
+        }) => Some(Message::CtxClose),
+        _ => None,
+    });
+
     let files = iced::event::listen_with(|event, _status, _window| match event {
         iced::event::Event::Window(iced::window::Event::FileHovered(_path)) => {
             Some(Message::Add(AddMsg::FileHovered))
@@ -4164,6 +4379,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         open,
         close,
         focus,
+        ctx_cursor,
         files,
         flush,
         resizes,

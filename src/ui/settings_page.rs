@@ -4,20 +4,23 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use iced::widget::{
-    button, checkbox, column, container, pick_list, row, text, text_editor, text_input, toggler,
+    button, checkbox, column, container, mouse_area, pick_list, row, text, text_editor, text_input,
+    toggler,
 };
 use iced::{Alignment, Element, Length};
 
 use crate::config::Settings;
 use crate::i18n::{Fluent, Locale, Tr};
 use crate::message::{
-    AddMsg, EngineMsg, Message, PathPickerId, SettingKey, SettingValue, SettingsCategory,
-    SettingsMsg, SpeedUnit, TaskMsg,
+    AddMsg, CtxTarget, EngineMsg, Message, PathPickerId, SettingKey, SettingValue,
+    SettingsCategory, SettingsMsg, SpeedUnit, TaskMsg,
 };
 use chrono::TimeZone;
 use iced::Color;
 
 use crate::ui::components::copyable_text::copyable_text;
+use crate::ui::components::ctx_input;
+use crate::ui::components::ctx_menu::CtxMirrors;
 use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::path_picker::{PathPicker, PathPickerEvent};
 use crate::ui::components::slim_scrollable::slim_scrollable;
@@ -110,6 +113,7 @@ pub struct SettingsPageContext<'a> {
     pub bt_tracker_editor: &'a text_editor::Content,
     pub path_history: &'a HashMap<String, Vec<String>>,
     pub font_restart_required: bool,
+    pub ctx_mirrors: &'a CtxMirrors,
 }
 
 pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
@@ -131,6 +135,7 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
         bt_tracker_editor,
         path_history,
         font_restart_required,
+        ctx_mirrors,
     } = ctx;
     let accent = theme::accent(theme);
     let dirty = *settings_dirty;
@@ -154,6 +159,7 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
             bt_tracker_editor,
             settings_ui.syncing_trackers,
             accent,
+            ctx_mirrors,
         ),
         SettingsCategory::Ed2k => ed2k_view(fluent, theme, settings, settings_ui),
         SettingsCategory::Network => network_view(fluent, settings, ua_editor, accent),
@@ -959,6 +965,7 @@ fn download_view<'a>(
         .into()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn bittorrent_view<'a>(
     fluent: &'a Fluent,
     settings: &'a Settings,
@@ -967,6 +974,7 @@ fn bittorrent_view<'a>(
     bt_tracker_editor: &'a text_editor::Content,
     syncing_trackers: bool,
     accent: Color,
+    ctx_mirrors: &CtxMirrors,
 ) -> Element<'a, Message> {
     let tracker_count = crate::trackers::count(&settings.aria2.bt_tracker);
     let last_sync = match settings.tracker.last_sync_time {
@@ -1016,11 +1024,23 @@ fn bittorrent_view<'a>(
     tracker_rows.push(setting_row_auto(
         fluent.get(Tr::BtTrackerSourceCustom),
         row![
-            text_input(&custom_placeholder, &settings_ui.custom_tracker_input)
+            mouse_area(
+                ctx_input::CtxInput::new(
+                    &custom_placeholder,
+                    &settings_ui.custom_tracker_input,
+                    ctx_mirrors
+                        .get(&CtxTarget::SettingsCustomTracker)
+                        .cloned()
+                        .unwrap_or_default(),
+                )
                 .on_input(|s| Message::Settings(SettingsMsg::TrackerCustomInputChanged(s)))
                 .on_submit(Message::Settings(SettingsMsg::TrackerCustomAdd))
+                .padding(theme::INPUT_PADDING)
+                .size(FONT_MEDIUM)
                 .width(Length::Fill)
                 .style(theme::style::input::standard),
+            )
+            .on_right_press(Message::CtxOpen(CtxTarget::SettingsCustomTracker)),
             button(icon::plus().size(FONT_BODY))
                 .on_press(Message::Settings(SettingsMsg::TrackerCustomAdd))
                 .padding(PADDING_BUTTON_SM)
@@ -1097,6 +1117,7 @@ fn bittorrent_view<'a>(
         |a| Message::Settings(SettingsMsg::BtTrackerEditor(a)),
         fluent.get(Tr::BtTrackerInputTips),
         140.0,
+        CtxTarget::SettingsBtTracker,
     ));
     tracker_rows.push(labeled_toggle(
         fluent.get(Tr::AutoSync),
@@ -1307,6 +1328,7 @@ fn network_view<'a>(
                 |a| Message::Settings(SettingsMsg::UaEditor(a)),
                 placeholder,
                 80.0,
+                CtxTarget::SettingsUa,
             )
         })
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
@@ -1809,16 +1831,20 @@ fn labeled_editor<'a>(
     on_edit: fn(text_editor::Action) -> Message,
     placeholder: String,
     height: f32,
+    target: CtxTarget,
 ) -> Element<'a, Message> {
     row![]
         .push(text(label).size(FONT_MEDIUM).width(Length::Fixed(200.0)))
-        .push(theme::editor_layout(
-            text_editor(content)
-                .placeholder(placeholder)
-                .on_action(on_edit)
-                .height(Length::Fixed(height))
-                .style(theme::style::text_editor::standard),
-        ))
+        .push(
+            mouse_area(theme::editor_layout(
+                text_editor(content)
+                    .placeholder(placeholder)
+                    .on_action(on_edit)
+                    .height(Length::Fixed(height))
+                    .style(theme::style::text_editor::standard),
+            ))
+            .on_right_press(Message::CtxOpen(target)),
+        )
         .align_y(Alignment::Start)
         .into()
 }

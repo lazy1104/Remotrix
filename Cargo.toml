@@ -35,7 +35,7 @@ open = "5"
 libc = "0.2"
 fontdb = "0.24"
 sys-locale = "0.3"
-iced_aw = { version = "0.14", default-features = false, features = ["time_picker"] }
+iced_aw = { version = "0.14", default-features = false }
 iced_anim = "=0.3.1"
 app-single-instance = "0.1"
 notify-rust = { version = "4.17", features = ["tokio"] }

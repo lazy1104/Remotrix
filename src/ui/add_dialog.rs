@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use iced::widget::{button, column, row, rule, text, text_editor, text_input};
+use iced::widget::{button, column, mouse_area, row, rule, text, text_editor};
 use iced::{Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
-use crate::message::{AddField, AddMsg, AddTab, Message, PathPickerId};
+use crate::message::{AddField, AddMsg, AddTab, CtxTarget, Message, PathPickerId};
 use crate::task::format_size;
+use crate::ui::components::ctx_input;
+use crate::ui::components::ctx_menu::CtxMirrors;
 use crate::ui::components::dialog::Dialog;
 use crate::ui::components::expand::expand_pinned;
 use crate::ui::components::file_tree::{self, FileTreeNode};
@@ -284,15 +286,19 @@ pub fn view<'a>(
     state: &'a AddDialogState,
     path_history: &'a HashMap<String, Vec<String>>,
     progress: f32,
+    ctx_mirrors: &CtxMirrors,
 ) -> Element<'a, Message> {
     let placeholder = fluent.get(Tr::UrlPlaceholder);
-    let url_input = text_editor(&state.url_editor)
-        .placeholder(placeholder)
-        .on_action(|a| Message::Add(AddMsg::UrlEditor(a)))
-        .height(Length::Fixed(120.0))
-        .padding(PADDING_EDITOR)
-        .size(FONT_BODY)
-        .style(theme::style::text_editor::standard);
+    let url_input = mouse_area(
+        text_editor(&state.url_editor)
+            .placeholder(placeholder)
+            .on_action(|a| Message::Add(AddMsg::UrlEditor(a)))
+            .height(Length::Fixed(120.0))
+            .padding(PADDING_EDITOR)
+            .size(FONT_BODY)
+            .style(theme::style::text_editor::standard),
+    )
+    .on_right_press(Message::CtxOpen(CtxTarget::AddUrl));
 
     let hist_save: &[String] = path_history
         .get("save_dir")
@@ -326,12 +332,19 @@ pub fn view<'a>(
         .align_y(Alignment::Center)
         .width(Length::Fill);
 
-    let rename_input = theme::input_layout(
-        text_input("", &state.out)
-            .on_input(move |s| Message::Add(AddMsg::AddFieldChanged(AddField::Out, s)))
-            .width(Length::Fill)
-            .style(theme::style::input::standard),
-    );
+    let rename_input = ctx_input::CtxInput::new(
+        "",
+        &state.out,
+        ctx_mirrors
+            .get(&CtxTarget::AddOut)
+            .cloned()
+            .unwrap_or_default(),
+    )
+    .on_input(move |s| Message::Add(AddMsg::AddFieldChanged(AddField::Out, s)))
+    .padding(theme::INPUT_PADDING)
+    .size(FONT_MEDIUM)
+    .width(Length::Fill)
+    .style(theme::style::input::standard);
     let rename_row = row![]
         .push(
             text(fluent.get(Tr::RenameFile))
@@ -343,7 +356,7 @@ pub fn view<'a>(
             let mut input = rename_input;
             input = input.on_input_maybe(Option::<fn(String) -> Message>::None);
             row![]
-                .push(input)
+                .push(mouse_area(input).on_right_press(Message::CtxOpen(CtxTarget::AddOut)))
                 .push(
                     text(fluent.get(Tr::RenameMultiUrlHint))
                         .size(FONT_TINY)
@@ -353,7 +366,8 @@ pub fn view<'a>(
                 .align_y(Alignment::Center)
                 .width(Length::Fill)
         } else {
-            row![rename_input].width(Length::Fill)
+            row![mouse_area(rename_input).on_right_press(Message::CtxOpen(CtxTarget::AddOut))]
+                .width(Length::Fill)
         })
         .align_y(Alignment::Center)
         .width(Length::Fill);
@@ -451,7 +465,7 @@ pub fn view<'a>(
     body_items.push(split_input.into());
     body_items.push(advanced_checkbox.into());
     if state.advanced_open {
-        body_items.push(advanced_form(fluent, theme, state));
+        body_items.push(advanced_form(fluent, theme, state, ctx_mirrors));
     }
 
     let body = slim_scrollable(column(body_items).spacing(SPACE_3XL).width(Length::Fill))
@@ -502,13 +516,19 @@ fn advanced_field<'a>(
     value: &'a str,
     field: AddField,
     secure: bool,
+    ctx_mirrors: &CtxMirrors,
 ) -> Element<'a, Message> {
-    let mut input = theme::input_layout(
-        text_input("", value)
-            .on_input(move |s| Message::Add(AddMsg::AddFieldChanged(field, s)))
-            .width(Length::Fill)
-            .style(theme::style::input::standard),
-    );
+    let target = CtxTarget::AddAdvanced(field);
+    let mut input = ctx_input::CtxInput::new(
+        "",
+        value,
+        ctx_mirrors.get(&target).cloned().unwrap_or_default(),
+    )
+    .on_input(move |s| Message::Add(AddMsg::AddFieldChanged(field, s)))
+    .padding(theme::INPUT_PADDING)
+    .size(FONT_MEDIUM)
+    .width(Length::Fill)
+    .style(theme::style::input::standard);
     if secure {
         input = input.secure(true);
     }
@@ -517,7 +537,7 @@ fn advanced_field<'a>(
             .size(FONT_SMALL)
             .style(theme::style::text::secondary)
             .width(Length::Fixed(140.0)),
-        input,
+        mouse_area(input).on_right_press(Message::CtxOpen(target)),
     ]
     .align_y(Alignment::Center)
     .width(Length::Fill)
@@ -528,6 +548,7 @@ fn advanced_form<'a>(
     fluent: &'a Fluent,
     theme: &'a iced::Theme,
     state: &'a AddDialogState,
+    ctx_mirrors: &CtxMirrors,
 ) -> Element<'a, Message> {
     column![
         advanced_field(
@@ -535,30 +556,41 @@ fn advanced_form<'a>(
             Tr::UserAgent,
             &state.user_agent,
             AddField::UserAgent,
-            false
+            false,
+            ctx_mirrors
         ),
         advanced_field(
             fluent,
             Tr::HttpAuthAccount,
             &state.http_user,
             AddField::HttpUser,
-            false
+            false,
+            ctx_mirrors
         ),
         advanced_field(
             fluent,
             Tr::HttpAuthPassword,
             &state.http_passwd,
             AddField::HttpPasswd,
-            true
+            true,
+            ctx_mirrors
         ),
         advanced_field(
             fluent,
             Tr::Referer,
             &state.referer,
             AddField::Referer,
-            false
+            false,
+            ctx_mirrors
         ),
-        advanced_field(fluent, Tr::Cookie, &state.cookie, AddField::Cookie, false),
+        advanced_field(
+            fluent,
+            Tr::Cookie,
+            &state.cookie,
+            AddField::Cookie,
+            false,
+            ctx_mirrors
+        ),
         rule::horizontal(1),
         text(fluent.get(Tr::Proxy))
             .size(FONT_TITLE)
@@ -568,21 +600,24 @@ fn advanced_form<'a>(
             Tr::ProxyAddress,
             &state.proxy_server,
             AddField::ProxyServer,
-            false
+            false,
+            ctx_mirrors
         ),
         advanced_field(
             fluent,
             Tr::ProxyUsername,
             &state.proxy_username,
             AddField::ProxyUsername,
-            false
+            false,
+            ctx_mirrors
         ),
         advanced_field(
             fluent,
             Tr::ProxyPassword,
             &state.proxy_password,
             AddField::ProxyPassword,
-            true
+            true,
+            ctx_mirrors
         ),
     ]
     .spacing(SPACE_XL)

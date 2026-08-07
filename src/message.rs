@@ -34,6 +34,18 @@ pub enum AddField {
     ProxyPassword,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CtxTarget {
+    Search,
+    AddUrl,
+    AddOut,
+    AddAdvanced(AddField),
+    DetailsAdvanced(AddField),
+    SettingsUa,
+    SettingsBtTracker,
+    SettingsCustomTracker,
+}
+
 impl PathPickerId {
     pub fn history_key(self) -> &'static str {
         match self {
@@ -69,6 +81,12 @@ pub enum Message {
     Dialog(DialogMsg),
     Toast(ToastMsg),
     CopyText(String),
+    CtxOpen(CtxTarget),
+    CtxClipboardRead(Option<String>),
+    CtxCopy(String),
+    CtxPaste(CtxTarget, String),
+    CtxClose,
+    CursorMoved(iced::Point),
     OpenLink(String),
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     OpenFile(PathBuf),

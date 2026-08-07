@@ -1,17 +1,17 @@
 use std::collections::HashMap;
 
 use crate::ui::components::drop_down;
-use iced::widget::{
-    button, column, container, mouse_area, progress_bar, row, text, text_input, tooltip,
-};
+use iced::widget::{button, column, container, mouse_area, progress_bar, row, text, tooltip};
 use iced::{mouse, Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{
-    AddMsg, ConfirmAction, DialogMsg, Message, SortField, SortMsg, SortOrder, TaskMsg,
+    AddMsg, ConfirmAction, CtxTarget, DialogMsg, Message, SortField, SortMsg, SortOrder, TaskMsg,
 };
 use crate::task::{format_duration, format_size, format_speed, DownloadTask, TaskStatus};
 use crate::ui::animation::{animation, Animated};
+use crate::ui::components::ctx_input;
+use crate::ui::components::ctx_menu::CtxMirrors;
 use crate::ui::components::expand::expand;
 use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::components::tooltip as tip;
@@ -31,6 +31,7 @@ pub fn view<'a>(
     search_query: &str,
     progress_anim: &'a HashMap<String, Animated<f32>>,
     card_anim: &'a HashMap<String, Animated<f32>>,
+    ctx_mirrors: &CtxMirrors,
 ) -> Element<'a, Message> {
     let toolbar_btn = |glyph: iced::widget::Text<'a>,
                        tip: String,
@@ -147,12 +148,22 @@ pub fn view<'a>(
 
     let has_query = !search_query.trim().is_empty();
 
-    let search_input = theme::input_layout(
-        text_input(&fluent.get(Tr::Search), search_query)
-            .on_input(|s| Message::Sort(SortMsg::SearchChanged(s)))
-            .width(Length::Fixed(220.0))
-            .style(theme::style::input::standard),
-    );
+    let search_input = mouse_area(
+        ctx_input::CtxInput::new(
+            &fluent.get(Tr::Search),
+            search_query,
+            ctx_mirrors
+                .get(&CtxTarget::Search)
+                .cloned()
+                .unwrap_or_default(),
+        )
+        .on_input(|s| Message::Sort(SortMsg::SearchChanged(s)))
+        .padding(theme::INPUT_PADDING)
+        .size(FONT_MEDIUM)
+        .width(Length::Fixed(220.0))
+        .style(theme::style::input::standard),
+    )
+    .on_right_press(Message::CtxOpen(CtxTarget::Search));
 
     let mut search_group = row![search_input]
         .spacing(SPACE_SM)

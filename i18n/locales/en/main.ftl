@@ -280,6 +280,7 @@ delete-all-files = Delete All Files
 remove-all-records = Remove All from List
 download-history = Download History
 copy = Copy
+paste = Paste
 copied = Copied to clipboard
 bt-enable-lpd = Enable Local Peer Discovery (LPD)
 enable-peer-exchange = Enable Peer Exchange (PEX)
