@@ -25,6 +25,7 @@ pub fn view<'a>(
     fluent: &'a Fluent,
     theme: &iced::Theme,
     tasks: &[&DownloadTask],
+    has_any_tasks: bool,
     sort_field: SortField,
     sort_order: SortOrder,
     sort_menu_open: bool,
@@ -223,28 +224,38 @@ pub fn view<'a>(
         .padding(PADDING_BOTTOM_TOOLBAR);
 
     if tasks.is_empty() {
-        let mut empty_col = column![].spacing(SPACE_LG).push(
-            text(fluent.get(if has_query {
-                Tr::NoResults
-            } else {
-                Tr::NoTasks
-            }))
-            .size(FONT_HERO)
-            .style(theme::style::text::secondary),
-        );
-        if !has_query {
-            empty_col = empty_col.push(
-                text(fluent.get(Tr::NoTasksHint))
-                    .size(FONT_MEDIUM)
-                    .style(theme::style::text::secondary),
+        if !has_any_tasks {
+            let mut empty_col = column![].spacing(SPACE_LG).push(
+                text(fluent.get(if has_query {
+                    Tr::NoResults
+                } else {
+                    Tr::NoTasks
+                }))
+                .size(FONT_HERO)
+                .style(theme::style::text::tertiary),
             );
-        }
-        let empty = container(empty_col)
-            .center_x(Length::Fill)
-            .width(Length::Fill)
-            .padding(PADDING_EMPTY_STATE);
+            if !has_query {
+                empty_col = empty_col.push(
+                    text(fluent.get(Tr::NoTasksHint))
+                        .size(FONT_MEDIUM)
+                        .style(theme::style::text::tertiary),
+                );
+            }
+            let empty = container(empty_col)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+                .height(Length::Fill)
+                .width(Length::Fill)
+                .padding(PADDING_EMPTY_STATE);
 
-        return container(column![].push(toolbar).push(empty))
+            return container(column![].push(toolbar).push(empty))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .padding(PADDING_PAGE)
+                .into();
+        }
+
+        return container(column![].push(toolbar))
             .width(Length::Fill)
             .height(Length::Fill)
             .padding(PADDING_PAGE)

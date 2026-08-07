@@ -280,6 +280,17 @@ pub fn text_secondary(t: &Theme) -> Color {
     t.extended_palette().background.base.text
 }
 
+pub fn text_weak(t: &Theme) -> Color {
+    let bg = t.extended_palette().background.base.color;
+    let txt = t.extended_palette().background.base.text;
+    Color::from_rgba(
+        txt.r * 0.4 + bg.r * 0.6,
+        txt.g * 0.4 + bg.g * 0.6,
+        txt.b * 0.4 + bg.b * 0.6,
+        1.0,
+    )
+}
+
 pub fn border_color(t: &Theme) -> Color {
     t.extended_palette().background.strong.color
 }
@@ -1023,6 +1034,12 @@ pub mod style {
         pub fn secondary(t: &iced::Theme) -> iced::widget::text::Style {
             iced::widget::text::Style {
                 color: Some(super::super::text_secondary(t)),
+            }
+        }
+
+        pub fn tertiary(t: &iced::Theme) -> iced::widget::text::Style {
+            iced::widget::text::Style {
+                color: Some(super::super::text_weak(t)),
             }
         }
     }

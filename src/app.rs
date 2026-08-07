@@ -3880,6 +3880,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                 &state.fluent,
                 t,
                 &sorted,
+                !state.tasks.is_empty(),
                 state.sort_field,
                 state.sort_order,
                 state.sort_menu_open,
