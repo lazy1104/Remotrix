@@ -1082,7 +1082,11 @@ fn pill_to_index(state: &mut Remotrix, index: usize) {
 fn set_page(state: &mut Remotrix, page: Page) {
     if state.page != page {
         state.page = page;
-        pill_to_index(state, 0);
+        let index = match page {
+            Page::Tasks => crate::ui::category_bar::task_filter_index(state.task_filter),
+            Page::Settings => crate::ui::category_bar::settings_cat_index(state.settings_cat),
+        };
+        state.filter_pill.settle_at(index as f32 * crate::ui::dims::FILTER_STEP);
     }
 }
 
