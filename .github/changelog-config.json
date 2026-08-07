@@ -1,0 +1,29 @@
+{
+  "template": "# What's Changed\n\n{{CHANGELOG}}",
+  "categories": [
+    {
+      "title": "## 🚀 New Features",
+      "labels": ["feat"],
+      "titleType": "PLURAL"
+    },
+    {
+      "title": "## 💎 Improvements",
+      "labels": ["refactor", "perf", "style"],
+      "titleType": "PLURAL"
+    },
+    {
+      "title": "## 🐛 Bug Fixes",
+      "labels": ["fix"],
+      "titleType": "PLURAL"
+    },
+    {
+      "title": "## 🧰 Maintenance",
+      "labels": ["chore", "docs", "build", "ci", "test", "revert", "deps"],
+      "titleType": "PLURAL"
+    }
+  ],
+  "ignore_labels": [],
+  "sort": "ASC",
+  "hide_empty": true,
+  "group_by": "labels"
+}
