@@ -4272,6 +4272,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             &state.details,
             state.details_anim.value(),
             &state.input_cursors,
+            &state.progress_anim,
         );
         crate::ui::components::dialog::overlay(
             crate::ui::animation::animation(state.details_anim.anim(), content)

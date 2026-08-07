@@ -9,6 +9,7 @@ use crate::task::{
     completed_pieces, format_add_time, format_size, format_speed, DownloadTask,
     TaskAdvancedOptions, TaskDetails,
 };
+use crate::ui::animation::{animation, Animated};
 use crate::ui::components::ctx_input;
 use crate::ui::components::ctx_menu::CtxMirrors;
 use crate::ui::components::expand::expand_pinned;
@@ -155,6 +156,7 @@ pub fn view<'a>(
     state: &'a DetailsDialogState,
     progress: f32,
     ctx_mirrors: &CtxMirrors,
+    progress_anim: &'a HashMap<String, Animated<f32>>,
 ) -> Element<'a, Message> {
     let close_btn = button(icon::x().size(FONT_HERO).line_height(1.0))
         .on_press(Message::Task(TaskMsg::CloseTaskDetails))
@@ -215,8 +217,8 @@ pub fn view<'a>(
                     .height(Length::Fill)
                     .into()
             }
-            DetailsTab::Activity => activity_tab(fluent, theme, task, state),
-            DetailsTab::Files => files_tab(fluent, theme, task, state),
+            DetailsTab::Activity => activity_tab(fluent, theme, task, state, progress_anim),
+            DetailsTab::Files => files_tab(fluent, theme, task, state, progress_anim),
             DetailsTab::Advanced => {
                 slim_scrollable(advanced_tab(fluent, theme, task, state, ctx_mirrors))
                     .height(Length::Fill)
@@ -312,6 +314,7 @@ fn activity_tab<'a>(
     theme: &'a iced::Theme,
     task: &'a DownloadTask,
     state: &'a DetailsDialogState,
+    progress_anim: &'a HashMap<String, Animated<f32>>,
 ) -> Element<'a, Message> {
     let text_secondary_fn = theme::style::text::secondary;
 
@@ -344,11 +347,22 @@ fn activity_tab<'a>(
             piece_content = piece_content.push(map);
         }
 
-        let pct = task.progress_pct();
+        let pct = progress_anim
+            .get(&task.gid)
+            .map(|p| *p.value())
+            .unwrap_or_else(|| task.progress_pct());
         let bar_color = theme::task_bar_color(theme, task.status, task.is_seeding);
-        let bar = progress_bar(0.0..=100.0, pct)
+        let base_bar = progress_bar(0.0..=100.0, pct)
             .girth(Length::Fixed(8.0))
             .style(theme::style::progress::task(bar_color));
+        let bar: Element<'a, Message> = if let Some(anim) = progress_anim.get(&task.gid) {
+            let gid = task.gid.clone();
+            animation(anim, base_bar)
+                .on_update(move |e| Message::ProgressAnim(gid.clone(), e))
+                .into()
+        } else {
+            base_bar.into()
+        };
 
         let downloaded_text = format!(
             "{} / {}",
@@ -454,14 +468,26 @@ fn files_tab<'a>(
     theme: &'a iced::Theme,
     task: &'a DownloadTask,
     state: &'a DetailsDialogState,
+    progress_anim: &'a HashMap<String, Animated<f32>>,
 ) -> Element<'a, Message> {
     let text_secondary_fn = theme::style::text::secondary;
 
-    let pct = task.progress_pct();
+    let pct = progress_anim
+        .get(&task.gid)
+        .map(|p| *p.value())
+        .unwrap_or_else(|| task.progress_pct());
     let bar_color = theme::task_bar_color(theme, task.status, task.is_seeding);
-    let overall_bar = progress_bar(0.0..=100.0, pct)
+    let base_bar = progress_bar(0.0..=100.0, pct)
         .girth(Length::Fixed(8.0))
         .style(theme::style::progress::task(bar_color));
+    let overall_bar: Element<'a, Message> = if let Some(anim) = progress_anim.get(&task.gid) {
+        let gid = task.gid.clone();
+        animation(anim, base_bar)
+            .on_update(move |e| Message::ProgressAnim(gid.clone(), e))
+            .into()
+    } else {
+        base_bar.into()
+    };
 
     let overall_info = text(format!(
         "{} / {}  ({:.1}%)",
