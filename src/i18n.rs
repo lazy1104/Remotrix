@@ -46,7 +46,7 @@ pub fn detect_locale() -> Locale {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Tr {
     All,
     Downloading,
@@ -403,6 +403,10 @@ pub enum Tr {
     ProxyUsernamePlaceholder,
     ProxyPasswordPlaceholder,
     UserAgentPlaceholder,
+    HttpAuthAccountPlaceholder,
+    HttpAuthPasswordPlaceholder,
+    RefererPlaceholder,
+    CookiePlaceholder,
     Logging,
     LogLocation,
     LogLevelApp,
@@ -775,6 +779,10 @@ impl Tr {
             Tr::ProxyUsernamePlaceholder => "proxy-username-placeholder",
             Tr::ProxyPasswordPlaceholder => "proxy-password-placeholder",
             Tr::UserAgentPlaceholder => "user-agent-placeholder",
+            Tr::HttpAuthAccountPlaceholder => "http-auth-account-placeholder",
+            Tr::HttpAuthPasswordPlaceholder => "http-auth-password-placeholder",
+            Tr::RefererPlaceholder => "referer-placeholder",
+            Tr::CookiePlaceholder => "cookie-placeholder",
             Tr::Logging => "logging",
             Tr::LogLocation => "log-location",
             Tr::LogLevelApp => "log-level-app",

@@ -597,14 +597,16 @@ fn details_files_scroll(y: f32) -> Message {
 fn advanced_field<'a>(
     fluent: &'a Fluent,
     label: Tr,
+    placeholder: Tr,
     value: &'a str,
     field: AddField,
     secure: bool,
     ctx_mirrors: &CtxMirrors,
 ) -> Element<'a, Message> {
     let target = CtxTarget::DetailsAdvanced(field);
+    let placeholder = fluent.get(placeholder);
     let mut input = ctx_input::CtxInput::new(
-        "",
+        &placeholder,
         value,
         ctx_mirrors.get(&target).cloned().unwrap_or_default(),
     )
@@ -616,8 +618,13 @@ fn advanced_field<'a>(
     if secure {
         input = input.secure(true);
     }
+    let label = if label == Tr::HttpAuthPassword {
+        String::new()
+    } else {
+        fluent.get(label)
+    };
     row![
-        text(fluent.get(label))
+        text(label)
             .size(FONT_SMALL)
             .style(theme::style::text::secondary)
             .width(Length::Fixed(140.0)),
@@ -655,6 +662,7 @@ fn advanced_tab<'a>(
         advanced_field(
             fluent,
             Tr::UserAgent,
+            Tr::UserAgentPlaceholder,
             &state.user_agent,
             AddField::UserAgent,
             false,
@@ -663,6 +671,7 @@ fn advanced_tab<'a>(
         advanced_field(
             fluent,
             Tr::HttpAuthAccount,
+            Tr::HttpAuthAccountPlaceholder,
             &state.http_user,
             AddField::HttpUser,
             false,
@@ -671,6 +680,7 @@ fn advanced_tab<'a>(
         advanced_field(
             fluent,
             Tr::HttpAuthPassword,
+            Tr::HttpAuthPasswordPlaceholder,
             &state.http_passwd,
             AddField::HttpPasswd,
             true,
@@ -679,6 +689,7 @@ fn advanced_tab<'a>(
         advanced_field(
             fluent,
             Tr::Referer,
+            Tr::RefererPlaceholder,
             &state.referer,
             AddField::Referer,
             false,
@@ -687,6 +698,7 @@ fn advanced_tab<'a>(
         advanced_field(
             fluent,
             Tr::Cookie,
+            Tr::CookiePlaceholder,
             &state.cookie,
             AddField::Cookie,
             false,
@@ -699,6 +711,7 @@ fn advanced_tab<'a>(
         advanced_field(
             fluent,
             Tr::ProxyAddress,
+            Tr::ProxyAddressPlaceholder,
             &state.proxy_server,
             AddField::ProxyServer,
             false,
@@ -707,6 +720,7 @@ fn advanced_tab<'a>(
         advanced_field(
             fluent,
             Tr::ProxyUsername,
+            Tr::ProxyUsernamePlaceholder,
             &state.proxy_username,
             AddField::ProxyUsername,
             false,
@@ -715,6 +729,7 @@ fn advanced_tab<'a>(
         advanced_field(
             fluent,
             Tr::ProxyPassword,
+            Tr::ProxyPasswordPlaceholder,
             &state.proxy_password,
             AddField::ProxyPassword,
             true,
