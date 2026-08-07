@@ -963,6 +963,9 @@ pub mod style {
         pub fn standard(t: &iced::Theme, status: text_editor::Status) -> text_editor::Style {
             let mut s = text_editor::default(t, status);
             s.border.radius = super::super::RADIUS_BUTTON.into();
+            if matches!(status, text_editor::Status::Hovered) {
+                s.border.color = t.extended_palette().primary.strong.color;
+            }
             s
         }
     }

@@ -1,8 +1,8 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
 // 769c272c925e1eaf556fd49a814361587264a2168bfceb20318ffc9cce4c9227
+use iced::widget::{text, Text};
 use iced::Font;
-use iced::widget::{Text, text};
 
 pub const FONT: &[u8] = include_bytes!("../../fonts/lucide.ttf");
 
