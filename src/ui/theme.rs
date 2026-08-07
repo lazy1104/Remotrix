@@ -649,7 +649,7 @@ pub mod style {
                             Status::Disabled => scale_alpha(accent, 0.5),
                             _ => accent,
                         },
-                        border: iced::border::rounded(super::super::RADIUS_BUTTON),
+                        border: iced::border::rounded(super::super::RADIUS_PILL),
                         shadow: Shadow::default(),
                         ..Default::default()
                     }
@@ -664,7 +664,7 @@ pub mod style {
                             Status::Disabled => scale_alpha(base_text, 0.5),
                             _ => base_text,
                         },
-                        border: iced::border::rounded(super::super::RADIUS_BUTTON),
+                        border: iced::border::rounded(super::super::RADIUS_PILL),
                         shadow: Shadow::default(),
                         ..Default::default()
                     }
