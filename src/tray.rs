@@ -185,6 +185,7 @@ fn init_tray(tx: tokio::sync::mpsc::UnboundedSender<Message>) -> Option<TrayInne
 fn load_app_icon() -> Option<Icon> {
     let bytes = include_bytes!("../assets/icon.png");
     let img = image::load_from_memory(bytes).ok()?.to_rgba8();
+    let img = image::imageops::resize(&img, 32, 32, image::imageops::FilterType::Lanczos3);
     let (w, h) = (img.width(), img.height());
     Icon::from_rgba(w, h, img.into_raw()).ok()
 }
