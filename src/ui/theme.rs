@@ -305,6 +305,18 @@ pub mod style {
         }
     }
 
+    pub fn window_border(t: &iced::Theme) -> iced::widget::container::Style {
+        iced::widget::container::Style {
+            background: None,
+            border: iced::Border {
+                color: super::border_color(t),
+                width: 1.0,
+                radius: iced::border::radius(0),
+            },
+            ..Default::default()
+        }
+    }
+
     pub fn sidebar_background(t: &iced::Theme) -> iced::widget::container::Style {
         iced::widget::container::Style {
             background: Some(t.extended_palette().background.strong.color.into()),

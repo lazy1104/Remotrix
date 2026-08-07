@@ -4174,21 +4174,32 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         .width(Length::Fill)
         .height(Length::Fill);
 
-    let base = container(body)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(theme::style::base_background);
-
     let framed: iced::Element<'_, Message> = if state.window.maximized {
+        let base = container(body)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(theme::style::base_background);
         #[allow(clippy::useless_conversion)]
         {
             iced::widget::opaque(base).into()
         }
     } else {
-        stack![iced::widget::opaque(base), crate::ui::resize_frame::view(),]
+        let base = container(body)
             .width(Length::Fill)
             .height(Length::Fill)
-            .into()
+            .style(theme::style::base_background);
+        let border = container(iced::widget::Space::new())
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(theme::style::window_border);
+        stack![
+            iced::widget::opaque(base),
+            crate::ui::resize_frame::view(),
+            border,
+        ]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
     };
     let (dl, up) = if state.tracking.active_count > 0 {
         state.global_speed.unwrap_or((0, 0))
