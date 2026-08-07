@@ -33,6 +33,7 @@ with AI assistance.
 - **Task details** — summary / activity / files tabs with a BitTorrent piece-completion map
 - **Sorting & filters** — sort by added time, name, size, progress, or status; filter by All / Downloading / Completed
 - **Clipboard watching** — auto-detects http/ftp/magnet/ed2k/bt links copied to the clipboard
+- **Browser takeover** — a local extension API (Salvo HTTP server, default `127.0.0.1:29110`) that works out of the box with the upstream [motrix-next-extension](https://github.com/AnInsomniacy/motrix-next-extension) (MIT, reused unmodified)
 - **File logging** — daily rolling logs written under the data directory
 
 ## Screenshots
@@ -89,6 +90,7 @@ src/
 ├── config.rs             # Settings (serde) load/save, aria2 option mapping, path helpers
 ├── db.rs                 # SQLite persistence (rusqlite): task meta + progress flush
 ├── engine.rs             # EngineBridge: spawn tokio supervisor + aria2-next sidecar, mpsc channels
+├── extension_api.rs      # browser extension API: Salvo HTTP server (/ping /stat /add /pause-all /resume-all)
 ├── aria2_fetcher.rs      # runtime fetch / cache / verify aria2-next binary, staged updates
 ├── updater.rs            # GitHub Releases lookup, ReleaseInfo, platform slug
 ├── message.rs            # Message enum + page / filter / sort / setting enums
@@ -187,6 +189,23 @@ and a full set of aria2 options (max-connection-per-server, min-split-size, auto
 allow-overwrite, continue, check-integrity, user-agent, headers, proxy, retries, timeouts,
 bt-tracker, seed ratio/time, DHT, and more).
 
+## Browser Takeover (Extension API)
+
+Remotrix exposes a local HTTP server (default port `29110`, loopback only) that implements the full protocol expected by the upstream [motrix-next-extension](https://github.com/AnInsomniacy/motrix-next-extension) (MIT, reused unmodified):
+
+- `GET /ping` — heartbeat (no auth)
+- `GET /stat` — global stats (`downloadSpeed` / `numActive`, etc., mirroring aria2 `getGlobalStat` as strings)
+- `POST /add` — add a download (referer / cookie / UA / request headers submitted with the task)
+- `POST /pause-all` / `POST /resume-all` — global pause / resume
+
+**Usage:**
+
+1. Install `motrix-next-extension` from your browser's store (Remotrix does not bundle it).
+2. In Remotrix Settings → "Download" → "Browser Takeover", enable it and copy the port and secret.
+3. In the extension options page, point it at `http://127.0.0.1:<port>` and enter the secret; `checkConnection` should pass.
+
+By default `/add` **silently auto-submits** the task and fires a system notification; you can switch to a confirmation dialog in Settings instead. Leaving the secret empty disables authentication (loopback only). Only global pause / resume is exposed; manage individual tasks back in the Remotrix main window.
+
 ## Tech Stack
 
 | Component | Choice | Rationale |
@@ -227,6 +246,8 @@ bt-tracker, seed ratio/time, DHT, and more).
 - [x] System tray integration (minimize-to-tray / close-to-tray on X11; incomplete on Wayland — the window can only be minimized, not hidden)
 - [x] System notifications (download completion, etc.)
 - [x] Single-instance run
+- [x] Launch at login — start automatically after sign-in, optionally hidden to tray
+- [x] Browser takeover — local extension API + reuses motrix-next-extension to intercept browser downloads
 
 **Planned**
 - [ ] Download hardening & full testing — HTTP/HTTPS and BT work today, but haven't covered enough scenarios (resume, integrity check, speed limits, retry on failure, etc.); needs a full regression pass
@@ -234,8 +255,7 @@ bt-tracker, seed ratio/time, DHT, and more).
 - [ ] App animations — smooth transitions and motion for page switches, list updates, progress bars, etc.
 - [ ] Customizable paths — let users override app cache, log, and aria2-next binary paths
 - [ ] File associations — set the default program for opening file types (e.g. `.torrent`)
-- [ ] Browser extension — extension / context-menu to send links to Remotrix in one click
-- [ ] Launch at login — start automatically after sign-in
+- [ ] `motrixnext://` deep-link protocol — wake the app when not running / website download buttons (the core HTTP interception does not depend on it)
 - [ ] Scheduled / download-complete shutdown — scheduled shutdown and auto-shutdown when all tasks finish
 - [ ] Wayland tray compatibility polish — under Wayland the window can only be minimized and not fully hidden; improve window-hiding / tray / notification behavior
 - [ ] UI/UX polish — continuously refine visuals and interactions
@@ -243,6 +263,7 @@ bt-tracker, seed ratio/time, DHT, and more).
 ## Acknowledgements
 
 - [aria2-next](https://github.com/AnInsomniacy/aria2-next) by AnInsomniacy — the download engine at the core. It is a separate, independently licensed program (GPL-2.0-or-later) that is **not bundled** with Remotrix; it is downloaded from its GitHub Releases at runtime.
+- [motrix-next-extension](https://github.com/AnInsomniacy/motrix-next-extension) (MIT) — the browser-side extension. Remotrix neither bundles nor modifies it; users install it from the store / upstream and it talks to Remotrix through the local extension API.
 
 ## License
 

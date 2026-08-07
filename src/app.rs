@@ -18,8 +18,9 @@ use crate::engine::{EngineCmd, EngineEvent, EngineHandle, EventRx};
 use crate::i18n::{Fluent, Tr};
 use crate::message::{
     AddField, AddMsg, AddTab, CloseDialogChoice, ConfirmAction, CtxTarget, DialogMsg, EngineMsg,
-    Message, NavMsg, Page, PathPickerId, SettingKey, SettingValue, SettingsCategory, SettingsMsg,
-    SortField, SortMsg, SortOrder, TaskFilter, TaskMsg, ToastMsg, TrayMsg, WindowCmd, WindowMsg,
+    ExtensionMsg, Message, NavMsg, Page, PathPickerId, SettingKey, SettingValue, SettingsCategory,
+    SettingsMsg, SortField, SortMsg, SortOrder, TaskFilter, TaskMsg, ToastMsg, TrayMsg, WindowCmd,
+    WindowMsg,
 };
 use crate::task::{DownloadTask, TaskAdvancedOptions, TaskStatus};
 use crate::ui::add_dialog::AddDialogState;
@@ -283,6 +284,8 @@ pub struct Remotrix {
         Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<crate::notify::NotifyEvent>>>>,
     tray: crate::tray::TrayManager,
     tray_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>>,
+    ext_msg_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>>,
+    stat_cache: Arc<std::sync::Mutex<crate::extension_api::GlobalStatCache>>,
     add_dialog: AddDialogState,
     drop_hover: bool,
     about_dialog_visible: bool,
@@ -363,6 +366,13 @@ pub fn init() -> (Remotrix, Task<Message>) {
         Arc::new(Mutex::new(Some(tray_rx)));
     let tray = crate::tray::TrayManager::new(tray_tx, true);
 
+    let (ext_msg_tx, ext_msg_rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
+    let ext_msg_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>> =
+        Arc::new(Mutex::new(Some(ext_msg_rx)));
+    let stat_cache = Arc::new(std::sync::Mutex::new(
+        crate::extension_api::GlobalStatCache::default(),
+    ));
+
     let settings_ui = SettingsUiState::new(&settings);
     let add_dialog = AddDialogState::new(settings.download_dir.clone());
     let fluent = Fluent::new(settings.locale);
@@ -412,6 +422,8 @@ pub fn init() -> (Remotrix, Task<Message>) {
         notify_rx_slot,
         tray,
         tray_rx_slot,
+        ext_msg_rx_slot,
+        stat_cache,
         add_dialog,
         drop_hover: false,
         about_dialog_visible: false,
@@ -464,6 +476,17 @@ pub fn init() -> (Remotrix, Task<Message>) {
 
     state.window.hidden_to_tray =
         crate::autostart::is_autostart_launch() && state.settings.start_hidden_on_autostart;
+
+    let ext_on_dialog: Option<
+        Box<dyn Fn(crate::extension_api::ExternalDownload) + Send + Sync + 'static>,
+    > = Some(Box::new(move |download| {
+        let _ = ext_msg_tx.send(Message::Extension(ExtensionMsg::ShowAddDialog(download)));
+    }));
+    crate::extension_api::spawn_server(
+        state.handle.cmd_tx.clone(),
+        state.stat_cache.clone(),
+        ext_on_dialog,
+    );
 
     refresh_tray(&mut state);
 
@@ -581,6 +604,33 @@ fn apply_settings(state: &mut Remotrix) -> bool {
     state.applied_settings = state.settings.clone();
     state.settings_dirty = false;
     restart_needed
+}
+
+fn count_task_stats(state: &Remotrix) -> (usize, usize, usize) {
+    let mut active = 0;
+    let mut waiting = 0;
+    let mut stopped = 0;
+    for t in state.tasks.values() {
+        match t.status {
+            TaskStatus::Active => active += 1,
+            TaskStatus::Waiting => waiting += 1,
+            TaskStatus::Paused
+            | TaskStatus::Completed
+            | TaskStatus::Error
+            | TaskStatus::Removed => stopped += 1,
+        }
+    }
+    (active, waiting, stopped)
+}
+
+fn sync_global_stat_cache(state: &Remotrix) {
+    let (active, waiting, stopped) = count_task_stats(state);
+    if let Ok(mut cache) = state.stat_cache.lock() {
+        cache.num_active = active;
+        cache.num_waiting = waiting;
+        cache.num_stopped = stopped;
+        cache.num_stopped_total = stopped;
+    }
 }
 
 fn clear_all_local(state: &mut Remotrix) {
@@ -1746,6 +1796,34 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         state.settings.notifications.engine_degraded = b;
                     }
                 }
+                SettingKey::NotificationDownloadAdded => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.notifications.download_added = b;
+                    }
+                }
+                SettingKey::ExtensionApiEnabled => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.extension.enabled = b;
+                    }
+                }
+                SettingKey::ExtensionApiPort => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.extension.port = n.clamp(
+                            crate::config::EXTENSION_API_MIN_PORT as u64,
+                            crate::config::EXTENSION_API_MAX_PORT as u64,
+                        ) as u16;
+                    }
+                }
+                SettingKey::ExtensionApiSecret => {
+                    if let SettingValue::Text(s) = value {
+                        state.settings.extension.secret = s;
+                    }
+                }
+                SettingKey::ExtensionAutoSubmit => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.extension.auto_submit = b;
+                    }
+                }
                 SettingKey::DetectClipboardOnStart => {
                     if let SettingValue::Bool(b) = value {
                         state.settings.detect_clipboard_on_start = b;
@@ -2033,9 +2111,11 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 dir,
                 info_hash,
                 advanced,
+                from_browser,
             } => {
-                tracing::info!(?gid, ?name, "ui: task added");
+                tracing::info!(?gid, ?name, from_browser, "ui: task added");
                 state.tracking.synced_gids.insert(gid.clone());
+                let task_name = name.clone();
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -2099,7 +2179,34 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         );
                     }
                 }
+                if from_browser && state.tasks.contains_key(&gid) {
+                    let mut args = std::collections::HashMap::new();
+                    args.insert(
+                        std::borrow::Cow::from("name"),
+                        std::borrow::Cow::from(task_name).into(),
+                    );
+                    spawn_toast(
+                        state,
+                        ToastGroup::Task,
+                        ToastKind::Normal,
+                        state.fluent.get_args(Tr::BrowserAdded, &args),
+                        Some(Duration::from_secs(3)),
+                        false,
+                    );
+                    if state.settings.notifications.download_added {
+                        let title = state.fluent.get(Tr::DownloadAddedTitle);
+                        let body = state.fluent.get_args(Tr::DownloadAdded, &args);
+                        send_system_notification(
+                            state,
+                            title,
+                            body,
+                            vec![],
+                            crate::notify::NotifyAction::ActivateWindow,
+                        );
+                    }
+                }
                 state.tracking.dirty.insert(gid);
+                sync_global_stat_cache(state);
                 refresh_tray(state);
             }
             EngineEvent::TorrentAdded { gid, path } => {
@@ -2350,6 +2457,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             EngineEvent::Removed(gid) => {
                 tracing::info!(?gid, "ui: task removed");
                 begin_task_exit(state, &gid, true);
+                sync_global_stat_cache(state);
                 refresh_tray(state);
             }
             EngineEvent::TaskDetails { gid, details } => {
@@ -2553,6 +2661,11 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             EngineEvent::GlobalSpeed { download, upload } => {
                 state.global_speed = Some((download, upload));
+                if let Ok(mut cache) = state.stat_cache.lock() {
+                    cache.download_speed = download;
+                    cache.upload_speed = upload;
+                }
+                sync_global_stat_cache(state);
                 refresh_tray(state);
             }
             EngineEvent::Aria2Status { stage, message } => {
@@ -3743,6 +3856,17 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             return restore_window_from_tray_wayland(state).chain(attention);
         }
         Message::Noop => {}
+        Message::Extension(ExtensionMsg::GenerateSecret) => {
+            state.settings.extension.secret = crate::extension_api::generate_secret();
+            state.settings_dirty = true;
+        }
+        Message::Extension(ExtensionMsg::ShowAddDialog(download)) => {
+            state.add_dialog.open_external(
+                state.settings.download_dir.clone(),
+                state.settings.split,
+                download,
+            );
+        }
         Message::ProgressAnim(gid, event) => {
             if let Some(anim) = state.progress_anim.get_mut(&gid) {
                 anim.update(event);
@@ -4313,6 +4437,11 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
 
     let wake = Subscription::run_with(WakeSlot(state.wake_rx_slot.clone()), build_wake_stream);
 
+    let extension = Subscription::run_with(
+        ExtensionSlot(state.ext_msg_rx_slot.clone()),
+        build_extension_stream,
+    );
+
     #[cfg(target_os = "linux")]
     let notify = Subscription::run_with(
         crate::notify::NotifySlot(state.notify_rx_slot.clone()),
@@ -4407,6 +4536,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
     Subscription::batch(vec![
         engine,
         wake,
+        extension,
         #[cfg(target_os = "linux")]
         notify,
         tray,
@@ -4426,6 +4556,40 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         tracker_auto_sync,
         auto_update,
     ])
+}
+
+#[derive(Clone)]
+struct ExtensionSlot(Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>>);
+
+impl std::hash::Hash for ExtensionSlot {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        Arc::as_ptr(&self.0).hash(state);
+    }
+}
+
+impl PartialEq for ExtensionSlot {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for ExtensionSlot {}
+
+fn build_extension_stream(slot: &ExtensionSlot) -> impl iced::futures::Stream<Item = Message> {
+    let rx = {
+        let mut guard = slot.0.lock().expect("extension slot poisoned");
+        guard.take()
+    };
+    iced::stream::channel(
+        1,
+        move |mut sender: iced::futures::channel::mpsc::Sender<Message>| async move {
+            if let Some(mut rx) = rx {
+                while let Some(msg) = rx.recv().await {
+                    let _ = sender.send(msg).await;
+                }
+            }
+        },
+    )
 }
 
 fn picker_mut(

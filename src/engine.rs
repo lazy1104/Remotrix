@@ -27,6 +27,14 @@ pub enum EngineCmd {
         advanced: TaskAdvancedOptions,
         bt_metadata_only: bool,
     },
+    AddExternalDownload {
+        urls: Vec<String>,
+        save_dir: PathBuf,
+        split: u16,
+        advanced: TaskAdvancedOptions,
+        headers: Vec<(String, String)>,
+        bt_metadata_only: bool,
+    },
     Pause(String),
     Resume(String),
     Remove {
@@ -107,6 +115,7 @@ pub enum EngineEvent {
         dir: String,
         info_hash: Option<String>,
         advanced: TaskAdvancedOptions,
+        from_browser: bool,
     },
     Progress {
         gid: String,
@@ -219,12 +228,7 @@ fn find_free_port() -> Result<u16, std::io::Error> {
 }
 
 fn generate_secret() -> String {
-    use std::time::SystemTime;
-    let nanos = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    format!("{:x}{:x}", nanos, std::process::id())
+    crate::config::generate_secret()
 }
 
 fn pipe_lines<R: tokio::io::AsyncRead + Unpin + Send + 'static>(reader: R, target: &'static str) {
@@ -430,6 +434,7 @@ async fn emit_added(
         dir: s.dir.clone(),
         info_hash: s.info_hash.clone(),
         advanced,
+        from_browser: false,
     });
 }
 
@@ -633,6 +638,71 @@ fn base_task_options(dir: &Path, split: u16) -> TaskOptions {
     }
 }
 
+fn has_header_control_chars(name: &str, value: &str) -> bool {
+    [name, value]
+        .iter()
+        .any(|s| s.chars().any(|c| matches!(c, '\r' | '\n' | '\0')))
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn add_download_internal(
+    client: &Client,
+    urls: &[String],
+    save_dir: &Path,
+    split: u16,
+    advanced: &TaskAdvancedOptions,
+    headers: &[(String, String)],
+    bt_metadata_only: bool,
+    from_browser: bool,
+    event_tx: &EventTx,
+) -> Result<(), String> {
+    if urls.is_empty() {
+        return Err("no URLs provided".into());
+    }
+    let mut options = base_task_options(save_dir, split);
+    advanced.apply(&mut options);
+    if !headers.is_empty() {
+        options.header = Some(
+            headers
+                .iter()
+                .filter(|(n, v)| !n.trim().is_empty() && !has_header_control_chars(n, v))
+                .map(|(n, v)| format!("{n}: {v}"))
+                .collect(),
+        );
+    }
+    let dir = save_dir.to_string_lossy().to_string();
+    let mut added = 0;
+    for url in urls {
+        let mut opts = options.clone();
+        apply_bt_url_options(&mut opts, url, bt_metadata_only);
+        match client
+            .add_uri(vec![url.clone()], Some(opts), None, None)
+            .await
+        {
+            Ok(gid) => {
+                let name = basename(url).unwrap_or_else(|| gid.clone());
+                let _ = event_tx.send(EngineEvent::Added {
+                    gid,
+                    name,
+                    url: url.clone(),
+                    dir: dir.clone(),
+                    info_hash: None,
+                    advanced: advanced.clone(),
+                    from_browser,
+                });
+                added += 1;
+            }
+            Err(e) => {
+                tracing::error!(url = %url, error = %e, "add_uri failed");
+            }
+        }
+    }
+    if added == 0 {
+        return Err("all add_uri calls failed".into());
+    }
+    Ok(())
+}
+
 async fn add_torrent_and_emit(
     client: &Client,
     path: &Path,
@@ -677,6 +747,7 @@ async fn add_torrent_and_emit(
                 dir,
                 info_hash: None,
                 advanced: advanced.clone(),
+                from_browser: false,
             });
         }
     }
@@ -744,40 +815,46 @@ async fn handle_client_cmd(
             bt_metadata_only,
         } => {
             tracing::info!(?urls, ?save_dir, split, "add download");
-            if urls.is_empty() {
-                return Err("no URLs provided".into());
-            }
-            let mut options = base_task_options(&save_dir, split);
-            advanced.apply(&mut options);
-            let dir = save_dir.to_string_lossy().to_string();
-            let mut added = 0;
-            for url in urls {
-                let mut opts = options.clone();
-                apply_bt_url_options(&mut opts, &url, bt_metadata_only);
-                match client
-                    .add_uri(vec![url.clone()], Some(opts), None, None)
-                    .await
-                {
-                    Ok(gid) => {
-                        let name = basename(&url).unwrap_or_else(|| gid.clone());
-                        let _ = event_tx.send(EngineEvent::Added {
-                            gid,
-                            name,
-                            url,
-                            dir: dir.clone(),
-                            info_hash: None,
-                            advanced: advanced.clone(),
-                        });
-                        added += 1;
-                    }
-                    Err(e) => {
-                        tracing::error!(url = %url, error = %e, "add_uri failed");
-                    }
-                }
-            }
-            if added == 0 {
-                return Err("all add_uri calls failed".into());
-            }
+            add_download_internal(
+                client,
+                &urls,
+                &save_dir,
+                split,
+                &advanced,
+                &[],
+                bt_metadata_only,
+                false,
+                event_tx,
+            )
+            .await?;
+        }
+        EngineCmd::AddExternalDownload {
+            urls,
+            save_dir,
+            split,
+            advanced,
+            headers,
+            bt_metadata_only,
+        } => {
+            tracing::info!(
+                ?urls,
+                ?save_dir,
+                split,
+                headers = headers.len(),
+                "add external download"
+            );
+            add_download_internal(
+                client,
+                &urls,
+                &save_dir,
+                split,
+                &advanced,
+                &headers,
+                bt_metadata_only,
+                true,
+                event_tx,
+            )
+            .await?;
         }
         EngineCmd::Pause(gid) => {
             tracing::info!(?gid, "pause");
@@ -1064,6 +1141,7 @@ async fn handle_client_cmd(
                         dir,
                         info_hash: None,
                         advanced: TaskAdvancedOptions::default(),
+                        from_browser: false,
                     });
                     if let Ok(status) = client.tell_status(&gid).await {
                         emit_progress(event_tx, &status).await;

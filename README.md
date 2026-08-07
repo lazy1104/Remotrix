@@ -27,6 +27,7 @@ Remotrix 最初是一个学习项目。我喜欢 Motrix / Motrix-next 的设计�
 - **任务详情** —— 摘要 / 活动 / 文件三个标签页，含 BitTorrent 分片完成度图
 - **排序与筛选** —— 按添加时间、名称、大小、进度或状态排序；按全部 / 下载中 / 已完成筛选
 - **剪贴板监听** —— 自动检测复制到剪贴板的 http/ftp/magnet/ed2k/bt 链接
+- **浏览器接管** —— 本地扩展 API（Salvo HTTP 服务，默认 `127.0.0.1:29110`），配合上游 [motrix-next-extension](https://github.com/AnInsomniacy/motrix-next-extension)（MIT，零改动复用）在浏览器中一键接管下载
 - **文件日志** —— 数据目录下按天滚动的日志文件
 
 ## 截图
@@ -75,6 +76,7 @@ src/
 ├── config.rs             # 设置（serde）加载/保存、aria2 选项映射、路径辅助
 ├── db.rs                 # SQLite 持久化（rusqlite）：任务元数据 + 进度刷新
 ├── engine.rs             # EngineBridge：派生 tokio 监管者 + aria2-next 侧车、mpsc 通道
+├── extension_api.rs      # 浏览器扩展 API：Salvo HTTP 服务（/ping /stat /add /pause-all /resume-all）
 ├── aria2_fetcher.rs      # 运行时获取 / 缓存 / 校验 aria2-next 二进制、暂存更新
 ├── updater.rs            # GitHub Releases 查询、ReleaseInfo、平台 slug
 ├── message.rs            # Message 枚举 + 页面 / 筛选 / 排序 / 设置枚举
@@ -160,6 +162,23 @@ cargo fmt --check          # 格式检查
 
 持久化的设置包括下载文件夹、最大并发下载数、分段数、全局与任务级限速、主题模式 + 所选浅色 / 深色主题、区域设置、自动更新偏好、关闭到托盘，以及全套 aria2 选项（每服务器最大连接数、最小分段大小、自动重命名、允许覆盖、断点续传、校验完整性、User-Agent、请求头、代理、重试、超时、bt-tracker、做种比例 / 时长、DHT 等）。
 
+## 浏览器接管（扩展 API）
+
+Remotrix 在本地暴露一个 HTTP 服务（默认端口 `29110`，仅监听回环地址），实现与上游 [motrix-next-extension](https://github.com/AnInsomniacy/motrix-next-extension)（MIT 许可，零改动复用）开箱即用的整套协议：
+
+- `GET /ping` —— 心跳（无鉴权）
+- `GET /stat` —— 全局统计（`downloadSpeed` / `numActive` 等，字符串形式镜像 aria2 `getGlobalStat`）
+- `POST /add` —— 添加下载（referer / cookie / UA / 请求头随任务提交）
+- `POST /pause-all` / `POST /resume-all` —— 全局暂停 / 恢复
+
+**使用方式**：
+
+1. 从浏览器商店安装 `motrix-next-extension`（Remotrix 不打包扩展）。
+2. 在 Remotrix 设置 →「下载」→「浏览器接管」中启用并复制端口与密钥。
+3. 在扩展选项页把地址填为 `http://127.0.0.1:<端口>` 并填入密钥，`checkConnection` 通过即可。
+
+默认情况下 `/add` 会**静默自动提交**任务并弹出系统通知；可在设置中改为弹「添加」对话框二次确认。密钥留空则关闭鉴权（仅限回环地址）。默认只提供全局暂停 / 恢复，单任务管理请回到 Remotrix 主窗口完成。
+
 ## 技术栈
 
 | 组件 | 选型 | 理由 |
@@ -207,8 +226,9 @@ cargo fmt --check          # 格式检查
 - [ ] 应用动画效果 —— 为页面切换、列表更新、进度条等添加流畅的过渡与动效
 - [ ] 各类路径的自定义 —— 支持自定义应用缓存、日志、aria2-next 二进制等路径
 - [ ] 文件关联 —— 设置各类文件（如 `.torrent`）的默认打开程序
-- [ ] 浏览器拓展 —— 提供浏览器扩展 / 右键菜单，一键将链接发送到 Remotrix
+- [ ] `motrixnext://` 深链协议 —— 应用未启动时被扩展唤醒 / 网站下载按钮（当前核心 HTTP 拦截不依赖它）
 - [x] 开机自启动 —— 支持登录后自动启动，可设置自启时隐藏到托盘
+- [x] 浏览器接管 —— 本地扩展 API + 复用 motrix-next-extension 一键接管浏览器下载
 - [ ] 定时关机 / 下载完成关机 —— 支持定时关机与全部任务完成后自动关机
 - [ ] Wayland 托盘兼容性完善 —— 目前在 Wayland 下窗口只能最小化无法完全隐藏，待完善窗口隐藏 / 托盘 / 通知兼容性
 - [ ] UI/UX 优化 —— 持续打磨界面细节与交互体验
@@ -216,6 +236,7 @@ cargo fmt --check          # 格式检查
 ## 致谢
 
 - [aria2-next](https://github.com/AnInsomniacy/aria2-next) by AnInsomniacy —— 核心下载引擎。它是一个独立的、独立许可的程序（GPL-2.0-or-later），**不随 Remotrix 一并打包**；运行时从其 GitHub Releases 下载。
+- [motrix-next-extension](https://github.com/AnInsomniacy/motrix-next-extension)（MIT）—— 浏览器端扩展，Remotrix **不打包、不修改**，仅由用户从商店 / 上游安装，通过本地扩展 API 与 Remotrix 通信。
 
 ## 协议
 

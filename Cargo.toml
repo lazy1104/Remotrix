@@ -40,6 +40,12 @@ iced_anim = "=0.3.1"
 app-single-instance = "0.1"
 notify-rust = { version = "4.17", features = ["tokio"] }
 ldtray = "=0.1.2"
+salvo = { version = "0.95", default-features = false, features = [
+    "cors",
+    "server",
+    "server-handle",
+    "http1",
+] }
 
 [build-dependencies]
 iced_lucide = "0.1"

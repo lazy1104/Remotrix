@@ -1,0 +1,24 @@
+# Third-Party Notices
+
+This project includes or interoperates with the following third-party software.
+
+## motrix-next-extension
+
+- **Source**: https://github.com/AnInsomniacy/motrix-next-extension
+- **License**: MIT
+- **Copyright**: Copyright (c) AnInsomniacy and contributors
+
+Remotrix interoperates with the upstream `motrix-next-extension` browser
+extension through a local HTTP API. Remotrix does **not** bundle, copy, or
+modify the extension — users install it directly from their browser's store or
+from the upstream repository. Its source and its MIT license text remain with
+the upstream project.
+
+## aria2-next
+
+- **Source**: https://github.com/AnInsomniacy/aria2-next
+- **License**: GPL-2.0-or-later
+
+aria2-next is the download engine Remotrix drives via WebSocket JSON-RPC. It is
+an independent program with its own license and is **not bundled** with
+Remotrix; it is downloaded from its GitHub Releases at runtime.

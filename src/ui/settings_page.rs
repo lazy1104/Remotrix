@@ -974,11 +974,101 @@ fn download_view<'a>(
             SettingKey::NotificationEngineDegraded,
         ))
         .push(labeled_toggle(
+            fluent.get(Tr::NotifyDownloadAdded),
+            settings.notifications.download_added,
+            SettingKey::NotificationDownloadAdded,
+        ))
+        .push(labeled_toggle(
             fluent.get(Tr::NavToTasksAfterAdd),
             settings.nav_to_tasks_after_add,
             SettingKey::NavToTasksAfterAdd,
         ))
+        .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
+        .push(extension_view(fluent, theme, settings))
         .into()
+}
+
+fn extension_view<'a>(
+    fluent: &'a Fluent,
+    theme: &'a iced::Theme,
+    settings: &'a Settings,
+) -> Element<'a, Message> {
+    let accent = theme::accent(theme);
+    let secret = settings.extension.secret.clone();
+    let port_placeholder = crate::config::EXTENSION_API_DEFAULT_PORT.to_string();
+    let mut col = column![].spacing(SPACE_SM);
+    col = col
+        .push(group_title(fluent, Tr::ExtensionCategory, accent))
+        .push(labeled_toggle(
+            fluent.get(Tr::ExtensionApiEnabled),
+            settings.extension.enabled,
+            SettingKey::ExtensionApiEnabled,
+        ));
+    if settings.extension.enabled {
+        col = col
+            .push(labeled_number(
+                fluent.get(Tr::ExtensionApiPort),
+                settings.extension.port,
+                crate::config::EXTENSION_API_MIN_PORT..=crate::config::EXTENSION_API_MAX_PORT,
+                1,
+                SettingKey::ExtensionApiPort,
+            ))
+            .push(setting_row(
+                fluent.get(Tr::ExtensionApiSecret),
+                row![]
+                    .spacing(SPACE_SM)
+                    .push(theme::input_layout(
+                        text_input(&port_placeholder, &secret)
+                            .on_input(move |s| {
+                                Message::Settings(SettingsMsg::SettingChanged(
+                                    SettingKey::ExtensionApiSecret,
+                                    SettingValue::Text(s),
+                                ))
+                            })
+                            .width(Length::Fixed(180.0))
+                            .style(theme::style::input::standard),
+                    ))
+                    .push(
+                        button(text(fluent.get(Tr::GenerateSecret)).size(FONT_SMALL))
+                            .on_press(Message::Extension(
+                                crate::message::ExtensionMsg::GenerateSecret,
+                            ))
+                            .padding(PADDING_BUTTON_SM)
+                            .height(Length::Fixed(crate::ui::components::CONTROL_HEIGHT))
+                            .style(theme::style::button::secondary()),
+                    )
+                    .push(
+                        button(text(fluent.get(Tr::Copy)).size(FONT_SMALL))
+                            .on_press(Message::CopyText(secret.clone()))
+                            .padding(PADDING_BUTTON_SM)
+                            .height(Length::Fixed(crate::ui::components::CONTROL_HEIGHT))
+                            .style(theme::style::button::secondary()),
+                    )
+                    .align_y(Alignment::Center)
+                    .into(),
+            ))
+            .push(labeled_toggle(
+                fluent.get(Tr::ExtensionAutoSubmit),
+                settings.extension.auto_submit,
+                SettingKey::ExtensionAutoSubmit,
+            ))
+            .push(setting_row_auto(
+                String::new(),
+                text(fluent.get_args(Tr::ExtensionSetupHint, &{
+                    let mut args = std::collections::HashMap::new();
+                    args.insert(
+                        std::borrow::Cow::from("port"),
+                        settings.extension.port.to_string().into(),
+                    );
+                    args
+                }))
+                .size(FONT_SMALL)
+                .style(theme::style::text::secondary)
+                .wrapping(text::Wrapping::Glyph)
+                .into(),
+            ));
+    }
+    col.into()
 }
 
 #[allow(clippy::too_many_arguments)]

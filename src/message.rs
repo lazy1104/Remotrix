@@ -106,7 +106,14 @@ pub enum Message {
     ConfirmAnim(crate::ui::animation::Event<f32>),
     UpdateDialogAnim(crate::ui::animation::Event<f32>),
     CloseDialogAnim(crate::ui::animation::Event<f32>),
+    Extension(ExtensionMsg),
     Noop,
+}
+
+#[derive(Debug, Clone)]
+pub enum ExtensionMsg {
+    ShowAddDialog(crate::extension_api::ExternalDownload),
+    GenerateSecret,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -430,6 +437,11 @@ pub enum SettingKey {
     NotificationDownloadComplete,
     NotificationDownloadError,
     NotificationEngineDegraded,
+    NotificationDownloadAdded,
+    ExtensionApiEnabled,
+    ExtensionApiPort,
+    ExtensionApiSecret,
+    ExtensionAutoSubmit,
     DetectClipboardOnStart,
     ClipboardHttp,
     ClipboardFtp,

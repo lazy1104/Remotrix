@@ -12,6 +12,23 @@ use crate::ui::theme::ThemeMode;
 
 pub const MAX_CONCURRENT_DOWNLOADS: u32 = 32;
 
+pub const EXTENSION_API_DEFAULT_PORT: u16 = 29110;
+pub const EXTENSION_API_MIN_PORT: u16 = 1024;
+pub const EXTENSION_API_MAX_PORT: u16 = 65535;
+
+fn default_extension_api_port() -> u16 {
+    EXTENSION_API_DEFAULT_PORT
+}
+
+pub(crate) fn generate_secret() -> String {
+    use std::time::SystemTime;
+    let nanos = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!("{nanos:x}{:x}", std::process::id())
+}
+
 pub const TRACKER_SOURCE_OPTIONS: &[(&str, &str, &str)] = &[
     (
         "ngosang",
@@ -296,6 +313,8 @@ pub struct NotificationPrefs {
     pub download_error: bool,
     #[serde(default = "default_true")]
     pub engine_degraded: bool,
+    #[serde(default = "default_true")]
+    pub download_added: bool,
 }
 
 impl Default for NotificationPrefs {
@@ -304,6 +323,30 @@ impl Default for NotificationPrefs {
             download_complete: true,
             download_error: true,
             engine_degraded: true,
+            download_added: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExtensionPrefs {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_extension_api_port")]
+    pub port: u16,
+    #[serde(default)]
+    pub secret: String,
+    #[serde(default = "default_true")]
+    pub auto_submit: bool,
+}
+
+impl Default for ExtensionPrefs {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: EXTENSION_API_DEFAULT_PORT,
+            secret: String::new(),
+            auto_submit: true,
         }
     }
 }
@@ -609,6 +652,8 @@ pub struct Settings {
     #[serde(default)]
     pub notifications: NotificationPrefs,
     #[serde(default)]
+    pub extension: ExtensionPrefs,
+    #[serde(default)]
     pub autostart_enabled: bool,
     #[serde(default)]
     pub start_hidden_on_autostart: bool,
@@ -658,6 +703,7 @@ impl Default for Settings {
             log: LogPrefs::default(),
             tracker: TrackerPrefs::default(),
             notifications: NotificationPrefs::default(),
+            extension: ExtensionPrefs::default(),
             autostart_enabled: false,
             start_hidden_on_autostart: false,
         }

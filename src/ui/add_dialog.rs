@@ -125,6 +125,33 @@ impl AddDialogState {
         self.apply_payload(payload);
     }
 
+    pub fn open_external(
+        &mut self,
+        default_dir: PathBuf,
+        default_split: u16,
+        download: crate::extension_api::ExternalDownload,
+    ) {
+        self.save_picker.close_history();
+        self.open(default_dir, default_split);
+        self.set_urls(download.urls);
+        if let Some(out) = download.filename {
+            self.out = out;
+            self.advanced_open = true;
+        }
+        if let Some(ua) = download.user_agent {
+            self.user_agent = ua;
+            self.advanced_open = true;
+        }
+        if let Some(referer) = download.referer {
+            self.referer = referer;
+            self.advanced_open = true;
+        }
+        if let Some(cookie) = download.cookie {
+            self.cookie = cookie;
+            self.advanced_open = true;
+        }
+    }
+
     pub fn apply_payload(&mut self, payload: crate::clipboard_watch::ClipboardPayload) {
         match payload {
             crate::clipboard_watch::ClipboardPayload::Urls(urls) => {

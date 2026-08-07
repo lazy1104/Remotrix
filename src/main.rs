@@ -8,6 +8,7 @@ mod clipboard_watch;
 mod config;
 mod db;
 mod engine;
+mod extension_api;
 mod i18n;
 mod logging;
 mod message;

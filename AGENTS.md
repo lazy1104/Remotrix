@@ -24,12 +24,14 @@ Rust-native desktop download manager inspired by Motrix.app. Built with `iced` G
 - Engine degrades gracefully on fetch/spawn failure (no exit), retryable via `RetryAria2Fetch`
 - Update check is **app-layer orchestrated** (`app.rs check_updates`): fetch releases via `updater` → non-silent/app updates open a dialog; silent aria2 auto-stages via `DownloadAria2Update` → `.pending-update` → next restart/engine restart applies pending update. App self-update stages a raw binary (`app_updater`) and swaps on relaunch.
 - Task persistence via aria2 `--save-session`/`--input-file`
+- `src/extension_api.rs` runs a Salvo HTTP server on `127.0.0.1:<port>` (default `29110`) implementing the `motrix-next-extension` (MIT, reused unmodified) protocol: `/ping` (no auth), `/stat`, `/add`, `/pause-all`, `/resume-all` (Bearer auth when a secret is configured). `/add` auto-submits via `EngineCmd::AddExternalDownload` (from_browser=true → toast + optional system notification) or, when auto-submit is off, routes the request into the Add dialog via an mpsc message channel + `Message::Extension(ExtensionMsg::ShowAddDialog)`. Shared `GlobalStatCache` is refreshed by the app on `GlobalSpeed`/task changes.
 - `src/updater.rs` provides reusable `fetch_latest_release` / `ReleaseInfo` for both aria2 and future app updates
 
 ```rust
 // --- Channel Protocol (must match between engine.rs and message.rs) ---
 enum EngineCmd {
     AddDownload { urls: Vec<String>, save_dir: PathBuf, split: u16, advanced: TaskAdvancedOptions, bt_metadata_only: bool },
+    AddExternalDownload { urls: Vec<String>, save_dir: PathBuf, split: u16, advanced: TaskAdvancedOptions, headers: Vec<(String, String)>, bt_metadata_only: bool },
     AddTorrent { path: PathBuf, save_dir: PathBuf, split: u16, advanced: TaskAdvancedOptions, select_files: Option<Vec<u64>> },
     Pause(String), Resume(String),
     Remove { gid: String, delete_files: bool },
@@ -53,7 +55,7 @@ enum EngineCmd {
     ReloadSchedules,
 }
 enum EngineEvent {
-    Added { gid: String, name: String, url: String, dir: String, info_hash: Option<String> },
+    Added { gid: String, name: String, url: String, dir: String, info_hash: Option<String>, advanced: TaskAdvancedOptions, from_browser: bool },
     Progress { gid: String, name: String, downloaded: u64, total: u64, speed: u64, upload_speed: u64, status: String, connections: u64, info_hash: Option<String> },
     TorrentAdded { gid: String, path: PathBuf },
     Removed(String),
@@ -130,7 +132,7 @@ iced_lucide = "0.1"
 ```
 
 ## Code Conventions
-- **Module structure**: `src/` with flat top-level modules (`app.rs`, `config.rs`, `db.rs`, `engine.rs`, `aria2_fetcher.rs`, `updater.rs`, `message.rs`, `task.rs`, `i18n.rs`, `clipboard_watch.rs`, `logging.rs`, `scheduler.rs`, `torrent_meta.rs`, `trackers.rs`) + `ui/` subdirectory
+- **Module structure**: `src/` with flat top-level modules (`app.rs`, `config.rs`, `db.rs`, `engine.rs`, `extension_api.rs`, `aria2_fetcher.rs`, `updater.rs`, `message.rs`, `task.rs`, `i18n.rs`, `clipboard_watch.rs`, `logging.rs`, `scheduler.rs`, `torrent_meta.rs`, `trackers.rs`) + `ui/` subdirectory
 - **UI pattern**: Each page is a `fn` returning `iced::Element<'_, Message, Theme>`; no widget OOP wrappers
 - **Time pickers** (`Settings > Download > Speed Limits`): `iced_aw` clock component (`time_picker` feature) wrapped in `src/ui/components/time_picker.rs`; the wrapper re-seeds iced_aw state on the open transition via `tree.children[0].state` so reopening shows the committed value.
 - **Theme**: single accent color → iced `Theme::custom` palette generation (`src/ui/theme.rs`), with the background derived as an M3-style surface from the accent hue (`surface_from_seed`); colors read from `iced::Theme::extended_palette()`, no hardcoded palette constants.
