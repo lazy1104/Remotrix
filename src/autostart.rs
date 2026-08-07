@@ -30,7 +30,7 @@ fn autostart_dir() -> Option<std::path::PathBuf> {
 
 #[cfg(target_os = "linux")]
 fn autostart_content() -> Option<String> {
-    let exe = std::env::current_exe().ok()?;
+    let exe = crate::config::app_launch_exe()?;
     Some(format!(
         "{}X-GNOME-Autostart-enabled=true\n",
         crate::config::desktop_entry_header(&format!(

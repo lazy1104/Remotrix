@@ -845,14 +845,32 @@ pub fn save(settings: &Settings) {
     }
 }
 
+/// The real, persistent launcher path: `$APPIMAGE` when running as an AppImage
+/// (the mount `current_exe()`/`/proc/self/exe` is temporary and read-only),
+/// otherwise the regular executable.
+pub(crate) fn app_launch_exe() -> Option<std::path::PathBuf> {
+    crate::app_updater::appimage_path()
+        .filter(|p| !p.as_os_str().is_empty())
+        .or_else(|| std::env::current_exe().ok())
+}
+
 pub fn install_desktop_file() {
+    // Under AppImage the running exe is a temp mount path; the AppImage runtime
+    // installs its own valid desktop entry, so writing ours would point at a
+    // dead path and break GNOME tray/app association.
+    if crate::app_updater::appimage_path().is_some() {
+        if let Some(data_home) = data_home() {
+            let _ = std::fs::remove_file(data_home.join("applications").join("remotrix.desktop"));
+        }
+        return;
+    }
     let Some(data_home) = data_home() else { return };
     let dir = data_home.join("applications");
     if std::fs::create_dir_all(&dir).is_err() {
         return;
     }
     let path = dir.join("remotrix.desktop");
-    let Some(exe) = std::env::current_exe().ok() else {
+    let Some(exe) = app_launch_exe() else {
         return;
     };
     let content = format!(
