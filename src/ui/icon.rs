@@ -1,8 +1,8 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// c863300a6b90e19a349e6578ccdd67e590130acea0890429a6aac64d886763f0
-use iced::widget::{text, Text};
+// 769c272c925e1eaf556fd49a814361587264a2168bfceb20318ffc9cce4c9227
 use iced::Font;
+use iced::widget::{Text, text};
 
 pub const FONT: &[u8] = include_bytes!("../../fonts/lucide.ttf");
 
@@ -16,6 +16,7 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("chevron_right", "\u{E06F}"),
     ("circle_alert", "\u{E077}"),
     ("circle_check", "\u{E226}"),
+    ("circle_fading_arrow_up", "\u{E618}"),
     ("circle_help", "\u{E082}"),
     ("circle_x", "\u{E084}"),
     ("collapse", "\u{E228}"),
@@ -75,6 +76,10 @@ pub fn circle_alert<'a>() -> Text<'a> {
 
 pub fn circle_check<'a>() -> Text<'a> {
     icon("\u{E226}")
+}
+
+pub fn circle_fading_arrow_up<'a>() -> Text<'a> {
+    icon("\u{E618}")
 }
 
 pub fn circle_help<'a>() -> Text<'a> {

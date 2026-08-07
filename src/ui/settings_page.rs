@@ -506,7 +506,7 @@ fn last_check_row<'a>(
     } else {
         button(
             row![
-                icon::refresh().size(FONT_ICON),
+                icon::circle_fading_arrow_up().size(FONT_ICON),
                 text(fluent.get(Tr::CheckNow)).size(FONT_SMALL),
             ]
             .spacing(SPACE_SM)
@@ -1194,7 +1194,7 @@ fn bittorrent_view<'a>(
                     crate::ui::components::spinner::Spinner::refresh(accent, FONT_ICON as f32)
                         .view()
                 } else {
-                    icon::refresh().size(FONT_ICON).into()
+                    icon::circle_fading_arrow_up().size(FONT_ICON).into()
                 },
                 text(fluent.get(Tr::BtTrackerSync)).size(FONT_BODY),
             ]
