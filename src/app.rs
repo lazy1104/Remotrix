@@ -532,6 +532,13 @@ fn sync_geometry_to_settings(state: &mut Remotrix) {
     state.settings.window_width = state.window.window_size.width;
     state.settings.window_height = state.window.window_size.height;
     state.settings.window_maximized = state.window.maximized;
+    state.applied_settings.window_width = state.window.window_size.width;
+    state.applied_settings.window_height = state.window.window_size.height;
+    state.applied_settings.window_maximized = state.window.maximized;
+}
+
+fn mark_settings_dirty(state: &mut Remotrix) {
+    state.settings_dirty = state.settings != state.applied_settings;
 }
 
 fn revert_apply_settings(state: &mut Remotrix) {
@@ -1588,7 +1595,6 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             state.about_dialog_anim.begin_exit();
         }
         Message::Settings(SettingsMsg::SettingChanged(key, value)) => {
-            state.settings_dirty = true;
             match key {
                 SettingKey::MaxConcurrent => {
                     if let SettingValue::Num(n) = value {
@@ -1931,6 +1937,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     }
                 }
             }
+            mark_settings_dirty(state);
         }
         Message::Settings(SettingsMsg::ApplySettings) => {
             apply_settings(state);
@@ -2787,7 +2794,8 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             if hash == state.settings.last_clipboard_hash {
                 return Task::none();
             }
-            state.settings.last_clipboard_hash = hash;
+            state.settings.last_clipboard_hash = hash.clone();
+            state.applied_settings.last_clipboard_hash = hash;
             config::save(&state.settings);
             state.add_dialog.open_with(
                 state.settings.download_dir.clone(),
@@ -2928,7 +2936,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         }
         Message::Settings(SettingsMsg::FontFamilyChanged(family)) => {
             state.settings.font_family = family;
-            state.settings_dirty = true;
+            mark_settings_dirty(state);
         }
         Message::Settings(SettingsMsg::RestartApp) => {
             state.restart_pending = true;
@@ -2940,15 +2948,14 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::Settings(SettingsMsg::UaEditor(action)) => {
             state.ua_editor.perform(action);
             state.settings.aria2.user_agent = state.ua_editor.text();
-            state.settings_dirty = true;
+            mark_settings_dirty(state);
         }
         Message::Settings(SettingsMsg::BtTrackerEditor(action)) => {
             state.bt_tracker_editor.perform(action);
             state.settings.aria2.bt_tracker = state.bt_tracker_editor.text();
-            state.settings_dirty = true;
+            mark_settings_dirty(state);
         }
         Message::Settings(SettingsMsg::TrackerSourceToggled { source, enabled }) => {
-            state.settings_dirty = true;
             if enabled {
                 if !state.settings.tracker.sources.contains(&source) {
                     state.settings.tracker.sources.push(source);
@@ -2956,6 +2963,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             } else {
                 state.settings.tracker.sources.retain(|s| s != &source);
             }
+            mark_settings_dirty(state);
         }
         Message::Settings(SettingsMsg::TrackerCustomInputChanged(v)) => {
             state.settings_ui.custom_tracker_input = v;
@@ -2976,7 +2984,6 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 state.toasts.push(toast);
                 return Task::none();
             }
-            state.settings_dirty = true;
             if !state.settings.tracker.custom_urls.contains(&input) {
                 state.settings.tracker.custom_urls.push(input.clone());
             }
@@ -2984,11 +2991,12 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 state.settings.tracker.sources.push(input);
             }
             state.settings_ui.custom_tracker_input.clear();
+            mark_settings_dirty(state);
         }
         Message::Settings(SettingsMsg::TrackerCustomRemove(url)) => {
-            state.settings_dirty = true;
             state.settings.tracker.custom_urls.retain(|u| u != &url);
             state.settings.tracker.sources.retain(|u| u != &url);
+            mark_settings_dirty(state);
         }
         Message::Settings(SettingsMsg::SyncTrackers) => {
             if state.settings_ui.syncing_trackers {
@@ -3430,7 +3438,6 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
         }
         Message::Settings(SettingsMsg::ScheduleDayToggled { day, enabled }) => {
-            state.settings_dirty = true;
             let weekdays = &mut state.settings.speed_limit_schedule.weekdays;
             if enabled {
                 if !weekdays.contains(&day) {
@@ -3440,6 +3447,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             } else {
                 weekdays.retain(|d| *d != day);
             }
+            mark_settings_dirty(state);
         }
         Message::Task(TaskMsg::OpenTaskDetails(gid)) => {
             state.details.select_gen = 0;
@@ -3938,7 +3946,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
         Message::Noop => {}
         Message::Extension(ExtensionMsg::GenerateSecret) => {
             state.settings.extension.secret = crate::extension_api::generate_secret();
-            state.settings_dirty = true;
+            mark_settings_dirty(state);
         }
         Message::Extension(ExtensionMsg::ShowAddDialog(download)) => {
             state.add_dialog.open_external(
@@ -4709,15 +4717,18 @@ fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
     match id {
         PathPickerId::DownloadDir => {
             state.settings.record_path(id.history_key(), &s);
+            state.applied_settings.record_path(id.history_key(), &s);
             state.settings.download_dir = p.clone();
             state
                 .settings_ui
                 .download_picker
                 .set_value(p.to_string_lossy());
             state.settings_ui.download_picker.close_history();
+            mark_settings_dirty(state);
         }
         PathPickerId::SaveDir => {
             state.settings.record_path(id.history_key(), &s);
+            state.applied_settings.record_path(id.history_key(), &s);
             state.add_dialog.save_picker.set_value(p.to_string_lossy());
             state.add_dialog.save_picker.close_history();
             config::save(&state.settings);
@@ -4742,6 +4753,7 @@ fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
                 .ed2k_server_list_picker
                 .set_value(p.to_string_lossy());
             state.settings_ui.ed2k_server_list_picker.close_history();
+            mark_settings_dirty(state);
         }
         PathPickerId::Ed2kNodeList => {
             state.settings.aria2.ed2k_node_list = p.to_string_lossy().into_owned();
@@ -4750,6 +4762,7 @@ fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
                 .ed2k_node_list_picker
                 .set_value(p.to_string_lossy());
             state.settings_ui.ed2k_node_list_picker.close_history();
+            mark_settings_dirty(state);
         }
     }
 }
