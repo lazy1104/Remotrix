@@ -18,6 +18,10 @@ static MISSING_CHECK_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(3);
 
+const UPDATE_DOWNLOAD_POLL_INTERVAL: Duration = Duration::from_secs(1);
+const UPDATE_DOWNLOAD_MAX_WAIT: Duration = Duration::from_secs(600);
+const UPDATE_DOWNLOAD_MAX_POLL_FAILURES: u32 = 10;
+
 #[derive(Debug, Clone)]
 pub enum EngineCmd {
     AddDownload {
@@ -98,6 +102,14 @@ pub enum EngineCmd {
         asset_name: String,
         download_url: String,
         sha256: Option<String>,
+    },
+    DownloadAppUpdate {
+        kind: crate::app_updater::InstallKind,
+        version: String,
+        url: String,
+        asset_name: String,
+        sha256: Option<String>,
+        download_dir: PathBuf,
     },
     RetryAria2Fetch,
     RestartEngine,
@@ -183,6 +195,13 @@ pub enum EngineEvent {
     },
     Aria2UpdateStaged {
         version: String,
+    },
+    AppUpdateDownloaded {
+        kind: crate::app_updater::InstallKind,
+        path: Option<PathBuf>,
+    },
+    AppUpdateDownloadFailed {
+        error: String,
     },
     EngineDegraded {
         reason: String,
@@ -1225,6 +1244,7 @@ async fn handle_client_cmd(
         EngineCmd::Shutdown
         | EngineCmd::ForceKill
         | EngineCmd::DownloadAria2Update { .. }
+        | EngineCmd::DownloadAppUpdate { .. }
         | EngineCmd::ReloadSchedules
         | EngineCmd::RetryAria2Fetch
         | EngineCmd::RestartEngine => {
@@ -1330,7 +1350,203 @@ fn installed_version() -> String {
     aria2_fetcher::installed_version().unwrap_or_default()
 }
 
-async fn handle_download_aria2_update(cmd: EngineCmd, event_tx: &EventTx) {
+/// Download `url` to `dest` through the live aria2 RPC client. The file is
+/// written directly to `dest` (same filesystem as the caller expects), then
+/// verified against an optional sha256. On completion or any failure the
+/// download result and the session are cleaned up.
+async fn download_via_engine(
+    client: &Client,
+    url: &str,
+    dest: &Path,
+    sha256: Option<&str>,
+) -> Result<(), String> {
+    let parent = dest
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .ok_or("invalid download destination parent")?;
+    std::fs::create_dir_all(parent).map_err(|e| format!("create download dir: {e}"))?;
+
+    let filename = dest
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("download");
+    let _ = std::fs::remove_file(dest);
+    let _ = std::fs::remove_file(format!("{}.aria2", dest.display()));
+
+    let mut extra = serde_json::Map::new();
+    extra.insert(
+        "allow-overwrite".to_string(),
+        serde_json::Value::String("false".to_string()),
+    );
+    let opts = TaskOptions {
+        dir: Some(parent.to_string_lossy().into_owned()),
+        out: Some(filename.to_string()),
+        split: Some(8),
+        max_connection_per_server: Some(8),
+        r#continue: Some(true),
+        auto_file_renaming: Some(false),
+        extra_options: extra,
+        ..Default::default()
+    };
+    let gid = timeout(
+        RPC_TIMEOUT,
+        client.add_uri(vec![url.to_string()], Some(opts), None, None),
+    )
+    .await
+    .map_err(|_| "update add_uri timed out".to_string())?
+    .map_err(|e| format!("update add_uri: {e}"))?;
+
+    let mut last_progress = tokio::time::Instant::now();
+    let mut last_completed: u64 = 0;
+    let mut consecutive_failures: u32 = 0;
+    loop {
+        let status = match timeout(RPC_TIMEOUT, client.tell_status(&gid)).await {
+            Ok(Ok(s)) => {
+                consecutive_failures = 0;
+                s
+            }
+            Ok(Err(e)) => {
+                tracing::warn!(?gid, error = ?e, "update tell_status failed");
+                consecutive_failures += 1;
+                if consecutive_failures >= UPDATE_DOWNLOAD_MAX_POLL_FAILURES {
+                    let _ = client.force_remove(&gid).await;
+                    let _ = client.remove_download_result(&gid).await;
+                    let _ = client.save_session().await;
+                    let _ = std::fs::remove_file(dest);
+                    let _ = std::fs::remove_file(format!("{}.aria2", dest.display()));
+                    return Err("update download connection lost".to_string());
+                }
+                tokio::time::sleep(UPDATE_DOWNLOAD_POLL_INTERVAL).await;
+                continue;
+            }
+            Err(_) => {
+                tracing::warn!(?gid, "update tell_status timed out");
+                consecutive_failures += 1;
+                if consecutive_failures >= UPDATE_DOWNLOAD_MAX_POLL_FAILURES {
+                    let _ = client.force_remove(&gid).await;
+                    let _ = client.remove_download_result(&gid).await;
+                    let _ = client.save_session().await;
+                    let _ = std::fs::remove_file(dest);
+                    let _ = std::fs::remove_file(format!("{}.aria2", dest.display()));
+                    return Err("update download connection lost".to_string());
+                }
+                tokio::time::sleep(UPDATE_DOWNLOAD_POLL_INTERVAL).await;
+                continue;
+            }
+        };
+        match status.status {
+            Aria2TaskStatus::Complete => break,
+            Aria2TaskStatus::Removed => {
+                let _ = client.remove_download_result(&gid).await;
+                let _ = client.save_session().await;
+                let _ = std::fs::remove_file(dest);
+                let _ = std::fs::remove_file(format!("{}.aria2", dest.display()));
+                return Err("update download removed".to_string());
+            }
+            Aria2TaskStatus::Error => {
+                let msg = status
+                    .error_message
+                    .clone()
+                    .unwrap_or_else(|| "unknown error".to_string());
+                let _ = client.remove_download_result(&gid).await;
+                let _ = client.save_session().await;
+                let _ = std::fs::remove_file(dest);
+                let _ = std::fs::remove_file(format!("{}.aria2", dest.display()));
+                return Err(format!("update download failed: {msg}"));
+            }
+            Aria2TaskStatus::Paused | Aria2TaskStatus::Waiting => {
+                consecutive_failures = 0;
+                last_progress = tokio::time::Instant::now();
+                tokio::time::sleep(UPDATE_DOWNLOAD_POLL_INTERVAL).await;
+            }
+            _ => {
+                let making_progress =
+                    status.completed_length > last_completed || status.download_speed > 0;
+                if making_progress {
+                    last_progress = tokio::time::Instant::now();
+                    last_completed = status.completed_length;
+                }
+                if !making_progress && last_progress.elapsed() >= UPDATE_DOWNLOAD_MAX_WAIT {
+                    let _ = client.force_remove(&gid).await;
+                    let _ = client.remove_download_result(&gid).await;
+                    let _ = client.save_session().await;
+                    let _ = std::fs::remove_file(dest);
+                    let _ = std::fs::remove_file(format!("{}.aria2", dest.display()));
+                    return Err("update download stalled".to_string());
+                }
+                tokio::time::sleep(UPDATE_DOWNLOAD_POLL_INTERVAL).await;
+            }
+        }
+    }
+
+    if let Some(expected) = sha256 {
+        let dest_clone = dest.to_path_buf();
+        let digest = tokio::task::spawn_blocking(move || aria2_fetcher::sha256_file(&dest_clone))
+            .await
+            .map_err(|e| format!("sha256 task: {e}"))?
+            .map_err(|e| format!("sha256: {e}"))?;
+        if digest != expected {
+            let _ = std::fs::remove_file(dest);
+            let _ = std::fs::remove_file(format!("{}.aria2", dest.display()));
+            let _ = client.remove_download_result(&gid).await;
+            let _ = client.save_session().await;
+            return Err(format!(
+                "sha256 mismatch: expected {expected}, got {digest}"
+            ));
+        }
+    }
+
+    aria2_fetcher::set_perms(dest)?;
+    let _ = std::fs::remove_file(format!("{}.aria2", dest.display()));
+    let _ = client.remove_download_result(&gid).await;
+    let _ = client.save_session().await;
+    Ok(())
+}
+
+/// Reduce an externally-supplied value to a single safe path component,
+/// rejecting anything that is empty, `.`, `..`, or contains path separators.
+fn sanitize_component(input: &str, what: &str) -> Result<String, String> {
+    let base = std::path::Path::new(input)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    if base.is_empty() || base == "." || base == ".." {
+        return Err(format!("invalid {what}: {input:?}"));
+    }
+    Ok(base.to_string())
+}
+
+/// Resolve the platform slug for an aria2-next update asset, stripping any
+/// path components from the externally-supplied `asset_name` so it cannot
+/// escape the aria2 data directory. Falls back to the platform slug.
+fn resolve_aria2_slug(version: &str, asset_name: &str) -> Result<String, String> {
+    let slug = asset_name
+        .strip_prefix(&format!("aria2-next-{version}-"))
+        .unwrap_or(crate::updater::platform_slug());
+    sanitize_component(slug, "aria2 update asset name")
+}
+
+/// Resolve the update asset's sha256, short-circuiting on an already-known
+/// value and otherwise fetching it from the release's checksums.
+async fn resolve_sha256(
+    repo: &str,
+    version: &str,
+    asset_name: &str,
+    proxy: Option<String>,
+    existing: Option<String>,
+) -> Option<String> {
+    if let Some(e) = existing {
+        Some(e)
+    } else {
+        crate::updater::fetch_asset_checksum(repo, version, asset_name, proxy).await
+    }
+}
+
+async fn handle_download_aria2_update_via_engine(
+    client: &Client,
+    cmd: EngineCmd,
+    event_tx: &EventTx,
+) {
     let EngineCmd::DownloadAria2Update {
         version,
         asset_name,
@@ -1340,39 +1556,104 @@ async fn handle_download_aria2_update(cmd: EngineCmd, event_tx: &EventTx) {
     else {
         return;
     };
-    tracing::info!(?version, "download aria2 update");
+    tracing::info!(?version, "download aria2 update via engine");
     let proxy = crate::config::load().aria2.all_proxy_value();
-    let fallback_slug = crate::updater::platform_slug();
-    let slug = asset_name
-        .strip_prefix(&format!("aria2-next-{version}-"))
-        .unwrap_or(fallback_slug);
-    let sha256 = match sha256 {
-        Some(s) => Some(s),
-        None => {
-            crate::updater::fetch_asset_checksum(
-                "AnInsomniacy/aria2-next",
-                &version,
-                &asset_name,
-                proxy.clone(),
-            )
-            .await
+    let version = match sanitize_component(&version, "aria2 update version") {
+        Ok(v) => v,
+        Err(e) => {
+            let _ = event_tx.send(EngineEvent::Aria2UpdateFailed { error: e });
+            return;
         }
     };
-    match crate::aria2_fetcher::stage_update_from(
+    let slug = match resolve_aria2_slug(&version, &asset_name) {
+        Ok(s) => s,
+        Err(e) => {
+            let _ = event_tx.send(EngineEvent::Aria2UpdateFailed { error: e });
+            return;
+        }
+    };
+    let sha256 = resolve_sha256(
+        "AnInsomniacy/aria2-next",
         &version,
-        slug,
-        &download_url,
-        sha256.as_deref(),
-        event_tx,
-        proxy,
+        &asset_name,
+        proxy.clone(),
+        sha256,
     )
-    .await
-    {
-        Ok(v) => {
-            let _ = event_tx.send(EngineEvent::Aria2UpdateStaged { version: v });
+    .await;
+    let dir = match crate::config::aria2_bin_dir() {
+        Some(d) => d,
+        None => {
+            let _ = event_tx.send(EngineEvent::Aria2UpdateFailed {
+                error: "cannot determine data directory".to_string(),
+            });
+            return;
+        }
+    };
+    let dest = dir.join(format!("aria2-next-{version}-{slug}"));
+    match download_via_engine(client, &download_url, &dest, sha256.as_deref()).await {
+        Ok(()) => {
+            match crate::aria2_fetcher::stage_pending(&dir, &version, &slug, sha256.as_deref()) {
+                Ok(()) => {
+                    let _ = event_tx.send(EngineEvent::Aria2UpdateStaged { version });
+                }
+                Err(e) => {
+                    let _ = event_tx.send(EngineEvent::Aria2UpdateFailed { error: e });
+                }
+            }
         }
         Err(e) => {
             let _ = event_tx.send(EngineEvent::Aria2UpdateFailed { error: e });
+        }
+    }
+}
+
+async fn handle_download_app_update_via_engine(
+    client: &Client,
+    cmd: EngineCmd,
+    event_tx: &EventTx,
+) {
+    let EngineCmd::DownloadAppUpdate {
+        kind,
+        version,
+        url,
+        asset_name,
+        sha256,
+        download_dir,
+    } = cmd
+    else {
+        return;
+    };
+    tracing::info!(?version, "download app update via engine");
+    let proxy = crate::config::load().aria2.all_proxy_value();
+    let sha256 = resolve_sha256(
+        crate::updater::APP_REPO,
+        &version,
+        &asset_name,
+        proxy.clone(),
+        sha256,
+    )
+    .await;
+    let dest = match crate::app_updater::app_update_dest(kind, &asset_name, Some(&download_dir)) {
+        Ok(d) => d,
+        Err(e) => {
+            let _ = event_tx.send(EngineEvent::AppUpdateDownloadFailed { error: e });
+            return;
+        }
+    };
+    match download_via_engine(client, &url, &dest, sha256.as_deref()).await {
+        Ok(()) => match crate::app_updater::apply_after_download(kind, &dest) {
+            Ok(outcome) => {
+                let _ = event_tx.send(EngineEvent::AppUpdateDownloaded {
+                    kind: outcome.kind,
+                    path: outcome.path,
+                });
+            }
+            Err(e) => {
+                let _ = event_tx.send(EngineEvent::AppUpdateDownloadFailed { error: e });
+            }
+        },
+        Err(e) => {
+            let _ = event_tx.send(EngineEvent::AppUpdateDownloadFailed { error: e });
         }
     }
 }
@@ -1766,9 +2047,30 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                     EngineCmd::DownloadAria2Update { .. } => {
                         let tx = event_tx.clone();
                         let cmd = cmd.clone();
-                        tokio::spawn(async move {
-                            handle_download_aria2_update(cmd, &tx).await;
-                        });
+                        if let Some(ref s) = sidecar {
+                            let client = s.client.clone();
+                            tokio::spawn(async move {
+                                handle_download_aria2_update_via_engine(&client, cmd, &tx).await;
+                            });
+                        } else {
+                            let _ = event_tx.send(EngineEvent::Aria2UpdateFailed {
+                                error: "aria2-next not available".to_string(),
+                            });
+                        }
+                    }
+                    EngineCmd::DownloadAppUpdate { .. } => {
+                        let tx = event_tx.clone();
+                        let cmd = cmd.clone();
+                        if let Some(ref s) = sidecar {
+                            let client = s.client.clone();
+                            tokio::spawn(async move {
+                                handle_download_app_update_via_engine(&client, cmd, &tx).await;
+                            });
+                        } else {
+                            let _ = event_tx.send(EngineEvent::AppUpdateDownloadFailed {
+                                error: "aria2-next not available".to_string(),
+                            });
+                        }
                     }
                     EngineCmd::ReloadSchedules => {
                         if let Some(ref s) = sidecar {

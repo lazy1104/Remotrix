@@ -149,26 +149,15 @@ pub async fn ensure_aria2_next(
     Ok((bin_path, applied))
 }
 
-pub async fn stage_update_from(
+/// Write the `.pending-update` marker for a staged aria2-next binary that has
+/// already been downloaded (and verified) to `dir`. The engine applies it on
+/// next restart.
+pub fn stage_pending(
+    dir: &Path,
     version: &str,
     slug: &str,
-    download_url: &str,
     sha256: Option<&str>,
-    event_tx: &EventTx,
-    proxy: Option<String>,
-) -> Result<String, String> {
-    let dir = aria2_bin_dir().ok_or("cannot determine data directory")?;
-    let bin_name = format!("aria2-next-{version}-{slug}");
-    let bin_path = dir.join(&bin_name);
-
-    emit_status(
-        event_tx,
-        "update-downloading",
-        &format!("Downloading aria2-next {version}..."),
-    );
-
-    download_verified(download_url, &bin_path, sha256, proxy.as_deref()).await?;
-
+) -> Result<(), String> {
     let pending = PendingInfo {
         version: version.to_string(),
         slug: slug.to_string(),
@@ -177,9 +166,7 @@ pub async fn stage_update_from(
     let json =
         serde_json::to_string_pretty(&pending).map_err(|e| format!("serialize pending: {e}"))?;
     std::fs::write(dir.join(".pending-update"), &json)
-        .map_err(|e| format!("write .pending-update: {e}"))?;
-
-    Ok(version.to_string())
+        .map_err(|e| format!("write .pending-update: {e}"))
 }
 
 pub fn installed_version() -> Option<String> {

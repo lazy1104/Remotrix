@@ -2644,6 +2644,16 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     false,
                 );
             }
+            EngineEvent::AppUpdateDownloaded { kind, path } => {
+                return Task::done(Message::Settings(SettingsMsg::UpdateDownloadStarted(Ok(
+                    crate::app_updater::AppUpdateOutcome { kind, path },
+                ))));
+            }
+            EngineEvent::AppUpdateDownloadFailed { error } => {
+                return Task::done(Message::Settings(SettingsMsg::UpdateDownloadStarted(Err(
+                    error,
+                ))));
+            }
             EngineEvent::Aria2FetchFailed { error } => {
                 let msg = format!("{}: {error}", state.fluent.get(Tr::EngineStartFailed));
                 state.engine_ui.aria2_fetch_error = Some(error);
@@ -3330,7 +3340,6 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 return Task::none();
             };
             state.update_dialog_anim.begin_exit();
-            let mut tasks = Vec::new();
             for offer in offers {
                 match offer.component {
                     crate::ui::update_dialog::UpdateComponent::Aria2 => {
@@ -3342,7 +3351,6 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                         }
                         state.app_update_in_flight = true;
                         let kind = crate::app_updater::detect_install_kind();
-                        let proxy = state.settings.aria2.all_proxy_value();
                         let version = offer.latest.clone();
                         let download_url = offer.download_url.clone();
                         let asset_name = offer.asset_name.clone();
@@ -3356,36 +3364,18 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                             None,
                             true,
                         );
-                        tasks.push(Task::perform(
-                            async move {
-                                let sha256 = match offer_sha256 {
-                                    Some(s) => Some(s),
-                                    None => {
-                                        crate::updater::fetch_asset_checksum(
-                                            crate::updater::APP_REPO,
-                                            &version,
-                                            &asset_name,
-                                            proxy.clone(),
-                                        )
-                                        .await
-                                    }
-                                };
-                                crate::app_updater::perform_app_update(
-                                    kind,
-                                    download_url,
-                                    asset_name,
-                                    sha256,
-                                    proxy,
-                                    Some(download_dir.as_path()),
-                                )
-                                .await
-                            },
-                            |result| Message::Settings(SettingsMsg::UpdateDownloadStarted(result)),
-                        ));
+                        let _ = state.handle.cmd_tx.send(EngineCmd::DownloadAppUpdate {
+                            kind,
+                            version,
+                            url: download_url,
+                            asset_name,
+                            sha256: offer_sha256,
+                            download_dir,
+                        });
                     }
                 }
             }
-            return Task::batch(tasks);
+            return Task::none();
         }
         Message::Engine(EngineMsg::RetryAria2Fetch) => {
             state.engine_ui.aria2_fetch_error = None;
@@ -4908,6 +4898,9 @@ fn send_system_notification(
 
 fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -> Task<Message> {
     if state.engine_ui.update_check_in_flight {
+        return Task::none();
+    }
+    if state.engine_ui.aria2_version.is_none() {
         return Task::none();
     }
     let now_ms = chrono::Local::now().timestamp_millis();

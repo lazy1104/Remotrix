@@ -69,19 +69,6 @@ pub struct AppUpdateOutcome {
     pub path: Option<PathBuf>,
 }
 
-/// Download an installer package to `dest`, verifying an optional sha256.
-/// The download goes through a sibling `.part` file and is atomically renamed
-/// in place (shared `download_verified` helper in `aria2_fetcher`).
-pub async fn download_package(
-    url: &str,
-    dest: &Path,
-    sha256: Option<&str>,
-    proxy: Option<String>,
-) -> Result<PathBuf, String> {
-    aria2_fetcher::download_verified(url, dest, sha256, proxy.as_deref()).await?;
-    Ok(dest.to_path_buf())
-}
-
 /// Reduce a GitHub asset name to a safe bare filename, rejecting traversal.
 fn sanitize_asset_name(name: &str) -> Result<String, String> {
     let base = std::path::Path::new(name)
@@ -168,52 +155,52 @@ pub fn packages_dir(download_dir: Option<&Path>) -> PathBuf {
         .join("downloads")
 }
 
-/// Download the chosen installer and apply the kind-specific side effects
-/// (replace AppImage, run the Windows installer). Returns the outcome for the
-/// UI to react to (restart / locate / notify).
-pub async fn perform_app_update(
+/// Compute the destination path for an installer package based on install kind.
+/// Keeps the AppImage guard and path logic in one place so the reqwest fallback
+/// and the engine-routed path share it.
+pub fn app_update_dest(
     kind: InstallKind,
-    url: String,
-    asset_name: String,
-    sha256: Option<String>,
-    proxy: Option<String>,
+    asset_name: &str,
     download_dir: Option<&Path>,
-) -> Result<AppUpdateOutcome, String> {
-    let asset_name = sanitize_asset_name(&asset_name)?;
+) -> Result<PathBuf, String> {
+    let asset_name = sanitize_asset_name(asset_name)?;
     if kind == InstallKind::AppImage && appimage_path().is_none() {
         return Err("not running as an AppImage".to_string());
     }
-    let download_dest = match kind {
+    match kind {
         InstallKind::AppImage => {
             let target = appimage_path().expect("checked AppImage above");
             let parent = target
                 .parent()
                 .filter(|p| !p.as_os_str().is_empty())
                 .ok_or("invalid AppImage path")?;
-            parent.join(&asset_name)
+            Ok(parent.join(&asset_name))
         }
-        InstallKind::WindowsSetup => std::env::temp_dir().join(&asset_name),
-        InstallKind::Deb => packages_dir(download_dir).join(&asset_name),
-    };
+        InstallKind::WindowsSetup => Ok(std::env::temp_dir().join(&asset_name)),
+        InstallKind::Deb => Ok(packages_dir(download_dir).join(&asset_name)),
+    }
+}
 
-    download_package(&url, &download_dest, sha256.as_deref(), proxy).await?;
-
+/// Apply the kind-specific side effects after an installer has been downloaded
+/// to `dest` (replace the AppImage, launch the Windows installer, or report the
+/// Deb path). Returns the outcome for the UI to react to.
+pub fn apply_after_download(kind: InstallKind, dest: &Path) -> Result<AppUpdateOutcome, String> {
     match kind {
         InstallKind::AppImage => {
             let target = appimage_path().expect("checked AppImage above");
-            replace_appimage(&download_dest, &target)?;
+            replace_appimage(dest, &target)?;
             Ok(AppUpdateOutcome {
                 kind,
                 path: Some(target),
             })
         }
         InstallKind::WindowsSetup => {
-            run_installer(&download_dest)?;
+            run_installer(dest)?;
             Ok(AppUpdateOutcome { kind, path: None })
         }
         InstallKind::Deb => Ok(AppUpdateOutcome {
             kind,
-            path: Some(download_dest),
+            path: Some(dest.to_path_buf()),
         }),
     }
 }
