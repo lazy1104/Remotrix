@@ -14,6 +14,7 @@ mod logging;
 mod message;
 mod notify;
 mod scheduler;
+mod shutdown;
 mod task;
 mod torrent_meta;
 mod trackers;

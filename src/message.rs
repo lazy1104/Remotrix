@@ -67,6 +67,7 @@ pub enum ConfirmAction {
     LeaveSettings { target: Page },
     UnsavedOnClose,
     RestartEngine { has_active: bool },
+    Shutdown { seconds_left: u32 },
 }
 
 #[derive(Debug, Clone)]
@@ -107,7 +108,20 @@ pub enum Message {
     UpdateDialogAnim(crate::ui::animation::Event<f32>),
     CloseDialogAnim(crate::ui::animation::Event<f32>),
     Extension(ExtensionMsg),
+    Shutdown(ShutdownMsg),
     Noop,
+}
+
+#[derive(Debug, Clone)]
+pub enum ShutdownMsg {
+    ToggleCard,
+    CloseCard,
+    SetAfterComplete(bool),
+    SetTimerEnabled(bool),
+    SetTimerMinutes(u32),
+    ShutdownTick,
+    ShutdownNow,
+    ShutdownExecuted { ok: bool, error: Option<String> },
 }
 
 #[derive(Debug, Clone)]

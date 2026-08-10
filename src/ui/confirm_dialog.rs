@@ -35,11 +35,23 @@ pub fn view<'a>(
                 (Tr::ConfirmRestartEngineTitle, Tr::ConfirmRestartEngineBody)
             }
         }
+        ConfirmAction::Shutdown { .. } => (Tr::ShutdownConfirmTitle, Tr::ShutdownConfirmBody),
     };
 
-    let body = text(fluent.get(body_key))
-        .size(FONT_MEDIUM)
-        .style(theme::style::text::secondary);
+    let body = if let ConfirmAction::Shutdown { seconds_left } = action {
+        let mut args = std::collections::HashMap::new();
+        args.insert(
+            std::borrow::Cow::from("countdown"),
+            std::borrow::Cow::from(seconds_left.to_string()).into(),
+        );
+        text(fluent.get_args(body_key, &args))
+            .size(FONT_MEDIUM)
+            .style(theme::style::text::secondary)
+    } else {
+        text(fluent.get(body_key))
+            .size(FONT_MEDIUM)
+            .style(theme::style::text::secondary)
+    };
 
     let cancel_btn = button(text(fluent.get(Tr::Cancel)).size(FONT_BODY))
         .on_press(Message::Dialog(DialogMsg::ConfirmCancel))
@@ -141,6 +153,10 @@ pub fn view<'a>(
                 .align_y(Alignment::Center)
                 .into()
         }
+        ConfirmAction::Shutdown { .. } => row![cancel_btn]
+            .spacing(SPACE_XL)
+            .align_y(Alignment::Center)
+            .into(),
     };
 
     expand_pinned(

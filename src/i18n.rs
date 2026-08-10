@@ -421,6 +421,14 @@ pub enum Tr {
     LevelNotice,
     LevelWarn,
     LevelError,
+    Shutdown,
+    ShutdownAfterComplete,
+    ShutdownTimer,
+    ShutdownTimerMinutes,
+    ShutdownTimerHint,
+    ShutdownConfirmTitle,
+    ShutdownConfirmBody,
+    ShutdownFailed,
 }
 
 impl Tr {
@@ -797,6 +805,14 @@ impl Tr {
             Tr::LevelNotice => "level-notice",
             Tr::LevelWarn => "level-warn",
             Tr::LevelError => "level-error",
+            Tr::Shutdown => "shutdown",
+            Tr::ShutdownAfterComplete => "shutdown-after-complete",
+            Tr::ShutdownTimer => "shutdown-timer",
+            Tr::ShutdownTimerMinutes => "shutdown-timer-minutes",
+            Tr::ShutdownTimerHint => "shutdown-timer-hint",
+            Tr::ShutdownConfirmTitle => "shutdown-confirm-title",
+            Tr::ShutdownConfirmBody => "shutdown-confirm-body",
+            Tr::ShutdownFailed => "shutdown-failed",
         }
     }
 }

@@ -329,6 +329,7 @@ pub struct Remotrix {
     details_anim: crate::ui::animation::DialogAnim,
     confirm_anim: crate::ui::animation::DialogAnim,
     update_dialog_anim: crate::ui::animation::DialogAnim,
+    shutdown: crate::shutdown::ShutdownControl,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
@@ -474,6 +475,10 @@ pub fn init() -> (Remotrix, Task<Message>) {
         details_anim: Default::default(),
         confirm_anim: Default::default(),
         update_dialog_anim: Default::default(),
+        shutdown: crate::shutdown::ShutdownControl {
+            timer_minutes: 30,
+            ..Default::default()
+        },
     };
 
     state.window.hidden_to_tray =
@@ -2455,6 +2460,13 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                                 crate::notify::NotifyAction::OpenFile(open_path),
                             );
                         }
+                        if state.shutdown.after_complete
+                            && !state.tasks.values().any(|t| t.is_download_active())
+                            && !matches!(state.confirm, Some(ConfirmAction::Shutdown { .. }))
+                        {
+                            trigger_shutdown_confirm(state);
+                            return Task::none();
+                        }
                         return Task::none();
                     }
                 }
@@ -3750,6 +3762,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             if state.confirm_anim.is_dismissing() {
                 return Task::none();
             }
+            if matches!(state.confirm, Some(ConfirmAction::Shutdown { .. })) {
+                reset_shutdown_card(state);
+            }
             state.confirm_anim.begin_exit();
         }
         Message::Settings(SettingsMsg::ApplyAndLeaveSettings) => {
@@ -3939,6 +3954,7 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                 .unwrap_or_else(Task::none);
             return restore_window_from_tray_wayland(state).chain(attention);
         }
+        Message::Shutdown(msg) => return handle_shutdown(state, msg),
         Message::Noop => {}
         Message::Extension(ExtensionMsg::GenerateSecret) => {
             state.settings.extension.secret = crate::extension_api::generate_secret();
@@ -4387,6 +4403,29 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         iced::widget::Space::new().into()
     };
 
+    let shutdown_layer: iced::Element<'_, Message> = if state.shutdown.card_open {
+        let card = crate::ui::shutdown_card::view(&state.fluent, t, &state.shutdown);
+        stack![
+            mouse_area(
+                iced::widget::Space::new()
+                    .width(Length::Fill)
+                    .height(Length::Fill),
+            )
+            .on_press(Message::Shutdown(crate::message::ShutdownMsg::CloseCard)),
+            float::Float::new(card).translate(move |bounds, viewport| {
+                let x = SIDEBAR_W + 8.0;
+                let y = (viewport.height - SHUTDOWN_CARD_ANCHOR)
+                    .clamp(0.0, (viewport.height - bounds.height).max(0.0));
+                Vector::new(x - bounds.x, y - bounds.y)
+            }),
+        ]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
+    } else {
+        iced::widget::Space::new().into()
+    };
+
     let stacked: iced::Element<'_, Message> = stack![
         base_layer,
         add_layer,
@@ -4398,6 +4437,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         drop_overlay_layer,
         toast_layer,
         ctx_layer,
+        shutdown_layer,
     ]
     .width(Length::Fill)
     .height(Length::Fill)
@@ -4647,6 +4687,15 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         Subscription::none()
     };
 
+    let shutdown_tick = if state.shutdown.timer_enabled
+        || matches!(state.confirm, Some(ConfirmAction::Shutdown { .. }))
+    {
+        iced::time::every(Duration::from_secs(1))
+            .map(|_| Message::Shutdown(crate::message::ShutdownMsg::ShutdownTick))
+    } else {
+        Subscription::none()
+    };
+
     Subscription::batch(vec![
         engine,
         wake,
@@ -4669,6 +4718,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         signals,
         tracker_auto_sync,
         auto_update,
+        shutdown_tick,
     ])
 }
 
@@ -4868,6 +4918,119 @@ fn copy_to_clipboard(state: &mut Remotrix, content: String) -> Task<Message> {
 
 fn dismiss_toast(state: &mut Remotrix, id: u64) {
     state.toasts.dismiss(id);
+}
+
+const SHUTDOWN_CONFIRM_SECS: u32 = 30;
+const SHUTDOWN_CARD_ANCHOR: f32 = 112.0;
+
+fn reset_shutdown_card(state: &mut Remotrix) {
+    let minutes = state.shutdown.timer_minutes.max(1);
+    state.shutdown = crate::shutdown::ShutdownControl {
+        timer_minutes: minutes,
+        ..Default::default()
+    };
+}
+
+fn trigger_shutdown_confirm(state: &mut Remotrix) {
+    if matches!(state.confirm, Some(ConfirmAction::Shutdown { .. })) {
+        return;
+    }
+    state.confirm = Some(ConfirmAction::Shutdown {
+        seconds_left: SHUTDOWN_CONFIRM_SECS,
+    });
+    state.confirm_anim.open();
+}
+
+fn handle_shutdown(state: &mut Remotrix, msg: crate::message::ShutdownMsg) -> Task<Message> {
+    use crate::message::ShutdownMsg;
+    match msg {
+        ShutdownMsg::ToggleCard => {
+            state.shutdown.card_open = !state.shutdown.card_open;
+        }
+        ShutdownMsg::CloseCard => {
+            state.shutdown.card_open = false;
+        }
+        ShutdownMsg::SetAfterComplete(v) => {
+            state.shutdown.after_complete = v;
+        }
+        ShutdownMsg::SetTimerEnabled(v) => {
+            state.shutdown.timer_enabled = v;
+            if v {
+                state.shutdown.timer_deadline = Some(
+                    Instant::now() + Duration::from_secs(state.shutdown.timer_minutes as u64 * 60),
+                );
+            } else {
+                state.shutdown.timer_deadline = None;
+            }
+        }
+        ShutdownMsg::SetTimerMinutes(n) => {
+            state.shutdown.timer_minutes = n.max(1);
+            if state.shutdown.timer_enabled {
+                state.shutdown.timer_deadline = Some(
+                    Instant::now() + Duration::from_secs(state.shutdown.timer_minutes as u64 * 60),
+                );
+            }
+        }
+        ShutdownMsg::ShutdownTick => {
+            if state.confirm_anim.is_dismissing() {
+                return Task::none();
+            }
+            if let Some(ConfirmAction::Shutdown { seconds_left }) = state.confirm {
+                if seconds_left <= 1 {
+                    state.confirm = None;
+                    state.confirm_anim.begin_exit();
+                    reset_shutdown_card(state);
+                    return Task::done(Message::Shutdown(ShutdownMsg::ShutdownNow));
+                } else {
+                    state.confirm = Some(ConfirmAction::Shutdown {
+                        seconds_left: seconds_left - 1,
+                    });
+                }
+            } else if state.shutdown.timer_enabled && state.confirm.is_none() {
+                let expired = state
+                    .shutdown
+                    .timer_deadline
+                    .map(|d| Instant::now() >= d)
+                    .unwrap_or(false);
+                if expired {
+                    reset_shutdown_card(state);
+                    trigger_shutdown_confirm(state);
+                }
+            }
+        }
+        ShutdownMsg::ShutdownNow => {
+            return Task::perform(
+                async move { crate::shutdown::shutdown_system_blocking() },
+                |res| {
+                    Message::Shutdown(ShutdownMsg::ShutdownExecuted {
+                        ok: res.is_ok(),
+                        error: res.err(),
+                    })
+                },
+            );
+        }
+        ShutdownMsg::ShutdownExecuted { ok, error } => {
+            state.confirm = None;
+            if ok {
+                tracing::info!("system shutdown requested");
+            } else if let Some(err) = error {
+                let mut args = std::collections::HashMap::new();
+                args.insert(
+                    std::borrow::Cow::from("error"),
+                    std::borrow::Cow::from(err).into(),
+                );
+                spawn_toast(
+                    state,
+                    ToastGroup::General,
+                    ToastKind::Error,
+                    state.fluent.get_args(Tr::ShutdownFailed, &args),
+                    Some(Duration::from_secs(6)),
+                    true,
+                );
+            }
+        }
+    }
+    Task::none()
 }
 
 fn send_system_notification(

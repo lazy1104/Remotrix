@@ -1,6 +1,6 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// 769c272c925e1eaf556fd49a814361587264a2168bfceb20318ffc9cce4c9227
+// eb13ca23f6de95bab0847ce207d9664eedeb34bc9737b4448cc3c13435aea504
 use iced::widget::{text, Text};
 use iced::Font;
 
@@ -43,6 +43,7 @@ pub const ALL_ICONS: &[(&str, &str)] = &[
     ("pause", "\u{E12E}"),
     ("play", "\u{E13C}"),
     ("plus", "\u{E13D}"),
+    ("power", "\u{E140}"),
     ("refresh", "\u{E145}"),
     ("settings", "\u{E154}"),
     ("share", "\u{E156}"),
@@ -184,6 +185,10 @@ pub fn play<'a>() -> Text<'a> {
 
 pub fn plus<'a>() -> Text<'a> {
     icon("\u{E13D}")
+}
+
+pub fn power<'a>() -> Text<'a> {
+    icon("\u{E140}")
 }
 
 pub fn refresh<'a>() -> Text<'a> {

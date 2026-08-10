@@ -50,6 +50,12 @@ pub fn view<'a>(fluent: &'a Fluent, theme: &'a iced::Theme, _page: Page) -> Elem
         Message::Dialog(DialogMsg::OpenAbout),
         false,
     );
+    let power_area = icon_btn(
+        icon::power().size(FONT_DIALOG_TITLE).line_height(1.0),
+        fluent.get(Tr::Shutdown),
+        Message::Shutdown(crate::message::ShutdownMsg::ToggleCard),
+        false,
+    );
     let sett_area = icon_btn(
         icon::settings().size(FONT_DIALOG_TITLE).line_height(1.0),
         fluent.get(Tr::Settings),
@@ -65,6 +71,7 @@ pub fn view<'a>(fluent: &'a Fluent, theme: &'a iced::Theme, _page: Page) -> Elem
         .push(list_area)
         .push(new_area)
         .push(iced::widget::Space::new().height(Length::Fill))
+        .push(power_area)
         .push(about_area)
         .push(sett_area)
         .height(Length::Fill);
