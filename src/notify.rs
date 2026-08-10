@@ -1,11 +1,11 @@
 use std::any::Any;
 use std::path::PathBuf;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 use std::sync::{Arc, Mutex};
 
 use notify_rust::Notification as RustNotification;
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 use crate::message::Message;
 
 #[cfg(target_os = "linux")]
@@ -24,18 +24,48 @@ pub trait Notifier: Send + Sync {
 
 pub struct DesktopNotifier;
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 const OPEN_ACTION: &str = "open";
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 const REVEAL_ACTION: &str = "reveal";
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 fn action_key(a: &NotifyAction) -> Option<&'static str> {
     match a {
         NotifyAction::OpenFile(_) => Some(OPEN_ACTION),
         NotifyAction::RevealDir(_) => Some(REVEAL_ACTION),
         NotifyAction::ActivateWindow => Some(OPEN_ACTION),
     }
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn build_keyed(buttons: &[(String, NotifyAction)]) -> Vec<(String, NotifyAction)> {
+    buttons
+        .iter()
+        .filter_map(|(_, a)| action_key(a).map(|k| (k.to_string(), a.clone())))
+        .collect()
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn response_to_message(
+    response: &notify_rust::NotificationResponse,
+    actions: &[(String, NotifyAction)],
+    default_action: &NotifyAction,
+) -> Option<Message> {
+    let target = match response {
+        notify_rust::NotificationResponse::Default => Some(default_action.clone()),
+        notify_rust::NotificationResponse::Action(key) => actions
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, a)| a.clone())
+            .or_else(|| Some(default_action.clone())),
+        _ => None,
+    };
+    target.map(|action| match action {
+        NotifyAction::OpenFile(path) => Message::OpenFile(path),
+        NotifyAction::RevealDir(path) => Message::RevealDir(path),
+        NotifyAction::ActivateWindow => Message::ActivateWindow,
+    })
 }
 
 impl DesktopNotifier {
@@ -127,10 +157,7 @@ pub fn show(
         title: title.to_string(),
         body: body.to_string(),
     };
-    let keyed: Vec<(String, NotifyAction)> = buttons
-        .iter()
-        .filter_map(|(_, a)| action_key(a).map(|k| (k.to_string(), a.clone())))
-        .collect();
+    let keyed = build_keyed(buttons);
     for notifier in &notifiers.list {
         if let Some(desktop) = notifier.as_any().downcast_ref::<DesktopNotifier>() {
             match desktop.show_with_actions(&notification, buttons) {
@@ -147,7 +174,66 @@ pub fn show(
     None
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "windows")]
+pub fn show(
+    notifiers: &Notifiers,
+    title: &str,
+    body: &str,
+    buttons: &[(String, NotifyAction)],
+    default_action: NotifyAction,
+) -> Option<NotifyEvent> {
+    let notification = Notification {
+        title: title.to_string(),
+        body: body.to_string(),
+    };
+    let keyed = build_keyed(buttons);
+    for notifier in &notifiers.list {
+        if let Some(desktop) = notifier.as_any().downcast_ref::<DesktopNotifier>() {
+            let mut rust = desktop.build(&notification);
+            for (label, action) in buttons {
+                if let Some(key) = action_key(action) {
+                    rust.action(key, label);
+                }
+            }
+            match rust.show() {
+                Ok(handle) => {
+                    let wait: Box<
+                        dyn FnOnce(&iced::futures::channel::mpsc::Sender<Message>) + Send,
+                    > = Box::new(
+                        move |sender: &iced::futures::channel::mpsc::Sender<Message>| {
+                            let mut s = sender.clone();
+                            std::thread::spawn(move || {
+                                handle
+                                    .wait_for_response(
+                                        move |response: &notify_rust::NotificationResponse| {
+                                            if let Some(msg) = response_to_message(
+                                                response,
+                                                &keyed,
+                                                &default_action,
+                                            ) {
+                                                let _ = s.try_send(msg);
+                                            }
+                                        },
+                                    )
+                                    .ok();
+                            });
+                        },
+                    );
+                    return Some(NotifyEvent { wait });
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "wake notification failed");
+                    let _ = desktop.send(&notification);
+                }
+            }
+        } else {
+            let _ = notifier.send(&notification);
+        }
+    }
+    None
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 pub fn show(notifiers: &Notifiers, title: &str, body: &str, buttons: &[(String, NotifyAction)]) {
     let _ = buttons;
     let notification = Notification {
@@ -162,7 +248,7 @@ pub fn show(notifiers: &Notifiers, title: &str, body: &str, buttons: &[(String, 
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "linux", target_os = "windows")), allow(dead_code))]
 pub enum NotifyAction {
     ActivateWindow,
     OpenFile(PathBuf),
@@ -176,27 +262,32 @@ pub struct NotifyEvent {
     pub default_action: NotifyAction,
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(target_os = "windows")]
+pub struct NotifyEvent {
+    pub wait: Box<dyn FnOnce(&iced::futures::channel::mpsc::Sender<Message>) + Send>,
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub struct NotifySlot(pub Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<NotifyEvent>>>>);
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 impl std::hash::Hash for NotifySlot {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         Arc::as_ptr(&self.0).hash(state);
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 impl PartialEq for NotifySlot {
     fn eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 impl Eq for NotifySlot {}
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 impl Clone for NotifySlot {
     fn clone(&self) -> Self {
         NotifySlot(self.0.clone())
@@ -221,28 +312,32 @@ pub fn build_notify_stream(slot: &NotifySlot) -> impl iced::futures::Stream<Item
                         .handle
                         .wait_for_action_async(
                             move |response: &notify_rust::NotificationResponse| {
-                                let target = match response {
-                                    notify_rust::NotificationResponse::Default => {
-                                        Some(default_action.clone())
-                                    }
-                                    notify_rust::NotificationResponse::Action(key) => actions
-                                        .iter()
-                                        .find(|(k, _)| k == key)
-                                        .map(|(_, a)| a.clone())
-                                        .or_else(|| Some(default_action.clone())),
-                                    _ => None,
-                                };
-                                if let Some(action) = target {
-                                    let msg = match action {
-                                        NotifyAction::OpenFile(path) => Message::OpenFile(path),
-                                        NotifyAction::RevealDir(path) => Message::RevealDir(path),
-                                        NotifyAction::ActivateWindow => Message::ActivateWindow,
-                                    };
+                                if let Some(msg) =
+                                    response_to_message(response, &actions, &default_action)
+                                {
                                     let _ = s.try_send(msg);
                                 }
                             },
                         )
                         .await;
+                }
+            }
+        },
+    )
+}
+
+#[cfg(target_os = "windows")]
+pub fn build_notify_stream(slot: &NotifySlot) -> impl iced::futures::Stream<Item = Message> {
+    let rx = {
+        let mut guard = slot.0.lock().expect("notify slot poisoned");
+        guard.take()
+    };
+    iced::stream::channel(
+        1,
+        move |sender: iced::futures::channel::mpsc::Sender<Message>| async move {
+            if let Some(mut rx) = rx {
+                while let Some(event) = rx.recv().await {
+                    (event.wait)(&sender);
                 }
             }
         },

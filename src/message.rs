@@ -89,12 +89,12 @@ pub enum Message {
     CtxClose,
     CursorMoved(iced::Point),
     OpenLink(String),
-    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    #[cfg_attr(not(any(target_os = "linux", target_os = "windows")), allow(dead_code))]
     OpenFile(PathBuf),
-    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    #[cfg_attr(not(any(target_os = "linux", target_os = "windows")), allow(dead_code))]
     RevealDir(PathBuf),
     ShowRequested,
-    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    #[cfg_attr(not(any(target_os = "linux", target_os = "windows")), allow(dead_code))]
     ActivateWindow,
     Tray(TrayMsg),
     ProgressAnim(String, crate::ui::animation::Event<f32>),
