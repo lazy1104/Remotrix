@@ -42,6 +42,31 @@ impl TaskAdvancedOptions {
         }
     }
 
+    pub fn apply_change(&self, opts: &mut TaskOptions) {
+        if !self.out.is_empty() {
+            opts.out = Some(self.out.clone());
+        }
+        let extra = [
+            ("user-agent", &self.user_agent),
+            ("http-user", &self.http_user),
+            ("http-passwd", &self.http_passwd),
+            ("referer", &self.referer),
+            ("cookie", &self.cookie),
+        ];
+        for (key, value) in extra {
+            opts.extra_options
+                .insert(key.to_string(), serde_json::Value::String(value.clone()));
+        }
+        opts.all_proxy = Some(
+            crate::config::all_proxy_url(
+                &self.proxy_server,
+                &self.proxy_username,
+                &self.proxy_password,
+            )
+            .unwrap_or_default(),
+        );
+    }
+
     pub fn is_empty(&self) -> bool {
         self.out.is_empty()
             && self.user_agent.is_empty()

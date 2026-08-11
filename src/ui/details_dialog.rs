@@ -227,13 +227,54 @@ pub fn view<'a>(
         },
     };
 
+    let footer = if let Some(task) = task {
+        if state.active_tab == DetailsTab::Advanced {
+            let apply_enabled = {
+                let task_active = !matches!(
+                    task.status,
+                    crate::task::TaskStatus::Completed | crate::task::TaskStatus::Removed
+                );
+                state.advanced_loaded
+                    && state.advanced_dirty
+                    && !state.advanced_saving
+                    && task_active
+            };
+            let apply_btn = button(text(fluent.get(Tr::Apply)).size(FONT_MEDIUM))
+                .padding(PADDING_TAB)
+                .style(theme::style::button::primary());
+            let apply_btn = if apply_enabled {
+                apply_btn.on_press(Message::Task(TaskMsg::DetailsAdvancedSave))
+            } else {
+                apply_btn
+            };
+            Some(
+                column![
+                    iced::widget::rule::horizontal(1),
+                    row![iced::widget::Space::new().width(Length::Fill), apply_btn]
+                        .align_y(Alignment::Center),
+                ]
+                .spacing(SPACE_LG)
+                .width(Length::Fill),
+            )
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let mut content = column![]
+        .push(header)
+        .push(tab_bar)
+        .push(iced::widget::rule::horizontal(1))
+        .push(body);
+    if let Some(footer) = footer {
+        content = content.push(footer);
+    }
+
     expand_pinned(
         container(
-            column![]
-                .push(header)
-                .push(tab_bar)
-                .push(iced::widget::rule::horizontal(1))
-                .push(body)
+            content
                 .spacing(SPACE_LG)
                 .width(Length::Fill)
                 .height(Length::Fill),
@@ -638,26 +679,10 @@ fn advanced_field<'a>(
 fn advanced_tab<'a>(
     fluent: &'a Fluent,
     theme: &'a iced::Theme,
-    task: &'a DownloadTask,
+    _task: &'a DownloadTask,
     state: &'a DetailsDialogState,
     ctx_mirrors: &CtxMirrors,
 ) -> Element<'a, Message> {
-    let apply_enabled = {
-        let task_active = !matches!(
-            task.status,
-            crate::task::TaskStatus::Completed | crate::task::TaskStatus::Removed
-        );
-        state.advanced_loaded && state.advanced_dirty && !state.advanced_saving && task_active
-    };
-    let apply_btn = button(text(fluent.get(Tr::Apply)).size(FONT_MEDIUM))
-        .padding(PADDING_TAB)
-        .style(theme::style::button::primary());
-    let apply_btn = if apply_enabled {
-        apply_btn.on_press(Message::Task(TaskMsg::DetailsAdvancedSave))
-    } else {
-        apply_btn
-    };
-
     column![
         advanced_field(
             fluent,
@@ -735,7 +760,6 @@ fn advanced_tab<'a>(
             true,
             ctx_mirrors
         ),
-        row![iced::widget::Space::new().width(Length::Fill), apply_btn,].align_y(Alignment::Center),
     ]
     .spacing(SPACE_XL)
     .width(Length::Fill)

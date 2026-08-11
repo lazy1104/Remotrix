@@ -1103,7 +1103,7 @@ async fn handle_client_cmd(
         EngineCmd::ChangeTaskAdvanced { gid, advanced } => {
             tracing::info!(?gid, "change task advanced options");
             let mut options = TaskOptions::default();
-            advanced.apply(&mut options);
+            advanced.apply_change(&mut options);
             let params = match serde_json::to_value(options) {
                 Ok(v) => vec![serde_json::Value::String(gid.clone()), v],
                 Err(e) => {

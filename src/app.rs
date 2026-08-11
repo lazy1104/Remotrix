@@ -2547,11 +2547,13 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             EngineEvent::TaskAdvancedLoaded { gid, options } => {
                 tracing::debug!(?gid, "task advanced options received");
-                if state.details.gid.as_deref() == Some(&gid) && !state.details.advanced_dirty {
-                    state.details.apply_advanced(&options);
+                if state.details.gid.as_deref() == Some(&gid) {
                     state.details.advanced_loaded = true;
-                    state.details.advanced_dirty = false;
                     state.details.advanced_saving = false;
+                    if !state.details.advanced_dirty {
+                        state.details.apply_advanced(&options);
+                        state.details.advanced_dirty = false;
+                    }
                 }
             }
             EngineEvent::TaskAdvancedLoadFailed { gid } => {
