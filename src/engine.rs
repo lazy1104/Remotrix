@@ -1806,6 +1806,7 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
         let mut seen: HashSet<String> = HashSet::new();
         let mut terminal: HashSet<String> = HashSet::new();
         let mut orphan_grace: HashMap<String, u32> = HashMap::new();
+        let mut last_logged_pct: HashMap<String, u32> = HashMap::new();
         loop {
             tokio::select! {
                 _ = ticker.tick() => {
@@ -1822,6 +1823,26 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
                     };
                     for s in &active {
                         stopped_seen.remove(&s.gid);
+                        let total = s.total_length;
+                        let pct = if total > 0 {
+                            ((s.completed_length as u128 * 100) / total as u128) as u32
+                        } else {
+                            0
+                        };
+                        match last_logged_pct.get(&s.gid) {
+                            None => {
+                                tracing::info!(?s.gid, pct, "download started");
+                                last_logged_pct.insert(s.gid.clone(), pct);
+                            }
+                            Some(&last) if pct >= last.saturating_add(5) => {
+                                tracing::info!(
+                                    ?s.gid, pct, speed = s.download_speed,
+                                    "download progress"
+                                );
+                                last_logged_pct.insert(s.gid.clone(), pct);
+                            }
+                            _ => {}
+                        }
                         emit_progress(&poll_event_tx, s).await;
                     }
                     match timeout(RPC_TIMEOUT, poll_client.get_global_stat()).await {
@@ -1866,6 +1887,12 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
                         if is_terminal {
                             terminal.insert(s.gid.clone());
                             if stopped_seen.insert(s.gid.clone()) {
+                                match s.status {
+                                    Aria2TaskStatus::Complete => {
+                                        tracing::info!(?s.gid, "download finished")
+                                    }
+                                    _ => tracing::warn!(?s.gid, "download failed"),
+                                }
                                 emit_progress(&poll_event_tx, s).await;
                             }
                         } else {
@@ -1901,6 +1928,7 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
                     seen.retain(|g| current.contains(g.as_str()) || orphan_grace.contains_key(g));
                     terminal.retain(|g| current.contains(g.as_str()));
                     stopped_seen.retain(|g| current.contains(g.as_str()));
+                    last_logged_pct.retain(|g, _| current.contains(g.as_str()));
                 }
             }
         }

@@ -339,7 +339,7 @@ pub mod style {
                 width: 1.0,
                 radius: iced::border::rounded(super::RADIUS_CARD).radius,
             },
-            shadow: card_shadow(),
+            shadow: Shadow::default(),
             ..Default::default()
         }
     }
@@ -516,9 +516,9 @@ pub mod style {
 
     fn card_shadow() -> Shadow {
         Shadow {
-            color: Color::from_rgba(0.0, 0.0, 0.0, 0.12),
-            offset: Vector::new(0.0, 2.0),
-            blur_radius: 6.0,
+            color: Color::from_rgba(0.0, 0.0, 0.0, 0.08),
+            offset: Vector::new(0.0, 1.0),
+            blur_radius: 4.0,
         }
     }
 
@@ -691,7 +691,7 @@ pub mod style {
                         width: 1.0,
                         radius: iced::border::rounded(super::super::RADIUS_PILL).radius,
                     },
-                    shadow: Shadow::default(),
+                    shadow: super::card_shadow(),
                     ..Default::default()
                 }
             }

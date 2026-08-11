@@ -17,7 +17,8 @@ pub const ENGINE_LOG_FILENAME: &str = "aria2.log";
 static APP_FILTER: OnceLock<reload::Handle<EnvFilter, Registry>> = OnceLock::new();
 
 fn build_env_filter(level: &str) -> EnvFilter {
-    EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(normalize_app_level(level)))
+    let app = normalize_app_level(level);
+    EnvFilter::new(format!("remotrix={app},error"))
 }
 
 pub fn init() -> Option<tracing_appender::non_blocking::WorkerGuard> {
