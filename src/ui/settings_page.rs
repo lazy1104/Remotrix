@@ -109,6 +109,8 @@ pub struct SettingsPageContext<'a> {
     pub aria2_status: Option<(&'a str, &'a str)>,
     pub aria2_fetch_error: Option<&'a str>,
     pub update_check_in_flight: bool,
+    pub aria2_download_version: Option<&'a str>,
+    pub aria2_download_progress: Option<(u64, u64)>,
     pub ua_editor: &'a text_editor::Content,
     pub bt_tracker_editor: &'a text_editor::Content,
     pub path_history: &'a HashMap<String, Vec<String>>,
@@ -131,6 +133,8 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
         aria2_status,
         aria2_fetch_error,
         update_check_in_flight,
+        aria2_download_version,
+        aria2_download_progress,
         ua_editor,
         bt_tracker_editor,
         path_history,
@@ -157,6 +161,8 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
             *font_restart_required,
             *aria2_version,
             *update_check_in_flight,
+            *aria2_download_version,
+            *aria2_download_progress,
         ),
         SettingsCategory::Download => {
             download_view(fluent, theme, settings, settings_ui, path_history)
@@ -279,6 +285,8 @@ fn general_view<'a>(
     font_restart_required: bool,
     aria2_version: Option<&'a str>,
     update_check_in_flight: bool,
+    aria2_download_version: Option<&'a str>,
+    aria2_download_progress: Option<(u64, u64)>,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
     let mode_opts = vec![
@@ -296,7 +304,7 @@ fn general_view<'a>(
         },
     ];
 
-    column![]
+    let mut col = column![]
         .spacing(SPACE_SM)
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::SystemInfo, accent))
@@ -467,8 +475,12 @@ fn general_view<'a>(
             settings,
             applied_settings,
             update_check_in_flight,
-        ))
-        .into()
+        ));
+    if let Some(row) = aria2_download_progress_row(aria2_download_version, aria2_download_progress)
+    {
+        col = col.push(row);
+    }
+    col.into()
 }
 
 fn last_check_row<'a>(
@@ -535,6 +547,30 @@ fn last_check_row<'a>(
         ]
         .spacing(SPACE_LG)
         .align_y(Alignment::Center)
+        .into(),
+    )
+}
+
+fn aria2_download_progress_row<'a>(
+    version: Option<&'a str>,
+    progress: Option<(u64, u64)>,
+) -> Option<Element<'a, Message>> {
+    let (done, total) = progress?;
+    let done_mb = done as f64 / 1024.0 / 1024.0;
+    let total_mb = total as f64 / 1024.0 / 1024.0;
+    let version_str = version.unwrap_or("");
+    let label = format!(
+        "aria2-next {version_str}（{:.1}MB/{:.1}MB）",
+        done_mb, total_mb
+    );
+    Some(
+        row![
+            iced::widget::Space::new().width(Length::Fixed(200.0)),
+            text(label)
+                .size(FONT_SMALL)
+                .style(theme::style::text::secondary),
+        ]
+        .width(Length::Fill)
         .into(),
     )
 }

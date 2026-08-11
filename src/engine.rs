@@ -183,6 +183,10 @@ pub enum EngineEvent {
     Aria2UpdateApplied {
         version: String,
     },
+    Aria2UpdateProgress {
+        downloaded: u64,
+        total: u64,
+    },
     Aria2UpdateFailed {
         error: String,
     },
@@ -1542,11 +1546,7 @@ async fn resolve_sha256(
     }
 }
 
-async fn handle_download_aria2_update_via_engine(
-    client: &Client,
-    cmd: EngineCmd,
-    event_tx: &EventTx,
-) {
+async fn handle_download_aria2_update(cmd: EngineCmd, event_tx: &EventTx) {
     let EngineCmd::DownloadAria2Update {
         version,
         asset_name,
@@ -1590,7 +1590,19 @@ async fn handle_download_aria2_update_via_engine(
         }
     };
     let dest = dir.join(format!("aria2-next-{version}-{slug}"));
-    match download_via_engine(client, &download_url, &dest, sha256.as_deref()).await {
+    let tx = event_tx.clone();
+    let prog: crate::aria2_fetcher::ProgressFn = Box::new(move |downloaded, total| {
+        let _ = tx.send(EngineEvent::Aria2UpdateProgress { downloaded, total });
+    });
+    match crate::aria2_fetcher::download_verified(
+        &download_url,
+        &dest,
+        sha256.as_deref(),
+        proxy.as_deref(),
+        Some(&prog),
+    )
+    .await
+    {
         Ok(()) => {
             match crate::aria2_fetcher::stage_pending(&dir, &version, &slug, sha256.as_deref()) {
                 Ok(()) => {
@@ -2075,10 +2087,9 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                     EngineCmd::DownloadAria2Update { .. } => {
                         let tx = event_tx.clone();
                         let cmd = cmd.clone();
-                        if let Some(ref s) = sidecar {
-                            let client = s.client.clone();
+                        if sidecar.is_some() {
                             tokio::spawn(async move {
-                                handle_download_aria2_update_via_engine(&client, cmd, &tx).await;
+                                handle_download_aria2_update(cmd, &tx).await;
                             });
                         } else {
                             let _ = event_tx.send(EngineEvent::Aria2UpdateFailed {

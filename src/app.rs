@@ -142,6 +142,9 @@ struct EngineUiState {
     startup_error_toast_id: Option<u64>,
     startup_starting_toast_shown: bool,
     degraded_notified: bool,
+    aria2_downloading: bool,
+    aria2_downloading_version: Option<String>,
+    aria2_download_progress: Option<(u64, u64)>,
 }
 
 impl EngineUiState {
@@ -155,6 +158,9 @@ impl EngineUiState {
             startup_error_toast_id: None,
             startup_starting_toast_shown: false,
             degraded_notified: false,
+            aria2_downloading: false,
+            aria2_downloading_version: None,
+            aria2_download_progress: None,
         }
     }
 }
@@ -2621,6 +2627,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             EngineEvent::Aria2UpdateApplied { version } => {
                 state.engine_ui.update_check_in_flight = false;
                 state.engine_ui.aria2_version = Some(version.clone());
+                state.engine_ui.aria2_downloading = false;
+                state.engine_ui.aria2_downloading_version = None;
+                state.engine_ui.aria2_download_progress = None;
                 spawn_toast(
                     state,
                     ToastGroup::Engine,
@@ -2633,8 +2642,15 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
                     false,
                 );
             }
+            EngineEvent::Aria2UpdateProgress { downloaded, total } => {
+                state.engine_ui.aria2_downloading = true;
+                state.engine_ui.aria2_download_progress = Some((downloaded, total));
+            }
             EngineEvent::Aria2UpdateFailed { error } => {
                 state.engine_ui.update_check_in_flight = false;
+                state.engine_ui.aria2_downloading = false;
+                state.engine_ui.aria2_downloading_version = None;
+                state.engine_ui.aria2_download_progress = None;
                 spawn_toast(
                     state,
                     ToastGroup::Engine,
@@ -2646,6 +2662,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
             }
             EngineEvent::Aria2UpdateStaged { version } => {
                 state.engine_ui.update_check_in_flight = false;
+                state.engine_ui.aria2_downloading = false;
+                state.engine_ui.aria2_downloading_version = None;
+                state.engine_ui.aria2_download_progress = None;
                 spawn_toast(
                     state,
                     ToastGroup::Engine,
@@ -4153,6 +4172,8 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                     .map(|(s, m)| (s.as_str(), m.as_str())),
                 aria2_fetch_error: state.engine_ui.aria2_fetch_error.as_deref(),
                 update_check_in_flight: state.engine_ui.update_check_in_flight,
+                aria2_download_version: state.engine_ui.aria2_downloading_version.as_deref(),
+                aria2_download_progress: state.engine_ui.aria2_download_progress,
                 ua_editor: &state.ua_editor,
                 bt_tracker_editor: &state.bt_tracker_editor,
                 path_history: &state.settings.path_history,
@@ -5095,6 +5116,7 @@ fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -> Task<Mess
 
     let scope = state.settings.update.scope;
     let silent = state.settings.update.aria2_silent_update;
+    let aria2_downloading = state.engine_ui.aria2_downloading;
     let proxy = state.settings.aria2.all_proxy_value();
     let app_current = crate::app_updater::current_app_version().to_string();
     let engine_current = crate::aria2_fetcher::installed_version().unwrap_or_default();
@@ -5109,7 +5131,7 @@ fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -> Task<Mess
                 let mut silent_applied = Vec::new();
                 let mut errors = Vec::new();
 
-                if scope.covers("aria2-next") {
+                if !aria2_downloading && scope.covers("aria2-next") {
                     match crate::updater::fetch_latest_release(
                         "AnInsomniacy/aria2-next",
                         "aria2-next",
@@ -5246,7 +5268,10 @@ fn concat_changelog(rels: &[crate::updater::ReleaseInfo]) -> String {
     parts.join("\n\n---\n\n")
 }
 
-fn send_download_aria2_update(state: &Remotrix, offer: &crate::ui::update_dialog::UpdateOffer) {
+fn send_download_aria2_update(state: &mut Remotrix, offer: &crate::ui::update_dialog::UpdateOffer) {
+    state.engine_ui.aria2_downloading = true;
+    state.engine_ui.aria2_downloading_version = Some(offer.latest.clone());
+    state.engine_ui.aria2_download_progress = None;
     let _ = state.handle.cmd_tx.send(EngineCmd::DownloadAria2Update {
         version: offer.latest.clone(),
         asset_name: offer.asset_name.clone(),

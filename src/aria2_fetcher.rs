@@ -130,6 +130,7 @@ pub async fn ensure_aria2_next(
         &bin_path,
         release.sha256.as_deref(),
         proxy.as_deref(),
+        None,
     )
     .await?;
 
@@ -287,10 +288,13 @@ pub(crate) fn sha256_file(path: &Path) -> Result<String, String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
+pub(crate) type ProgressFn = Box<dyn Fn(u64, u64) + Send + Sync>;
+
 pub(crate) async fn download_file(
     url: &str,
     dest: &Path,
     proxy: Option<&str>,
+    on_progress: Option<&ProgressFn>,
 ) -> Result<(), String> {
     use std::io::Write;
 
@@ -313,10 +317,13 @@ pub(crate) async fn download_file(
         return Err(format!("HTTP {status}"));
     }
 
+    let total = response.content_length().unwrap_or(0);
+
     let parent = dest.parent().unwrap();
     std::fs::create_dir_all(parent).map_err(|e| format!("create download dir: {e}"))?;
 
     let mut file = std::fs::File::create(dest).map_err(|e| format!("create {dest:?}: {e}"))?;
+    let mut written = 0u64;
     while let Some(chunk) = response
         .chunk()
         .await
@@ -324,6 +331,10 @@ pub(crate) async fn download_file(
     {
         file.write_all(&chunk)
             .map_err(|e| format!("write to {dest:?}: {e}"))?;
+        written += chunk.len() as u64;
+        if let Some(f) = on_progress {
+            f(written, total);
+        }
     }
     Ok(())
 }
@@ -336,9 +347,10 @@ pub(crate) async fn download_verified(
     dest: &Path,
     sha256: Option<&str>,
     proxy: Option<&str>,
+    on_progress: Option<&ProgressFn>,
 ) -> Result<(), String> {
     let part = std::path::PathBuf::from(format!("{}.part", dest.display()));
-    download_file(url, &part, proxy).await?;
+    download_file(url, &part, proxy, on_progress).await?;
 
     if let Some(expected) = sha256 {
         let part_clone = part.clone();
