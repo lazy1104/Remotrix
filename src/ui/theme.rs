@@ -494,6 +494,10 @@ pub mod style {
         }
     }
 
+    fn hover_overlay(t: &iced::Theme, alpha: f32) -> Color {
+        t.extended_palette().background.base.text.scale_alpha(alpha)
+    }
+
     fn button_shadow() -> Shadow {
         Shadow {
             color: Color::from_rgba(0.0, 0.0, 0.0, 0.18),
@@ -535,8 +539,8 @@ pub mod style {
                 let base_text = t.extended_palette().background.base.text;
                 Style {
                     background: match status {
-                        Status::Hovered => Some(Color::from_rgba(1.0, 1.0, 1.0, 0.08).into()),
-                        Status::Pressed => Some(Color::from_rgba(1.0, 1.0, 1.0, 0.14).into()),
+                        Status::Hovered => Some(super::hover_overlay(t, 0.08).into()),
+                        Status::Pressed => Some(super::hover_overlay(t, 0.14).into()),
                         _ => None,
                     },
                     text_color: match status {
@@ -560,7 +564,7 @@ pub mod style {
                     } else {
                         match status {
                             Status::Hovered | Status::Pressed => {
-                                Some(Color::from_rgba(1.0, 1.0, 1.0, 0.08).into())
+                                Some(super::hover_overlay(t, 0.08).into())
                             }
                             _ => None,
                         }
@@ -656,8 +660,8 @@ pub mod style {
                 } else {
                     Style {
                         background: match status {
-                            Status::Hovered => Some(Color::from_rgba(1.0, 1.0, 1.0, 0.08).into()),
-                            Status::Pressed => Some(Color::from_rgba(1.0, 1.0, 1.0, 0.14).into()),
+                            Status::Hovered => Some(super::hover_overlay(t, 0.08).into()),
+                            Status::Pressed => Some(super::hover_overlay(t, 0.14).into()),
                             _ => None,
                         },
                         text_color: match status {
@@ -739,8 +743,8 @@ pub mod style {
                 let base_text = t.extended_palette().background.base.text;
                 Style {
                     background: match status {
-                        Status::Hovered => Some(Color::from_rgba(1.0, 1.0, 1.0, 0.08).into()),
-                        Status::Pressed => Some(Color::from_rgba(1.0, 1.0, 1.0, 0.14).into()),
+                        Status::Hovered => Some(super::hover_overlay(t, 0.08).into()),
+                        Status::Pressed => Some(super::hover_overlay(t, 0.14).into()),
                         _ => None,
                     },
                     text_color: match status {
@@ -826,7 +830,7 @@ pub mod style {
                     Style {
                         background: match status {
                             Status::Hovered | Status::Pressed => {
-                                Some(Color::from_rgba(1.0, 1.0, 1.0, 0.08).into())
+                                Some(super::hover_overlay(t, 0.08).into())
                             }
                             _ => None,
                         },
@@ -855,7 +859,7 @@ pub mod style {
                     Style {
                         background: match status {
                             Status::Hovered | Status::Pressed => {
-                                Some(Color::from_rgba(1.0, 1.0, 1.0, 0.08).into())
+                                Some(super::hover_overlay(t, 0.08).into())
                             }
                             _ => None,
                         },
@@ -872,7 +876,7 @@ pub mod style {
                 let hover = if is_close {
                     Color::from_rgba(0.961, 0.263, 0.212, 0.85)
                 } else {
-                    Color::from_rgba(1.0, 1.0, 1.0, 0.12)
+                    super::hover_overlay(t, 0.12)
                 };
                 Style {
                     background: match status {
