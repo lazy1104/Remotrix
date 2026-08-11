@@ -14,6 +14,7 @@ use crate::ui::theme;
 
 const ICED_REPO_URL: &str = "https://github.com/iced-rs/iced";
 const ARIA2_NEXT_REPO_URL: &str = "https://github.com/AnInsomniacy/aria2-next";
+const REMOTRIX_REPO_URL: &str = "https://github.com/lazy1104/Remotrix";
 
 fn repo_link<'a>(url: String) -> Element<'a, Message, iced::Theme, iced::Renderer> {
     button(icon::link().size(FONT_MEDIUM))
@@ -52,6 +53,14 @@ pub fn view<'a>(
     .align_y(Alignment::Center)
     .width(Length::Fill);
 
+    let remotrix_row = row![
+        copyable_text(gui_text.clone(), Message::CopyText(gui_text)).width(Length::Fill),
+        repo_link(REMOTRIX_REPO_URL.to_string()),
+    ]
+    .spacing(SPACE_MD)
+    .align_y(Alignment::Center)
+    .width(Length::Fill);
+
     let body = column![]
         .spacing(SPACE_4XL)
         .align_x(Alignment::Center)
@@ -74,7 +83,7 @@ pub fn view<'a>(
                 .size(FONT_SMALL)
                 .style(theme::style::text::secondary),
         )
-        .push(copyable_text(gui_text.clone(), Message::CopyText(gui_text)).width(Length::Fill))
+        .push(remotrix_row)
         .push(
             text(fluent.get(Tr::CoreDependencies))
                 .size(FONT_SMALL)
