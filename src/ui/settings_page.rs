@@ -153,6 +153,7 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
             fluent,
             theme,
             settings,
+            applied_settings,
             *font_restart_required,
             *aria2_version,
             *update_check_in_flight,
@@ -274,6 +275,7 @@ fn general_view<'a>(
     fluent: &'a Fluent,
     theme: &iced::Theme,
     settings: &'a Settings,
+    applied_settings: &'a Settings,
     font_restart_required: bool,
     aria2_version: Option<&'a str>,
     update_check_in_flight: bool,
@@ -463,6 +465,7 @@ fn general_view<'a>(
             fluent,
             theme,
             settings,
+            applied_settings,
             update_check_in_flight,
         ))
         .into()
@@ -472,6 +475,7 @@ fn last_check_row<'a>(
     fluent: &'a Fluent,
     theme: &iced::Theme,
     settings: &'a Settings,
+    applied_settings: &'a Settings,
     update_check_in_flight: bool,
 ) -> Element<'a, Message> {
     let time_str = match settings.update.last_check_time {
@@ -512,7 +516,11 @@ fn last_check_row<'a>(
             .spacing(SPACE_SM)
             .align_y(Alignment::Center),
         )
-        .on_press(Message::Settings(SettingsMsg::CheckUpdatesNow))
+        .on_press_maybe(if settings.update != applied_settings.update {
+            None
+        } else {
+            Some(Message::Settings(SettingsMsg::CheckUpdatesNow))
+        })
         .padding(PADDING_BUTTON_SM)
         .height(Length::Fixed(crate::ui::components::CONTROL_HEIGHT))
         .style(theme::style::button::secondary())

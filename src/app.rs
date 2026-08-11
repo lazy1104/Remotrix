@@ -5076,6 +5076,9 @@ fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -> Task<Mess
     if state.engine_ui.aria2_version.is_none() {
         return Task::none();
     }
+    if state.settings.update != state.applied_settings.update {
+        return Task::none();
+    }
     let now_ms = chrono::Local::now().timestamp_millis();
     if !manual {
         if !state.settings.update.enabled {
