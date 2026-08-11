@@ -229,33 +229,28 @@ pub fn view<'a>(
 
     let footer = if let Some(task) = task {
         if state.active_tab == DetailsTab::Advanced {
-            let apply_enabled = {
-                let task_active = !matches!(
-                    task.status,
-                    crate::task::TaskStatus::Completed | crate::task::TaskStatus::Removed
-                );
-                state.advanced_loaded
-                    && state.advanced_dirty
-                    && !state.advanced_saving
-                    && task_active
-            };
-            let apply_btn = button(text(fluent.get(Tr::Apply)).size(FONT_MEDIUM))
-                .padding(PADDING_TAB)
-                .style(theme::style::button::primary());
-            let apply_btn = if apply_enabled {
-                apply_btn.on_press(Message::Task(TaskMsg::DetailsAdvancedSave))
+            if advanced_options_editable(&task.status) {
+                let apply_enabled = state.advanced_dirty && !state.advanced_saving;
+                let apply_btn = button(text(fluent.get(Tr::Apply)).size(FONT_MEDIUM))
+                    .padding(PADDING_TAB)
+                    .style(theme::style::button::primary());
+                let apply_btn = if apply_enabled {
+                    apply_btn.on_press(Message::Task(TaskMsg::DetailsAdvancedSave))
+                } else {
+                    apply_btn
+                };
+                Some(
+                    column![
+                        iced::widget::rule::horizontal(1),
+                        row![iced::widget::Space::new().width(Length::Fill), apply_btn]
+                            .align_y(Alignment::Center),
+                    ]
+                    .spacing(SPACE_LG)
+                    .width(Length::Fill),
+                )
             } else {
-                apply_btn
-            };
-            Some(
-                column![
-                    iced::widget::rule::horizontal(1),
-                    row![iced::widget::Space::new().width(Length::Fill), apply_btn]
-                        .align_y(Alignment::Center),
-                ]
-                .spacing(SPACE_LG)
-                .width(Length::Fill),
-            )
+                None
+            }
         } else {
             None
         }
@@ -635,6 +630,14 @@ fn details_files_scroll(y: f32) -> Message {
     Message::Task(TaskMsg::DetailsFilesScroll(y))
 }
 
+fn advanced_options_editable(status: &crate::task::TaskStatus) -> bool {
+    !matches!(
+        status,
+        crate::task::TaskStatus::Completed | crate::task::TaskStatus::Removed
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
 fn advanced_field<'a>(
     fluent: &'a Fluent,
     label: Tr,
@@ -642,6 +645,7 @@ fn advanced_field<'a>(
     value: &'a str,
     field: AddField,
     secure: bool,
+    disabled: bool,
     ctx_mirrors: &CtxMirrors,
 ) -> Element<'a, Message> {
     let target = CtxTarget::DetailsAdvanced(field);
@@ -651,11 +655,14 @@ fn advanced_field<'a>(
         value,
         ctx_mirrors.get(&target).cloned().unwrap_or_default(),
     )
-    .on_input(move |s| Message::Task(TaskMsg::DetailsAdvancedFieldChanged(field, s)))
     .padding(theme::INPUT_PADDING)
     .size(FONT_MEDIUM)
     .width(Length::Fill)
     .style(theme::style::input::standard);
+    if !disabled {
+        input =
+            input.on_input(move |s| Message::Task(TaskMsg::DetailsAdvancedFieldChanged(field, s)));
+    }
     if secure {
         input = input.secure(true);
     }
@@ -664,12 +671,19 @@ fn advanced_field<'a>(
     } else {
         fluent.get(label)
     };
+    let body: Element<'a, Message> = if disabled {
+        input.into()
+    } else {
+        mouse_area(input)
+            .on_right_press(Message::CtxOpen(target))
+            .into()
+    };
     row![
         text(label)
             .size(FONT_SMALL)
             .style(theme::style::text::secondary)
             .width(Length::Fixed(140.0)),
-        mouse_area(input).on_right_press(Message::CtxOpen(target)),
+        body,
     ]
     .align_y(Alignment::Center)
     .width(Length::Fill)
@@ -679,10 +693,11 @@ fn advanced_field<'a>(
 fn advanced_tab<'a>(
     fluent: &'a Fluent,
     theme: &'a iced::Theme,
-    _task: &'a DownloadTask,
+    task: &'a DownloadTask,
     state: &'a DetailsDialogState,
     ctx_mirrors: &CtxMirrors,
 ) -> Element<'a, Message> {
+    let disabled = !advanced_options_editable(&task.status);
     column![
         advanced_field(
             fluent,
@@ -691,6 +706,7 @@ fn advanced_tab<'a>(
             &state.user_agent,
             AddField::UserAgent,
             false,
+            disabled,
             ctx_mirrors
         ),
         advanced_field(
@@ -700,6 +716,7 @@ fn advanced_tab<'a>(
             &state.http_user,
             AddField::HttpUser,
             false,
+            disabled,
             ctx_mirrors
         ),
         advanced_field(
@@ -709,6 +726,7 @@ fn advanced_tab<'a>(
             &state.http_passwd,
             AddField::HttpPasswd,
             true,
+            disabled,
             ctx_mirrors
         ),
         advanced_field(
@@ -718,6 +736,7 @@ fn advanced_tab<'a>(
             &state.referer,
             AddField::Referer,
             false,
+            disabled,
             ctx_mirrors
         ),
         advanced_field(
@@ -727,6 +746,7 @@ fn advanced_tab<'a>(
             &state.cookie,
             AddField::Cookie,
             false,
+            disabled,
             ctx_mirrors
         ),
         rule::horizontal(1),
@@ -740,6 +760,7 @@ fn advanced_tab<'a>(
             &state.proxy_server,
             AddField::ProxyServer,
             false,
+            disabled,
             ctx_mirrors
         ),
         advanced_field(
@@ -749,6 +770,7 @@ fn advanced_tab<'a>(
             &state.proxy_username,
             AddField::ProxyUsername,
             false,
+            disabled,
             ctx_mirrors
         ),
         advanced_field(
@@ -758,6 +780,7 @@ fn advanced_tab<'a>(
             &state.proxy_password,
             AddField::ProxyPassword,
             true,
+            disabled,
             ctx_mirrors
         ),
     ]
