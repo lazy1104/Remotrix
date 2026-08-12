@@ -198,6 +198,12 @@ pub enum TaskMsg {
     DetailsFilesFlush(u64),
     DetailsAdvancedFieldChanged(AddField, String),
     DetailsAdvancedSave,
+    MetadataProbeResult {
+        gid: String,
+        incoming: String,
+        size: Option<u64>,
+        name: Option<String>,
+    },
     CopyPath(String),
     OpenFolder(PathBuf),
 }

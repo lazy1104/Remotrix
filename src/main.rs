@@ -20,6 +20,7 @@ mod torrent_meta;
 mod trackers;
 mod tray;
 mod ui;
+mod update;
 mod updater;
 #[cfg(target_os = "windows")]
 mod win_toast;

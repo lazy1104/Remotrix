@@ -14,35 +14,33 @@ use iced::{Element, Length, Padding, Subscription, Task, Vector};
 
 use crate::config::{self, Settings};
 use crate::db::Db;
-use crate::engine::{EngineCmd, EngineEvent, EngineHandle, EventRx};
+use crate::engine::{EngineCmd, EngineHandle, EventRx};
 use crate::i18n::{Fluent, Tr};
 use crate::message::{
-    AddField, AddMsg, AddTab, CloseDialogChoice, ConfirmAction, CtxTarget, DialogMsg, EngineMsg,
-    ExtensionMsg, Message, NavMsg, Page, PathPickerId, SettingKey, SettingValue, SettingsCategory,
-    SettingsMsg, SortField, SortMsg, SortOrder, TaskFilter, TaskMsg, ToastMsg, TrayMsg, WindowCmd,
-    WindowMsg,
+    AddField, AddMsg, ConfirmAction, CtxTarget, EngineMsg, ExtensionMsg, Message, Page,
+    PathPickerId, SettingsCategory, SettingsMsg, SortField, SortMsg, SortOrder, TaskFilter,
+    TaskMsg, ToastMsg, WindowMsg,
 };
-use crate::task::{DownloadTask, TaskAdvancedOptions, TaskStatus};
+use crate::task::{DownloadTask, TaskStatus};
 use crate::ui::add_dialog::AddDialogState;
 use crate::ui::category_bar::Counts;
 use crate::ui::components::ctx_menu::{self, CtxCursor, CtxMirrors};
 use crate::ui::components::file_tree::FileTreeNode;
-use crate::ui::components::path_picker::PathPickerAction;
 use crate::ui::components::toast::{Toast, ToastGroup, ToastKind};
-use crate::ui::components::torrent_upload::{self, TorrentUploadAction};
+use crate::ui::components::torrent_upload::{self};
 use crate::ui::details_dialog::DetailsDialogState;
 use crate::ui::icons::{CATEGORY_W, SIDEBAR_W};
 use crate::ui::settings_page::SettingsUiState;
 use crate::ui::theme;
 
-struct ToastManager {
-    toasts: Vec<crate::ui::components::toast::Toast>,
-    next_toast_id: u64,
-    hovered_toast_id: Option<u64>,
+pub(crate) struct ToastManager {
+    pub(crate) toasts: Vec<crate::ui::components::toast::Toast>,
+    pub(crate) next_toast_id: u64,
+    pub(crate) hovered_toast_id: Option<u64>,
 }
 
 impl ToastManager {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             toasts: Vec::new(),
             next_toast_id: 0,
@@ -50,7 +48,7 @@ impl ToastManager {
         }
     }
 
-    fn push(&mut self, mut toast: crate::ui::components::toast::Toast) -> u64 {
+    pub(crate) fn push(&mut self, mut toast: crate::ui::components::toast::Toast) -> u64 {
         const CAP: usize = 6;
         let id = self.next_toast_id;
         self.next_toast_id += 1;
@@ -78,7 +76,7 @@ impl ToastManager {
         id
     }
 
-    fn spawn(
+    pub(crate) fn spawn(
         &mut self,
         group: ToastGroup,
         kind: ToastKind,
@@ -102,17 +100,17 @@ impl ToastManager {
         }
     }
 
-    fn hover(&mut self, id: u64) {
+    pub(crate) fn hover(&mut self, id: u64) {
         self.hovered_toast_id = Some(id);
     }
 
-    fn unhover(&mut self, id: u64) {
+    pub(crate) fn unhover(&mut self, id: u64) {
         if self.hovered_toast_id == Some(id) {
             self.hovered_toast_id = None;
         }
     }
 
-    fn tick(&mut self) {
+    pub(crate) fn tick(&mut self) {
         const TICK: Duration = Duration::from_millis(200);
         let mut expired = Vec::new();
         for toast in self.toasts.iter_mut() {
@@ -133,22 +131,22 @@ impl ToastManager {
     }
 }
 
-struct EngineUiState {
-    aria2_version: Option<String>,
-    update_check_in_flight: bool,
-    aria2_status: Option<(String, String)>,
-    aria2_fetch_error: Option<String>,
-    downloading_toast_id: Option<u64>,
-    startup_error_toast_id: Option<u64>,
-    startup_starting_toast_shown: bool,
-    degraded_notified: bool,
-    aria2_downloading: bool,
-    aria2_downloading_version: Option<String>,
-    aria2_download_progress: Option<(u64, u64)>,
+pub(crate) struct EngineUiState {
+    pub(crate) aria2_version: Option<String>,
+    pub(crate) update_check_in_flight: bool,
+    pub(crate) aria2_status: Option<(String, String)>,
+    pub(crate) aria2_fetch_error: Option<String>,
+    pub(crate) downloading_toast_id: Option<u64>,
+    pub(crate) startup_error_toast_id: Option<u64>,
+    pub(crate) startup_starting_toast_shown: bool,
+    pub(crate) degraded_notified: bool,
+    pub(crate) aria2_downloading: bool,
+    pub(crate) aria2_downloading_version: Option<String>,
+    pub(crate) aria2_download_progress: Option<(u64, u64)>,
 }
 
 impl EngineUiState {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             aria2_version: None,
             update_check_in_flight: false,
@@ -165,33 +163,33 @@ impl EngineUiState {
     }
 }
 
-struct UpdateDialogState {
-    offers: Vec<crate::ui::update_dialog::UpdateOffer>,
-    changelogs: Vec<crate::ui::update_dialog::ChangelogState>,
-    active_tab: usize,
+pub(crate) struct UpdateDialogState {
+    pub(crate) offers: Vec<crate::ui::update_dialog::UpdateOffer>,
+    pub(crate) changelogs: Vec<crate::ui::update_dialog::ChangelogState>,
+    pub(crate) active_tab: usize,
 }
 
-struct WindowState {
-    maximized: bool,
-    show_close_dialog: bool,
-    close_dialog_anim: Option<crate::ui::animation::Animated<f32>>,
-    close_dialog_dismissing: bool,
-    window_id: Option<Id>,
-    window_size: iced::Size,
-    last_resize: Option<iced::Size>,
-    geometry_dirty: bool,
-    pending_close: bool,
-    closing: bool,
-    hidden_to_tray: bool,
-    wayland: bool,
+pub(crate) struct WindowState {
+    pub(crate) maximized: bool,
+    pub(crate) show_close_dialog: bool,
+    pub(crate) close_dialog_anim: Option<crate::ui::animation::Animated<f32>>,
+    pub(crate) close_dialog_dismissing: bool,
+    pub(crate) window_id: Option<Id>,
+    pub(crate) window_size: iced::Size,
+    pub(crate) last_resize: Option<iced::Size>,
+    pub(crate) geometry_dirty: bool,
+    pub(crate) pending_close: bool,
+    pub(crate) closing: bool,
+    pub(crate) hidden_to_tray: bool,
+    pub(crate) wayland: bool,
     #[cfg(target_os = "windows")]
-    resizing: bool,
+    pub(crate) resizing: bool,
     #[cfg(target_os = "windows")]
-    resize_quiet: Option<Instant>,
+    pub(crate) resize_quiet: Option<Instant>,
 }
 
 impl WindowState {
-    fn new(window_size: iced::Size, maximized: bool) -> Self {
+    pub(crate) fn new(window_size: iced::Size, maximized: bool) -> Self {
         Self {
             maximized,
             show_close_dialog: false,
@@ -220,14 +218,14 @@ fn is_wayland() -> bool {
         || std::env::var("WAYLAND_DISPLAY").is_ok()
 }
 
-struct EngineRestartState {
-    engine_restart_pending: bool,
-    engine_restart_in_progress: bool,
-    restart_resume_gids: HashSet<String>,
+pub(crate) struct EngineRestartState {
+    pub(crate) engine_restart_pending: bool,
+    pub(crate) engine_restart_in_progress: bool,
+    pub(crate) restart_resume_gids: HashSet<String>,
 }
 
 impl EngineRestartState {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             engine_restart_pending: false,
             engine_restart_in_progress: false,
@@ -236,21 +234,21 @@ impl EngineRestartState {
     }
 }
 
-struct TaskTracking {
-    paused_gids: HashSet<String>,
-    synced_gids: HashSet<String>,
-    removed_gids: HashMap<String, Instant>,
-    sync_done: bool,
-    active_count: usize,
-    dirty: HashSet<String>,
-    completion_toasted: HashSet<String>,
-    error_notified: HashSet<String>,
-    torrent_files: HashMap<String, PathBuf>,
-    torrent_followed: HashSet<String>,
+pub(crate) struct TaskTracking {
+    pub(crate) paused_gids: HashSet<String>,
+    pub(crate) synced_gids: HashSet<String>,
+    pub(crate) removed_gids: HashMap<String, Instant>,
+    pub(crate) sync_done: bool,
+    pub(crate) active_count: usize,
+    pub(crate) dirty: HashSet<String>,
+    pub(crate) completion_toasted: HashSet<String>,
+    pub(crate) error_notified: HashSet<String>,
+    pub(crate) torrent_files: HashMap<String, PathBuf>,
+    pub(crate) torrent_followed: HashSet<String>,
 }
 
 impl TaskTracking {
-    fn new(active_count: usize) -> Self {
+    pub(crate) fn new(active_count: usize) -> Self {
         Self {
             paused_gids: HashSet::new(),
             synced_gids: HashSet::new(),
@@ -266,76 +264,76 @@ impl TaskTracking {
     }
 }
 
-struct CtxMenuState {
-    target: CtxTarget,
-    position: iced::Point,
-    clipboard: Option<String>,
+pub(crate) struct CtxMenuState {
+    pub(crate) target: CtxTarget,
+    pub(crate) position: iced::Point,
+    pub(crate) clipboard: Option<String>,
 }
 
 pub struct Remotrix {
-    page: Page,
-    task_filter: TaskFilter,
-    settings_cat: SettingsCategory,
-    tasks: HashMap<String, DownloadTask>,
-    task_order: Vec<String>,
-    handle: EngineHandle,
-    event_rx_slot: Arc<Mutex<Option<EventRx>>>,
-    wake_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>>,
-    _primary: app_single_instance::PrimaryHandle,
-    notifiers: crate::notify::Notifiers,
+    pub(crate) page: Page,
+    pub(crate) task_filter: TaskFilter,
+    pub(crate) settings_cat: SettingsCategory,
+    pub(crate) tasks: HashMap<String, DownloadTask>,
+    pub(crate) task_order: Vec<String>,
+    pub(crate) handle: EngineHandle,
+    pub(crate) event_rx_slot: Arc<Mutex<Option<EventRx>>>,
+    pub(crate) wake_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>>,
+    pub(crate) _primary: app_single_instance::PrimaryHandle,
+    pub(crate) notifiers: crate::notify::Notifiers,
     #[cfg(any(target_os = "linux", target_os = "windows"))]
-    notify_tx: tokio::sync::mpsc::UnboundedSender<crate::notify::NotifyEvent>,
+    pub(crate) notify_tx: tokio::sync::mpsc::UnboundedSender<crate::notify::NotifyEvent>,
     #[cfg(any(target_os = "linux", target_os = "windows"))]
-    notify_rx_slot:
+    pub(crate) notify_rx_slot:
         Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<crate::notify::NotifyEvent>>>>,
-    tray: crate::tray::TrayManager,
-    tray_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>>,
-    ext_msg_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>>,
-    extension_msg_tx: tokio::sync::mpsc::UnboundedSender<Message>,
-    stat_cache: Arc<std::sync::Mutex<crate::extension_api::GlobalStatCache>>,
-    add_dialog: AddDialogState,
-    drop_hover: bool,
-    about_dialog_visible: bool,
-    settings: Settings,
-    fluent: Fluent,
-    theme: iced::Theme,
-    sort_menu_open: bool,
-    sort_field: SortField,
-    sort_order: SortOrder,
-    search_query: String,
-    ua_editor: text_editor::Content,
-    bt_tracker_editor: text_editor::Content,
-    db: Option<Db>,
-    details: DetailsDialogState,
-    confirm: Option<ConfirmAction>,
-    applied_settings: Settings,
-    settings_dirty: bool,
-    applied_font_family: String,
-    restart_pending: bool,
-    settings_ui: SettingsUiState,
-    ctx_menu: Option<CtxMenuState>,
-    ctx_open: Option<(CtxTarget, iced::Point)>,
-    last_cursor: iced::Point,
-    input_cursors: CtxMirrors,
-    global_speed: Option<(u64, u64)>,
-    toasts: ToastManager,
-    engine_ui: EngineUiState,
-    window: WindowState,
-    restart: EngineRestartState,
-    tracking: TaskTracking,
-    update_dialog: Option<UpdateDialogState>,
-    app_update_in_flight: bool,
-    progress_anim: HashMap<String, crate::ui::animation::Animated<f32>>,
-    card_anim: HashMap<String, crate::ui::animation::Animated<f32>>,
-    pending_removals: HashSet<String>,
-    filter_pill: crate::ui::animation::Animated<f32>,
-    hud_anim: crate::ui::animation::Animated<f32>,
-    add_dialog_anim: crate::ui::animation::DialogAnim,
-    about_dialog_anim: crate::ui::animation::DialogAnim,
-    details_anim: crate::ui::animation::DialogAnim,
-    confirm_anim: crate::ui::animation::DialogAnim,
-    update_dialog_anim: crate::ui::animation::DialogAnim,
-    shutdown: crate::shutdown::ShutdownControl,
+    pub(crate) tray: crate::tray::TrayManager,
+    pub(crate) tray_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>>,
+    pub(crate) ext_msg_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>>,
+    pub(crate) extension_msg_tx: tokio::sync::mpsc::UnboundedSender<Message>,
+    pub(crate) stat_cache: Arc<std::sync::Mutex<crate::extension_api::GlobalStatCache>>,
+    pub(crate) add_dialog: AddDialogState,
+    pub(crate) drop_hover: bool,
+    pub(crate) about_dialog_visible: bool,
+    pub(crate) settings: Settings,
+    pub(crate) fluent: Fluent,
+    pub(crate) theme: iced::Theme,
+    pub(crate) sort_menu_open: bool,
+    pub(crate) sort_field: SortField,
+    pub(crate) sort_order: SortOrder,
+    pub(crate) search_query: String,
+    pub(crate) ua_editor: text_editor::Content,
+    pub(crate) bt_tracker_editor: text_editor::Content,
+    pub(crate) db: Option<Db>,
+    pub(crate) details: DetailsDialogState,
+    pub(crate) confirm: Option<ConfirmAction>,
+    pub(crate) applied_settings: Settings,
+    pub(crate) settings_dirty: bool,
+    pub(crate) applied_font_family: String,
+    pub(crate) restart_pending: bool,
+    pub(crate) settings_ui: SettingsUiState,
+    pub(crate) ctx_menu: Option<CtxMenuState>,
+    pub(crate) ctx_open: Option<(CtxTarget, iced::Point)>,
+    pub(crate) last_cursor: iced::Point,
+    pub(crate) input_cursors: CtxMirrors,
+    pub(crate) global_speed: Option<(u64, u64)>,
+    pub(crate) toasts: ToastManager,
+    pub(crate) engine_ui: EngineUiState,
+    pub(crate) window: WindowState,
+    pub(crate) restart: EngineRestartState,
+    pub(crate) tracking: TaskTracking,
+    pub(crate) update_dialog: Option<UpdateDialogState>,
+    pub(crate) app_update_in_flight: bool,
+    pub(crate) progress_anim: HashMap<String, crate::ui::animation::Animated<f32>>,
+    pub(crate) card_anim: HashMap<String, crate::ui::animation::Animated<f32>>,
+    pub(crate) pending_removals: HashSet<String>,
+    pub(crate) filter_pill: crate::ui::animation::Animated<f32>,
+    pub(crate) hud_anim: crate::ui::animation::Animated<f32>,
+    pub(crate) add_dialog_anim: crate::ui::animation::DialogAnim,
+    pub(crate) about_dialog_anim: crate::ui::animation::DialogAnim,
+    pub(crate) details_anim: crate::ui::animation::DialogAnim,
+    pub(crate) confirm_anim: crate::ui::animation::DialogAnim,
+    pub(crate) update_dialog_anim: crate::ui::animation::DialogAnim,
+    pub(crate) shutdown: crate::shutdown::ShutdownControl,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
@@ -534,12 +532,12 @@ fn settings_accent(settings: &Settings) -> iced::Color {
     theme::accent_color(&settings.theme_color)
 }
 
-fn rebuild_theme(state: &mut Remotrix) {
+pub(crate) fn rebuild_theme(state: &mut Remotrix) {
     let dark = theme::resolve_mode(state.settings.theme_mode, None);
     state.theme = theme::build_iced(settings_accent(&state.settings), dark);
 }
 
-fn sync_geometry_to_settings(state: &mut Remotrix) {
+pub(crate) fn sync_geometry_to_settings(state: &mut Remotrix) {
     state.settings.window_width = state.window.window_size.width;
     state.settings.window_height = state.window.window_size.height;
     state.settings.window_maximized = state.window.maximized;
@@ -548,11 +546,11 @@ fn sync_geometry_to_settings(state: &mut Remotrix) {
     state.applied_settings.window_maximized = state.window.maximized;
 }
 
-fn mark_settings_dirty(state: &mut Remotrix) {
+pub(crate) fn mark_settings_dirty(state: &mut Remotrix) {
     state.settings_dirty = state.settings != state.applied_settings;
 }
 
-fn revert_apply_settings(state: &mut Remotrix) {
+pub(crate) fn revert_apply_settings(state: &mut Remotrix) {
     state.settings = state.applied_settings.clone();
     if let Err(e) = crate::autostart::set_enabled(state.settings.autostart_enabled) {
         tracing::warn!(error = %e, "autostart sync failed on revert");
@@ -577,7 +575,7 @@ fn revert_apply_settings(state: &mut Remotrix) {
     crate::logging::set_app_level(&state.settings.log.app_level);
 }
 
-fn apply_settings(state: &mut Remotrix) -> bool {
+pub(crate) fn apply_settings(state: &mut Remotrix) -> bool {
     config::save(&state.settings);
     if let Err(e) = crate::autostart::set_enabled(state.settings.autostart_enabled) {
         tracing::warn!(error = %e, "autostart sync failed");
@@ -679,7 +677,7 @@ fn count_task_stats(state: &Remotrix) -> (usize, usize, usize) {
     (active, waiting, stopped)
 }
 
-fn sync_global_stat_cache(state: &Remotrix) {
+pub(crate) fn sync_global_stat_cache(state: &Remotrix) {
     let (active, waiting, stopped) = count_task_stats(state);
     if let Ok(mut cache) = state.stat_cache.lock() {
         cache.num_active = active;
@@ -689,7 +687,7 @@ fn sync_global_stat_cache(state: &Remotrix) {
     }
 }
 
-fn clear_all_local(state: &mut Remotrix) {
+pub(crate) fn clear_all_local(state: &mut Remotrix) {
     let gids: Vec<String> = state.tasks.keys().cloned().collect();
     for gid in gids {
         begin_task_exit(state, &gid, false);
@@ -702,7 +700,7 @@ fn clear_all_local(state: &mut Remotrix) {
     }
 }
 
-fn begin_task_exit(state: &mut Remotrix, gid: &str, delete_db: bool) {
+pub(crate) fn begin_task_exit(state: &mut Remotrix, gid: &str, delete_db: bool) {
     if !state.tasks.contains_key(gid) || state.pending_removals.contains(gid) {
         return;
     }
@@ -732,7 +730,7 @@ fn begin_task_exit(state: &mut Remotrix, gid: &str, delete_db: bool) {
     state.tracking.dirty.remove(gid);
 }
 
-fn finalize_task_removal(state: &mut Remotrix, gid: &str) {
+pub(crate) fn finalize_task_removal(state: &mut Remotrix, gid: &str) {
     if let Some(t) = state.tasks.remove(gid) {
         if t.status == TaskStatus::Active {
             state.tracking.active_count = state.tracking.active_count.saturating_sub(1);
@@ -753,11 +751,11 @@ fn finalize_task_removal(state: &mut Remotrix, gid: &str) {
 const REMOVED_GID_GRACE: Duration = Duration::from_secs(60);
 
 #[cfg(target_os = "windows")]
-const RESIZE_TICK_MS: u64 = 33;
+pub(crate) const RESIZE_TICK_MS: u64 = 33;
 #[cfg(target_os = "windows")]
-const RESIZE_QUIET_MS: u64 = 150;
+pub(crate) const RESIZE_QUIET_MS: u64 = 150;
 
-fn gid_recently_removed(state: &mut Remotrix, gid: &str) -> bool {
+pub(crate) fn gid_recently_removed(state: &mut Remotrix, gid: &str) -> bool {
     match state.tracking.removed_gids.get(gid) {
         Some(&removed_at) if removed_at.elapsed() < REMOVED_GID_GRACE => true,
         Some(_) => {
@@ -773,50 +771,57 @@ fn resolve_metadata_name(path: &std::path::Path) -> Option<String> {
     crate::torrent_meta::parse_torrent(&bytes).map(|m| m.name)
 }
 
-fn apply_task_name(db: &Option<Db>, gid: &str, t: &mut DownloadTask, incoming: String) {
-    if incoming.starts_with("[METADATA]") {
-        let placeholder =
-            t.name.is_empty() || t.name.starts_with("[METADATA]") || t.name == "magnet:";
-        if placeholder {
-            let path = t.save_dir.join(&incoming);
-            let size = std::fs::metadata(&path).ok().map(|m| m.len());
-            if size.is_some() && size != t.metadata_probe_size {
-                t.metadata_probe_size = size;
-                if let Some(real) = resolve_metadata_name(&path) {
-                    let real = std::path::Path::new(&real)
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or_default()
-                        .to_string();
-                    if !real.is_empty() {
-                        t.name = real;
-                        if let Some(ref db) = db {
-                            db.update_name(gid, &t.name);
-                        }
-                        return;
-                    }
-                }
-            }
-        } else {
-            return;
-        }
-        if !t.name.starts_with("[METADATA]") {
+pub(crate) fn apply_task_name(
+    db: &Option<Db>,
+    gid: &str,
+    t: &mut DownloadTask,
+    incoming: String,
+) -> Task<Message> {
+    if !incoming.starts_with("[METADATA]") {
+        if t.name != incoming {
             t.name = incoming;
             if let Some(ref db) = db {
                 db.update_name(gid, &t.name);
             }
         }
-        return;
+        return Task::none();
     }
-    if t.name != incoming {
-        t.name = incoming;
-        if let Some(ref db) = db {
-            db.update_name(gid, &t.name);
-        }
+    let placeholder = t.name.is_empty() || t.name.starts_with("[METADATA]") || t.name == "magnet:";
+    if !placeholder {
+        return Task::none();
     }
+    let path = t.save_dir.join(&incoming);
+    let prev_size = t.metadata_probe_size;
+    let gid = gid.to_string();
+    Task::perform(
+        async move {
+            let size = std::fs::metadata(&path).ok().map(|m| m.len());
+            let name = match size {
+                Some(s) if Some(s) != prev_size => resolve_metadata_name(&path)
+                    .map(|real| {
+                        std::path::Path::new(&real)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or_default()
+                            .to_string()
+                    })
+                    .filter(|n| !n.is_empty()),
+                _ => None,
+            };
+            (gid, incoming, size, name)
+        },
+        |(gid, incoming, size, name)| {
+            Message::Task(crate::message::TaskMsg::MetadataProbeResult {
+                gid,
+                incoming,
+                size,
+                name,
+            })
+        },
+    )
 }
 
-fn clear_completed_local(state: &mut Remotrix, gids: &[String]) {
+pub(crate) fn clear_completed_local(state: &mut Remotrix, gids: &[String]) {
     if let Some(ref db) = state.db {
         db.clear_completed(gids);
     }
@@ -835,7 +840,7 @@ fn clear_completed_local(state: &mut Remotrix, gids: &[String]) {
     }
 }
 
-fn flush_dirty(state: &mut Remotrix) {
+pub(crate) fn flush_dirty(state: &mut Remotrix) {
     if state.tracking.dirty.is_empty() {
         return;
     }
@@ -871,7 +876,7 @@ fn flush_dirty(state: &mut Remotrix) {
     state.tracking.dirty.clear();
 }
 
-fn begin_close(state: &mut Remotrix) -> Task<Message> {
+pub(crate) fn begin_close(state: &mut Remotrix) -> Task<Message> {
     if state.window.closing {
         return Task::none();
     }
@@ -906,7 +911,7 @@ fn begin_close(state: &mut Remotrix) -> Task<Message> {
     hide.chain(shutdown_timeout_task())
 }
 
-fn shutdown_timeout_task() -> Task<Message> {
+pub(crate) fn shutdown_timeout_task() -> Task<Message> {
     Task::perform(
         async move {
             tokio::time::sleep(Duration::from_secs(5)).await;
@@ -915,7 +920,7 @@ fn shutdown_timeout_task() -> Task<Message> {
     )
 }
 
-fn engine_restart_safety_timeout_task() -> Task<Message> {
+pub(crate) fn engine_restart_safety_timeout_task() -> Task<Message> {
     Task::perform(
         async move {
             tokio::time::sleep(Duration::from_secs(10)).await;
@@ -924,7 +929,7 @@ fn engine_restart_safety_timeout_task() -> Task<Message> {
     )
 }
 
-fn engine_restart_cooldown_task() -> Task<Message> {
+pub(crate) fn engine_restart_cooldown_task() -> Task<Message> {
     Task::perform(
         async move {
             tokio::time::sleep(Duration::from_secs(1)).await;
@@ -933,7 +938,7 @@ fn engine_restart_cooldown_task() -> Task<Message> {
     )
 }
 
-fn finalize_close(state: &mut Remotrix) -> Task<Message> {
+pub(crate) fn finalize_close(state: &mut Remotrix) -> Task<Message> {
     if !state.window.closing {
         return Task::none();
     }
@@ -963,14 +968,14 @@ fn finalize_close(state: &mut Remotrix) -> Task<Message> {
     }
 }
 
-fn spawn_restart_if_pending(state: &mut Remotrix) {
+pub(crate) fn spawn_restart_if_pending(state: &mut Remotrix) {
     if state.restart_pending {
         state.restart_pending = false;
         crate::app_updater::relaunch_after_update();
     }
 }
 
-fn read_clipboard(state: &Remotrix) -> Task<Message> {
+pub(crate) fn read_clipboard(state: &Remotrix) -> Task<Message> {
     if !state.settings.detect_clipboard_on_start {
         return Task::none();
     }
@@ -1009,7 +1014,7 @@ fn init_ctx_mirrors() -> CtxMirrors {
     mirrors
 }
 
-fn ctx_value(state: &Remotrix, target: CtxTarget) -> &str {
+pub(crate) fn ctx_value(state: &Remotrix, target: CtxTarget) -> &str {
     match target {
         CtxTarget::Search => &state.search_query,
         CtxTarget::AddOut => &state.add_dialog.out,
@@ -1040,11 +1045,11 @@ fn ctx_value(state: &Remotrix, target: CtxTarget) -> &str {
     }
 }
 
-fn ctx_cur(state: &Remotrix, target: CtxTarget) -> Option<CtxCursor> {
+pub(crate) fn ctx_cur(state: &Remotrix, target: CtxTarget) -> Option<CtxCursor> {
     state.input_cursors.get(&target).map(|c| *c.borrow())
 }
 
-fn ctx_paste_message(state: &Remotrix, target: CtxTarget, text: String) -> Message {
+pub(crate) fn ctx_paste_message(state: &Remotrix, target: CtxTarget, text: String) -> Message {
     match target {
         CtxTarget::AddUrl => Message::Add(AddMsg::UrlEditor(text_editor::Action::Edit(
             text_editor::Edit::Paste(Arc::new(text)),
@@ -1084,13 +1089,13 @@ fn ctx_paste_message(state: &Remotrix, target: CtxTarget, text: String) -> Messa
     }
 }
 
-fn pill_to_index(state: &mut Remotrix, index: usize) {
+pub(crate) fn pill_to_index(state: &mut Remotrix, index: usize) {
     state
         .filter_pill
         .set_target(index as f32 * crate::ui::dims::FILTER_STEP);
 }
 
-fn set_page(state: &mut Remotrix, page: Page) {
+pub(crate) fn set_page(state: &mut Remotrix, page: Page) {
     if state.page != page {
         state.page = page;
         let index = match page {
@@ -1104,2979 +1109,7 @@ fn set_page(state: &mut Remotrix, page: Page) {
 }
 
 pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
-    match message {
-        Message::Nav(NavMsg::NavigatePage(page)) => {
-            state.settings_ui.download_picker.close_history();
-            if page == Page::Tasks && state.page == Page::Settings && state.settings_dirty {
-                state.confirm = Some(ConfirmAction::LeaveSettings { target: page });
-                state.confirm_anim.open();
-            } else {
-                set_page(state, page);
-            }
-        }
-        Message::Nav(NavMsg::SetTaskFilter(filter)) => {
-            state.task_filter = filter;
-            pill_to_index(state, crate::ui::category_bar::task_filter_index(filter));
-        }
-        Message::Nav(NavMsg::SetSettingsCategory(cat)) => {
-            state.settings_ui.download_picker.close_history();
-            state.settings_cat = cat;
-            pill_to_index(state, crate::ui::category_bar::settings_cat_index(cat));
-            return iced::widget::operation::scroll_to::<Message>(
-                iced::widget::Id::new(crate::ui::settings_page::SETTINGS_SCROLL_ID),
-                iced::widget::operation::AbsoluteOffset::<f32>::default(),
-            );
-        }
-        Message::Add(AddMsg::OpenAddDialog) => {
-            open_add_dialog(state);
-        }
-        Message::Add(AddMsg::CancelAdd) => {
-            state.add_dialog.save_picker.close_history();
-            state.add_dialog_anim.begin_exit();
-        }
-        Message::Add(AddMsg::SelectAddTab(tab)) => {
-            state.add_dialog.active_tab = tab;
-        }
-        Message::Add(AddMsg::TorrentUpload(event)) => {
-            if let Some(TorrentUploadAction::Browse) = state.add_dialog.handle_torrent_event(event)
-            {
-                return pick_path(PathPickerId::Torrent);
-            }
-        }
-        Message::Add(AddMsg::TorrentTreeExpand(path)) => {
-            state.add_dialog.toggle_torrent_expand(&path);
-        }
-        Message::Add(AddMsg::TorrentTreeToggle(path)) => {
-            state.add_dialog.toggle_torrent_node(&path);
-        }
-        Message::Add(AddMsg::TorrentFilesSelectAll) => {
-            state.add_dialog.set_all_torrent_files(true);
-        }
-        Message::Add(AddMsg::TorrentFilesSelectNone) => {
-            state.add_dialog.set_all_torrent_files(false);
-        }
-        Message::Add(AddMsg::TorrentFilesScroll(off)) => {
-            state.add_dialog.torrent_scroll_offset = off;
-        }
-        Message::Add(AddMsg::TorrentFilesTogglePanel) => {
-            state.add_dialog.toggle_torrent_panel();
-        }
-        Message::Add(AddMsg::FileHovered) => {
-            state.drop_hover = true;
-            if state.add_dialog.is_visible() && state.add_dialog.active_tab == AddTab::Torrent {
-                state.add_dialog.torrent_upload.set_dragging(true);
-            }
-        }
-        Message::Add(AddMsg::FilesHoveredLeft) => {
-            state.drop_hover = false;
-            if state.add_dialog.is_visible() {
-                state.add_dialog.torrent_upload.set_dragging(false);
-            }
-        }
-        Message::Add(AddMsg::FileDropped(path)) => {
-            state.drop_hover = false;
-            if state.add_dialog.is_visible() {
-                state.add_dialog.torrent_upload.set_dragging(false);
-            }
-            if state.window.show_close_dialog
-                || state.about_dialog_visible
-                || state.confirm.is_some()
-                || state.update_dialog.is_some()
-            {
-                return Task::none();
-            }
-            let prefs = state.settings.clipboard_types;
-            let path_str = path.to_string_lossy().to_string();
-            return Task::perform(
-                async move { crate::clipboard_watch::parse_clipboard(&path_str, prefs) },
-                |payload| Message::Window(WindowMsg::DroppedFileParsed(payload)),
-            );
-        }
-        Message::Window(WindowMsg::DroppedFileParsed(payload)) => {
-            if state.window.show_close_dialog
-                || state.about_dialog_visible
-                || state.confirm.is_some()
-                || state.update_dialog.is_some()
-            {
-                return Task::none();
-            }
-            let Some(payload) = payload else {
-                spawn_toast(
-                    state,
-                    ToastGroup::Task,
-                    ToastKind::Warning,
-                    state.fluent.get(Tr::NoDownloadableContent),
-                    Some(Duration::from_secs(4)),
-                    false,
-                );
-                return Task::none();
-            };
-            if let crate::clipboard_watch::ClipboardPayload::Torrent(ref path) = payload {
-                if !torrent_upload::is_valid_torrent_file(path) {
-                    spawn_toast(
-                        state,
-                        ToastGroup::Task,
-                        ToastKind::Warning,
-                        state.fluent.get(Tr::InvalidTorrent),
-                        Some(Duration::from_secs(4)),
-                        false,
-                    );
-                    return Task::none();
-                }
-            }
-            if state.add_dialog.is_visible() {
-                state.add_dialog.apply_payload(payload);
-                return Task::none();
-            }
-            state.add_dialog.open_with(
-                state.settings.download_dir.clone(),
-                state.settings.split,
-                payload,
-            );
-            state.add_dialog_anim.open();
-            spawn_toast(
-                state,
-                ToastGroup::Task,
-                ToastKind::Normal,
-                state.fluent.get(Tr::DropDetected),
-                Some(Duration::from_secs(3)),
-                false,
-            );
-            return Task::none();
-        }
-        Message::Add(AddMsg::UrlEditor(action)) => {
-            state.add_dialog.url_editor.perform(action);
-        }
-        Message::Add(AddMsg::PathPicker(id, event)) => {
-            let action = picker_mut(state, id).update(event);
-            match action {
-                Some(PathPickerAction::Copy(s)) => {
-                    return iced::clipboard::write::<Message>(s);
-                }
-                Some(PathPickerAction::Browse) => {
-                    return pick_path(id);
-                }
-                Some(PathPickerAction::Select(p)) => {
-                    apply_path(state, id, p);
-                }
-                Some(PathPickerAction::Open(p)) => {
-                    return open_path_in_manager(p);
-                }
-                None => {}
-            }
-        }
-        Message::Add(AddMsg::PathPicked(id, maybe_path)) => {
-            tracing::debug!(?id, picked = maybe_path.is_some(), "ui: path picked");
-            if let Some(p) = maybe_path {
-                apply_path(state, id, p);
-            }
-        }
-        Message::Task(TaskMsg::CopyPath(s)) => {
-            return copy_to_clipboard(state, s);
-        }
-        Message::Task(TaskMsg::OpenFolder(p)) => {
-            return open_path_in_manager(p);
-        }
-        Message::Add(AddMsg::SplitChanged(value)) => {
-            if let Ok(n) = value.parse::<u16>() {
-                state.add_dialog.split = n.max(1);
-            }
-        }
-        Message::Add(AddMsg::ToggleAdvanced(value)) => {
-            state.add_dialog.advanced_open = value;
-        }
-        Message::Add(AddMsg::AddFieldChanged(field, value)) => {
-            let add = &mut state.add_dialog;
-            match field {
-                AddField::Out => add.out = value,
-                AddField::UserAgent => add.user_agent = value,
-                AddField::HttpUser => add.http_user = value,
-                AddField::HttpPasswd => add.http_passwd = value,
-                AddField::Referer => add.referer = value,
-                AddField::Cookie => add.cookie = value,
-                AddField::ProxyServer => add.proxy_server = value,
-                AddField::ProxyUsername => add.proxy_username = value,
-                AddField::ProxyPassword => add.proxy_password = value,
-            }
-        }
-        Message::Add(AddMsg::AddDownload) => {
-            if state.add_dialog_anim.is_dismissing() {
-                return Task::none();
-            }
-            if state.add_dialog.can_submit() {
-                let nav = state.settings.nav_to_tasks_after_add;
-
-                let advanced = TaskAdvancedOptions {
-                    out: if state.add_dialog.url_count() == 1 {
-                        state.add_dialog.out.clone()
-                    } else {
-                        String::new()
-                    },
-                    user_agent: state.add_dialog.user_agent.clone(),
-                    http_user: state.add_dialog.http_user.clone(),
-                    http_passwd: state.add_dialog.http_passwd.clone(),
-                    referer: state.add_dialog.referer.clone(),
-                    cookie: state.add_dialog.cookie.clone(),
-                    proxy_server: state.add_dialog.proxy_server.clone(),
-                    proxy_username: state.add_dialog.proxy_username.clone(),
-                    proxy_password: state.add_dialog.proxy_password.clone(),
-                };
-
-                let tpath_str = state.add_dialog.torrent_upload.path().to_string();
-                if !tpath_str.is_empty() && state.add_dialog.active_tab == AddTab::Torrent {
-                    let tpath = PathBuf::from(&tpath_str);
-                    let save_dir = PathBuf::from(state.add_dialog.save_picker.value());
-                    let mut torrent_advanced = advanced.clone();
-                    torrent_advanced.out.clear();
-                    let total_files = state.add_dialog.torrent_files.len();
-                    let selected = state.add_dialog.selected_file_indices();
-                    let select_files = if total_files == 0 || selected.len() == total_files {
-                        None
-                    } else {
-                        Some(selected)
-                    };
-                    if state
-                        .handle
-                        .cmd_tx
-                        .send(EngineCmd::AddTorrent {
-                            path: tpath,
-                            save_dir,
-                            split: state.add_dialog.split,
-                            advanced: torrent_advanced,
-                            select_files,
-                        })
-                        .is_err()
-                    {
-                        tracing::warn!("ui: add torrent cmd send failed");
-                    }
-                    tracing::info!("ui: torrent submitted");
-                    state.add_dialog_anim.begin_exit();
-                    if nav {
-                        set_page(state, Page::Tasks);
-                    }
-                    return Task::none();
-                }
-
-                let urls: Vec<String> = state
-                    .add_dialog
-                    .url_editor
-                    .text()
-                    .lines()
-                    .map(|l| l.trim().to_string())
-                    .filter(|l| !l.is_empty())
-                    .collect();
-                if !urls.is_empty() {
-                    let save_dir = PathBuf::from(state.add_dialog.save_picker.value());
-                    let bt_metadata_only = !state.settings.aria2.bt_auto_download;
-                    if state
-                        .handle
-                        .cmd_tx
-                        .send(EngineCmd::AddDownload {
-                            urls: urls.clone(),
-                            save_dir,
-                            split: state.add_dialog.split,
-                            advanced,
-                            bt_metadata_only,
-                        })
-                        .is_err()
-                    {
-                        tracing::warn!("ui: add download cmd send failed");
-                    }
-                    tracing::info!(count = urls.len(), "ui: add download submitted");
-                    state.add_dialog_anim.begin_exit();
-                    if nav {
-                        set_page(state, Page::Tasks);
-                    }
-                } else {
-                    tracing::debug!("ui: add download skipped (no urls after filter)");
-                }
-            }
-        }
-        Message::Task(TaskMsg::PauseTask(gid)) => {
-            state.tracking.paused_gids.insert(gid.clone());
-            if state.handle.cmd_tx.send(EngineCmd::Pause(gid)).is_err() {
-                tracing::warn!("ui: pause cmd send failed");
-            }
-            refresh_tray(state);
-        }
-        Message::Task(TaskMsg::ResumeTask(gid)) => {
-            state.tracking.paused_gids.remove(&gid);
-            if state.handle.cmd_tx.send(EngineCmd::Resume(gid)).is_err() {
-                tracing::warn!("ui: resume cmd send failed");
-            }
-            refresh_tray(state);
-        }
-        Message::Task(TaskMsg::RedownloadTask(gid)) => {
-            state.tracking.paused_gids.remove(&gid);
-            state.tracking.torrent_followed.remove(&gid);
-            let bt_metadata_only = !state.settings.aria2.bt_auto_download;
-            let (url, save_dir, split) = match state.tasks.get(&gid) {
-                Some(t) => {
-                    let url = if !t.url.is_empty() {
-                        t.url.clone()
-                    } else {
-                        let hash = t.info_hash.clone().unwrap_or_default();
-                        if hash.is_empty() {
-                            tracing::warn!(?gid, "ui: redownload skipped (no url or info hash)");
-                            return Task::none();
-                        }
-                        format!("magnet:?xt=urn:btih:{hash}")
-                    };
-                    (url, t.save_dir.clone(), state.settings.split)
-                }
-                None => return Task::none(),
-            };
-            if state
-                .handle
-                .cmd_tx
-                .send(EngineCmd::Redownload {
-                    gid: gid.clone(),
-                    url,
-                    save_dir,
-                    split,
-                    bt_metadata_only,
-                })
-                .is_err()
-            {
-                tracing::warn!("ui: redownload cmd send failed");
-            }
-            if let Some(t) = state.tasks.get_mut(&gid) {
-                t.downloaded = 0;
-                t.total = 0;
-                t.speed = 0;
-                t.upload_speed = 0;
-                t.connections = 0;
-            }
-        }
-        Message::Task(TaskMsg::RemoveTask(gid)) => {
-            if state.confirm_anim.is_dismissing() {
-                return Task::none();
-            }
-            state.tracking.paused_gids.remove(&gid);
-            if state
-                .handle
-                .cmd_tx
-                .send(EngineCmd::Remove {
-                    gid,
-                    delete_files: false,
-                })
-                .is_err()
-            {
-                tracing::warn!("ui: remove cmd send failed");
-            }
-            state.confirm_anim.begin_exit();
-            let _ = spawn_toast(
-                state,
-                ToastGroup::Task,
-                ToastKind::Normal,
-                state.fluent.get(Tr::TaskRemoved),
-                Some(Duration::from_secs(3)),
-                false,
-            );
-        }
-        Message::Task(TaskMsg::DeleteTask(gid)) => {
-            if state.confirm_anim.is_dismissing() {
-                return Task::none();
-            }
-            state.tracking.paused_gids.remove(&gid);
-            if state
-                .handle
-                .cmd_tx
-                .send(EngineCmd::Remove {
-                    gid,
-                    delete_files: true,
-                })
-                .is_err()
-            {
-                tracing::warn!("ui: delete cmd send failed");
-            }
-            state.confirm_anim.begin_exit();
-            let _ = spawn_toast(
-                state,
-                ToastGroup::Task,
-                ToastKind::Normal,
-                state.fluent.get(Tr::TaskDeleted),
-                Some(Duration::from_secs(3)),
-                false,
-            );
-        }
-        Message::Task(TaskMsg::StartAll) => {
-            state.tracking.paused_gids.clear();
-            if state.handle.cmd_tx.send(EngineCmd::ResumeAll).is_err() {
-                tracing::warn!("ui: resume all cmd send failed");
-            }
-            refresh_tray(state);
-        }
-        Message::Task(TaskMsg::PauseAll) => {
-            state.tracking.paused_gids.extend(
-                state
-                    .tasks
-                    .values()
-                    .filter(|t| t.status == TaskStatus::Active)
-                    .map(|t| t.gid.clone()),
-            );
-            if state.handle.cmd_tx.send(EngineCmd::PauseAll).is_err() {
-                tracing::warn!("ui: pause all cmd send failed");
-            }
-            refresh_tray(state);
-        }
-        Message::Task(TaskMsg::DeleteAll) => {
-            if state.confirm_anim.is_dismissing() {
-                return Task::none();
-            }
-            if state
-                .handle
-                .cmd_tx
-                .send(EngineCmd::RemoveAll { delete_files: true })
-                .is_err()
-            {
-                tracing::warn!("ui: remove all cmd send failed");
-            }
-            clear_all_local(state);
-            state.confirm_anim.begin_exit();
-            let _ = spawn_toast(
-                state,
-                ToastGroup::Task,
-                ToastKind::Normal,
-                state.fluent.get(Tr::TasksDeleted),
-                Some(Duration::from_secs(3)),
-                false,
-            );
-        }
-        Message::Task(TaskMsg::RemoveAllRecords) => {
-            if state.confirm_anim.is_dismissing() {
-                return Task::none();
-            }
-            if state
-                .handle
-                .cmd_tx
-                .send(EngineCmd::RemoveAll {
-                    delete_files: false,
-                })
-                .is_err()
-            {
-                tracing::warn!("ui: remove all records cmd send failed");
-            }
-            clear_all_local(state);
-            state.confirm_anim.begin_exit();
-            let _ = spawn_toast(
-                state,
-                ToastGroup::Task,
-                ToastKind::Normal,
-                state.fluent.get(Tr::TasksRemoved),
-                Some(Duration::from_secs(3)),
-                false,
-            );
-        }
-        Message::Task(TaskMsg::ClearCompleted) => {
-            if state.confirm_anim.is_dismissing() {
-                return Task::none();
-            }
-            let completed: Vec<String> = state
-                .tasks
-                .iter()
-                .filter(|(_, t)| matches!(t.status, TaskStatus::Completed | TaskStatus::Removed))
-                .map(|(gid, _)| gid.clone())
-                .collect();
-            clear_completed_local(state, &completed);
-            state.confirm_anim.begin_exit();
-        }
-        Message::Task(TaskMsg::Refresh) => {
-            if state.handle.cmd_tx.send(EngineCmd::Snapshot).is_err() {
-                tracing::warn!("ui: snapshot cmd send failed");
-            }
-        }
-        Message::Sort(SortMsg::SortSelected(field)) => {
-            state.sort_field = field;
-        }
-        Message::Sort(SortMsg::ToggleSortMenu) => {
-            state.sort_menu_open = !state.sort_menu_open;
-        }
-        Message::Sort(SortMsg::CloseSortMenu) => {
-            state.sort_menu_open = false;
-        }
-        Message::Sort(SortMsg::ToggleSortOrder) => {
-            state.sort_order = match state.sort_order {
-                SortOrder::Asc => SortOrder::Desc,
-                SortOrder::Desc => SortOrder::Asc,
-            };
-        }
-        Message::Sort(SortMsg::SearchChanged(query)) => {
-            state.search_query = query;
-        }
-        Message::Dialog(DialogMsg::OpenAbout) => {
-            state.about_dialog_visible = true;
-            state.about_dialog_anim.open();
-        }
-        Message::Dialog(DialogMsg::CloseAbout) => {
-            state.about_dialog_anim.begin_exit();
-        }
-        Message::Settings(SettingsMsg::SettingChanged(key, value)) => {
-            match key {
-                SettingKey::MaxConcurrent => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.max_concurrent = n.max(1) as u32;
-                    }
-                }
-                SettingKey::Split => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.split = n.max(1) as u16;
-                    }
-                }
-                SettingKey::DownloadLimit => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.download_limit_kb = n;
-                    }
-                }
-                SettingKey::UploadLimit => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.upload_limit_kb = n;
-                    }
-                }
-                SettingKey::MaxConnectionPerServer => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.aria2.max_connection_per_server = n.max(1) as u32;
-                    }
-                }
-                SettingKey::MinSplitSize => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.aria2.min_split_size_mb = n;
-                    }
-                }
-                SettingKey::AutoFileRenaming => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.aria2.auto_file_renaming = b;
-                    }
-                }
-                SettingKey::AllowOverwrite => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.aria2.allow_overwrite = b;
-                    }
-                }
-                SettingKey::Continue => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.aria2.r#continue = b;
-                    }
-                }
-                SettingKey::CheckIntegrity => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.aria2.check_integrity = b;
-                    }
-                }
-                SettingKey::MaxDownloadLimit => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.aria2.max_download_limit_kb = n;
-                    }
-                }
-                SettingKey::MaxUploadLimit => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.aria2.max_upload_limit_kb = n;
-                    }
-                }
-                SettingKey::LowestSpeedLimit => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.aria2.lowest_speed_limit_kb = n;
-                    }
-                }
-                SettingKey::ProxyServer => {
-                    if let SettingValue::Text(s) = value {
-                        state.settings.aria2.proxy_server = s;
-                    }
-                }
-                SettingKey::ProxyUsername => {
-                    if let SettingValue::Text(s) = value {
-                        state.settings.aria2.proxy_username = s;
-                    }
-                }
-                SettingKey::ProxyPassword => {
-                    if let SettingValue::Text(s) = value {
-                        state.settings.aria2.proxy_password = s;
-                    }
-                }
-                SettingKey::MaxTries => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.aria2.max_tries = n as u32;
-                    }
-                }
-                SettingKey::RetryWait => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.aria2.retry_wait = n as u32;
-                    }
-                }
-                SettingKey::ConnectTimeout => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.aria2.connect_timeout = n as u32;
-                    }
-                }
-                SettingKey::TrackerAutoSync => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.tracker.auto_sync = b;
-                    }
-                }
-                SettingKey::TrackerSyncInterval => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.tracker.sync_interval_hours = n as u32;
-                    }
-                }
-                SettingKey::AutoUpdateEnabled => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.update.enabled = b;
-                    }
-                }
-                SettingKey::UpdateCheckInterval => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.update.interval_hours = n as u32;
-                    }
-                }
-                SettingKey::UpdateScope => {
-                    if let SettingValue::Text(s) = value {
-                        if let Some(scope) = crate::config::UpdateScope::from_str(&s) {
-                            state.settings.update.scope = scope;
-                        }
-                    }
-                }
-                SettingKey::Aria2SilentUpdate => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.update.aria2_silent_update = b;
-                    }
-                }
-                SettingKey::SeedRatio => {
-                    if let SettingValue::NumF(n) = value {
-                        state.settings.aria2.seed_ratio = n.max(0.0);
-                    }
-                }
-                SettingKey::SeedTime => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.aria2.seed_time = n as u32;
-                    }
-                }
-                SettingKey::EnableDht => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.aria2.enable_dht = b;
-                    }
-                }
-                SettingKey::BtRequireCrypto => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.aria2.bt_require_crypto = b;
-                    }
-                }
-                SettingKey::BtEnableLpd => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.aria2.bt_enable_lpd = b;
-                    }
-                }
-                SettingKey::EnablePeerExchange => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.aria2.enable_peer_exchange = b;
-                    }
-                }
-                SettingKey::BtAutoDownload => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.aria2.bt_auto_download = b;
-                    }
-                }
-                SettingKey::FileAllocation => {
-                    if let SettingValue::Text(s) = value {
-                        state.settings.aria2.file_allocation = s;
-                    }
-                }
-                SettingKey::DiskCache => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.aria2.disk_cache_mb = n;
-                    }
-                }
-                SettingKey::EnableProxy => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.aria2.proxy_enabled = b;
-                    }
-                }
-                SettingKey::NavToTasksAfterAdd => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.nav_to_tasks_after_add = b;
-                    }
-                }
-                SettingKey::CloseToTray => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.close_to_tray = b;
-                    }
-                }
-                SettingKey::AutoStart => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.autostart_enabled = b;
-                    }
-                }
-                SettingKey::StartHiddenOnAutostart => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.start_hidden_on_autostart = b;
-                    }
-                }
-                SettingKey::DeleteTorrentAfterComplete => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.delete_torrent_after_complete = b;
-                    }
-                }
-                SettingKey::CleanupCompletedOnClose => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.cleanup_completed_on_close = b;
-                    }
-                }
-                SettingKey::RemoveTaskIfFilesMissing => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.remove_task_if_files_missing = b;
-                    }
-                }
-                SettingKey::NotificationDownloadComplete => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.notifications.download_complete = b;
-                    }
-                }
-                SettingKey::NotificationDownloadError => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.notifications.download_error = b;
-                    }
-                }
-                SettingKey::NotificationEngineDegraded => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.notifications.engine_degraded = b;
-                    }
-                }
-                SettingKey::NotificationDownloadAdded => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.notifications.download_added = b;
-                    }
-                }
-                SettingKey::ExtensionApiEnabled => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.extension.enabled = b;
-                    }
-                }
-                SettingKey::ExtensionApiPort => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.extension.port = n.clamp(
-                            crate::config::EXTENSION_API_MIN_PORT as u64,
-                            crate::config::EXTENSION_API_MAX_PORT as u64,
-                        ) as u16;
-                    }
-                }
-                SettingKey::ExtensionApiSecret => {
-                    if let SettingValue::Text(s) = value {
-                        state.settings.extension.secret = s;
-                    }
-                }
-                SettingKey::ExtensionAutoSubmit => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.extension.auto_submit = b;
-                    }
-                }
-                SettingKey::DetectClipboardOnStart => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.detect_clipboard_on_start = b;
-                    }
-                }
-                SettingKey::ClipboardHttp => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.clipboard_types.http = b;
-                    }
-                }
-                SettingKey::ClipboardFtp => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.clipboard_types.ftp = b;
-                    }
-                }
-                SettingKey::ClipboardMagnet => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.clipboard_types.magnet = b;
-                    }
-                }
-                SettingKey::ClipboardEd2k => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.clipboard_types.ed2k = b;
-                    }
-                }
-                SettingKey::ClipboardThunder => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.clipboard_types.thunder = b;
-                    }
-                }
-                SettingKey::ClipboardBtInfohash => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.clipboard_types.bt_infohash = b;
-                    }
-                }
-                SettingKey::Ed2kServer => {
-                    if let SettingValue::Text(s) = value {
-                        state.settings.aria2.ed2k_server = s;
-                    }
-                }
-                SettingKey::Ed2kListenPort => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.aria2.ed2k_listen_port = n as u16;
-                    }
-                }
-                SettingKey::Ed2kUdpListenPort => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.aria2.ed2k_udp_listen_port = n as u16;
-                    }
-                }
-                SettingKey::Ed2kUploadSlots => {
-                    if let SettingValue::Num(n) = value {
-                        state.settings.aria2.ed2k_upload_slots = n.max(1) as u16;
-                    }
-                }
-                SettingKey::SpeedLimitScheduleEnabled => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.speed_limit_schedule.enabled = b;
-                    }
-                }
-                SettingKey::ScheduleStart => {
-                    if let SettingValue::Text(s) = value {
-                        if crate::scheduler::parse_hhmm(&s).is_some() {
-                            state.settings.speed_limit_schedule.start = s;
-                        }
-                    }
-                }
-                SettingKey::ScheduleEnd => {
-                    if let SettingValue::Text(s) = value {
-                        if crate::scheduler::parse_hhmm(&s).is_some() {
-                            state.settings.speed_limit_schedule.end = s;
-                        }
-                    }
-                }
-                SettingKey::AppLogLevel => {
-                    if let SettingValue::Text(s) = value {
-                        state.settings.log.app_level = crate::logging::normalize_app_level(&s);
-                    }
-                }
-                SettingKey::EngineLogLevel => {
-                    if let SettingValue::Text(s) = value {
-                        state.settings.log.engine_level =
-                            crate::logging::normalize_engine_level(&s);
-                    }
-                }
-            }
-            mark_settings_dirty(state);
-        }
-        Message::Settings(SettingsMsg::ApplySettings) => {
-            apply_settings(state);
-        }
-        Message::Settings(SettingsMsg::ResetSettings) => {
-            revert_apply_settings(state);
-            config::save(&state.settings);
-        }
-        Message::Settings(SettingsMsg::ClearLogs) => match crate::logging::clear_logs() {
-            Ok(count) => {
-                tracing::info!(count, "ui: cleared log files");
-                let toast = Toast::new(ToastKind::Success, state.fluent.get(Tr::LogsCleared))
-                    .group(ToastGroup::Logs)
-                    .close_after(Some(Duration::from_secs(3)));
-                state.toasts.push(toast);
-            }
-            Err(e) => {
-                tracing::warn!(?e, "ui: clear log files failed");
-                let toast = Toast::new(ToastKind::Error, state.fluent.get(Tr::LogsClearFailed))
-                    .group(ToastGroup::Logs)
-                    .close_after(Some(Duration::from_secs(5)));
-                state.toasts.push(toast);
-            }
-        },
-        Message::Engine(EngineMsg::Event(event)) => match *event {
-            EngineEvent::EngineReady => {
-                tracing::info!("engine ready");
-                state.engine_ui.aria2_fetch_error = None;
-                state.tracking.synced_gids.clear();
-                state.tracking.sync_done = false;
-                if let Some(id) = state.engine_ui.downloading_toast_id.take() {
-                    dismiss_toast(state, id);
-                }
-                if let Some(id) = state.engine_ui.startup_error_toast_id.take() {
-                    dismiss_toast(state, id);
-                }
-                state.engine_ui.startup_starting_toast_shown = false;
-                state.restart.engine_restart_pending = false;
-                state.engine_ui.aria2_status =
-                    Some(("ready".to_string(), state.fluent.get(Tr::Aria2Ready)));
-                if !state.restart.restart_resume_gids.is_empty() {
-                    let gids: Vec<String> =
-                        state.restart.restart_resume_gids.iter().cloned().collect();
-                    if state
-                        .handle
-                        .cmd_tx
-                        .send(EngineCmd::ResumeGids(gids))
-                        .is_err()
-                    {
-                        tracing::warn!("resume gids cmd send failed");
-                    }
-                }
-                spawn_toast(
-                    state,
-                    ToastGroup::Engine,
-                    ToastKind::Success,
-                    state.fluent.get(Tr::EngineStarted),
-                    Some(Duration::from_secs(3)),
-                    false,
-                );
-                if state.restart.engine_restart_in_progress {
-                    return engine_restart_cooldown_task();
-                }
-                return Task::none();
-            }
-            EngineEvent::EngineStopped => {
-                tracing::info!("engine stopped");
-                state.global_speed = None;
-                state.tracking.paused_gids.clear();
-                if state.window.closing {
-                    return finalize_close(state);
-                }
-            }
-            EngineEvent::SyncComplete => {
-                tracing::info!("engine sync complete");
-                if state.tracking.sync_done {
-                    return Task::none();
-                }
-                state.tracking.sync_done = true;
-                for (gid, t) in state.tasks.iter() {
-                    if t.status == TaskStatus::Completed
-                        && !t.url.is_empty()
-                        && crate::engine::is_torrent_url(&t.url)
-                    {
-                        state.tracking.torrent_followed.insert(gid.clone());
-                    }
-                }
-                let purge: Vec<String> = state
-                    .tasks
-                    .iter()
-                    .filter(|(gid, t)| {
-                        !state.tracking.synced_gids.contains(*gid)
-                            && matches!(
-                                t.status,
-                                TaskStatus::Waiting | TaskStatus::Active | TaskStatus::Paused
-                            )
-                            && t.url.is_empty()
-                            && t.info_hash.is_none()
-                    })
-                    .map(|(gid, _)| gid.clone())
-                    .collect();
-                for gid in &purge {
-                    begin_task_exit(state, gid, true);
-                    tracing::info!(?gid, "ui: purged non-terminal ghost task");
-                }
-                let split = state.settings.split;
-                let bt_metadata_only = !state.settings.aria2.bt_auto_download;
-                let ghost: Vec<(String, String, PathBuf, bool, bool)> = state
-                    .tasks
-                    .iter()
-                    .filter(|(gid, t)| {
-                        !state.tracking.synced_gids.contains(*gid)
-                            && (!t.url.is_empty() || t.info_hash.is_some())
-                            && matches!(
-                                t.status,
-                                TaskStatus::Waiting | TaskStatus::Active | TaskStatus::Paused
-                            )
-                    })
-                    .map(|(gid, t)| {
-                        let url = if !t.url.is_empty() {
-                            t.url.clone()
-                        } else {
-                            let hash = t.info_hash.clone().unwrap_or_default();
-                            format!("magnet:?xt=urn:btih:{hash}")
-                        };
-                        (
-                            gid.clone(),
-                            url,
-                            t.save_dir.clone(),
-                            t.status == TaskStatus::Paused,
-                            bt_metadata_only,
-                        )
-                    })
-                    .collect();
-                for (gid, url, save_dir, paused, bt_metadata_only) in ghost {
-                    if paused {
-                        state.tracking.paused_gids.insert(gid.clone());
-                    }
-                    if state
-                        .handle
-                        .cmd_tx
-                        .send(EngineCmd::ReaddTask {
-                            gid,
-                            url,
-                            save_dir,
-                            split,
-                            paused,
-                            bt_metadata_only,
-                        })
-                        .is_err()
-                    {
-                        tracing::warn!("ui: re-add ghost task cmd send failed");
-                    }
-                }
-                if state.settings.remove_task_if_files_missing
-                    && state
-                        .handle
-                        .cmd_tx
-                        .send(EngineCmd::CheckMissingFiles)
-                        .is_err()
-                {
-                    tracing::warn!("check missing files cmd send failed");
-                }
-            }
-            EngineEvent::FilesMissing { gids } => {
-                let removed: Vec<String> = gids
-                    .iter()
-                    .filter(|g| state.tasks.contains_key(*g))
-                    .cloned()
-                    .collect();
-                for gid in &removed {
-                    tracing::info!(?gid, "ui: removed task with missing files");
-                    begin_task_exit(state, gid, true);
-                }
-                if !removed.is_empty() {
-                    if state
-                        .handle
-                        .cmd_tx
-                        .send(EngineCmd::PurgeResults(removed))
-                        .is_err()
-                    {
-                        tracing::warn!("ui: purge missing-files results cmd send failed");
-                    }
-                    spawn_toast(
-                        state,
-                        ToastGroup::Task,
-                        ToastKind::Normal,
-                        state.fluent.get(Tr::FilesMissingRemoved),
-                        Some(Duration::from_secs(3)),
-                        false,
-                    );
-                    return Task::none();
-                }
-            }
-            EngineEvent::Added {
-                gid,
-                name,
-                url,
-                dir,
-                info_hash,
-                advanced,
-                from_browser,
-            } => {
-                tracing::info!(?gid, ?name, from_browser, "ui: task added");
-                state.tracking.synced_gids.insert(gid.clone());
-                let task_name = name.clone();
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs() as i64;
-                if let Some(existing) = state.tasks.get_mut(&gid) {
-                    apply_task_name(&state.db, &gid, existing, name);
-                    existing.url = url;
-                    existing.save_dir = PathBuf::from(dir);
-                    if info_hash.is_some() {
-                        existing.info_hash = info_hash;
-                    }
-                    if !advanced.is_empty() {
-                        existing.advanced = Some(advanced);
-                    }
-                    state.tracking.dirty.insert(gid.clone());
-                } else if !gid_recently_removed(state, &gid) {
-                    let saved_advanced = if advanced.is_empty() {
-                        None
-                    } else {
-                        Some(advanced)
-                    };
-                    let task = DownloadTask {
-                        gid: gid.clone(),
-                        name,
-                        url,
-                        save_dir: PathBuf::from(dir),
-                        downloaded: 0,
-                        total: 0,
-                        speed: 0,
-                        upload_speed: 0,
-                        status: TaskStatus::Waiting,
-                        connections: 0,
-                        added_at: now,
-                        info_hash,
-                        metadata_probe_size: None,
-                        is_seeding: false,
-                        advanced: saved_advanced.clone(),
-                    };
-                    state.tasks.insert(gid.clone(), task);
-                    state.task_order.insert(0, gid.clone());
-                    state.card_anim.insert(
-                        gid.clone(),
-                        crate::ui::animation::Animated::transition(
-                            0.0,
-                            crate::ui::animation::ease_out_cubic(
-                                crate::ui::animation::CARD_ENTER_MS,
-                            ),
-                        )
-                        .to(1.0),
-                    );
-                    if let Some(ref db) = state.db {
-                        db.upsert_meta(
-                            &gid,
-                            &state.tasks[&gid].name,
-                            &state.tasks[&gid].url,
-                            &state.tasks[&gid].save_dir.to_string_lossy(),
-                            "waiting",
-                            now,
-                            &state.tasks[&gid].info_hash.clone().unwrap_or_default(),
-                            saved_advanced.as_ref(),
-                        );
-                    }
-                }
-                if from_browser && state.tasks.contains_key(&gid) {
-                    let mut args = std::collections::HashMap::new();
-                    args.insert(
-                        std::borrow::Cow::from("name"),
-                        std::borrow::Cow::from(task_name).into(),
-                    );
-                    spawn_toast(
-                        state,
-                        ToastGroup::Task,
-                        ToastKind::Normal,
-                        state.fluent.get_args(Tr::BrowserAdded, &args),
-                        Some(Duration::from_secs(3)),
-                        false,
-                    );
-                    if state.settings.notifications.download_added {
-                        let title = state.fluent.get(Tr::DownloadAddedTitle);
-                        let body = state.fluent.get_args(Tr::DownloadAdded, &args);
-                        send_system_notification(
-                            state,
-                            title,
-                            body,
-                            vec![],
-                            crate::notify::NotifyAction::ActivateWindow,
-                        );
-                    }
-                }
-                state.tracking.dirty.insert(gid);
-                sync_global_stat_cache(state);
-                refresh_tray(state);
-            }
-            EngineEvent::TorrentAdded { gid, path } => {
-                state.tracking.torrent_files.insert(gid, path);
-            }
-            EngineEvent::Progress {
-                gid,
-                name,
-                downloaded,
-                total,
-                speed,
-                upload_speed,
-                status,
-                connections,
-                info_hash,
-                is_seeding,
-            } => {
-                refresh_tray(state);
-                state.tracking.synced_gids.insert(gid.clone());
-                let was_download_complete = state.tracking.completion_toasted.contains(&gid);
-                let is_download_complete = crate::task::is_download_complete(&status, is_seeding);
-                let was_error = state
-                    .tasks
-                    .get(&gid)
-                    .map(|t| t.status == TaskStatus::Error)
-                    .unwrap_or(false);
-                if status == "complete"
-                    && state.settings.delete_torrent_after_complete
-                    && state.tracking.torrent_files.contains_key(&gid)
-                {
-                    if let Some(path) = state.tracking.torrent_files.remove(&gid) {
-                        let _ = std::fs::remove_file(&path);
-                    }
-                }
-                if !state.tasks.contains_key(&gid)
-                    && !gid_recently_removed(state, &gid)
-                    && !matches!(status.as_str(), "complete" | "error" | "removed")
-                {
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs() as i64;
-                    let task_status = TaskStatus::from_engine(&status);
-                    if task_status == TaskStatus::Active {
-                        state.tracking.active_count += 1;
-                    }
-                    state.tasks.insert(
-                        gid.clone(),
-                        DownloadTask {
-                            gid: gid.clone(),
-                            name: String::new(),
-                            url: String::new(),
-                            save_dir: PathBuf::new(),
-                            downloaded: 0,
-                            total: 0,
-                            speed: 0,
-                            upload_speed: 0,
-                            status: task_status,
-                            connections: 0,
-                            added_at: now,
-                            info_hash: info_hash.clone(),
-                            metadata_probe_size: None,
-                            is_seeding,
-                            advanced: None,
-                        },
-                    );
-                    state.task_order.insert(0, gid.clone());
-                    state.card_anim.insert(
-                        gid.clone(),
-                        crate::ui::animation::Animated::transition(
-                            0.0,
-                            crate::ui::animation::ease_out_cubic(
-                                crate::ui::animation::CARD_ENTER_MS,
-                            ),
-                        )
-                        .to(1.0),
-                    );
-                    if let Some(ref db) = state.db {
-                        db.upsert_meta(
-                            &gid,
-                            &name,
-                            "",
-                            "",
-                            &status,
-                            now,
-                            info_hash.as_deref().unwrap_or_default(),
-                            None,
-                        );
-                    }
-                }
-                if let Some(t) = state.tasks.get_mut(&gid) {
-                    let was_active = t.status == TaskStatus::Active;
-                    apply_task_name(&state.db, &gid, t, name);
-                    if info_hash.is_some() {
-                        t.info_hash = info_hash;
-                    }
-                    if total == 0 && t.total > 0 {
-                        t.status = TaskStatus::from_engine(&status);
-                        t.speed = speed;
-                        t.upload_speed = upload_speed;
-                        t.connections = connections;
-                        t.is_seeding = is_seeding;
-                    } else {
-                        t.downloaded = downloaded;
-                        t.total = total;
-                        t.speed = speed;
-                        t.upload_speed = upload_speed;
-                        t.status = TaskStatus::from_engine(&status);
-                        t.connections = connections;
-                        t.is_seeding = is_seeding;
-                    }
-                    if state.tracking.paused_gids.contains(&gid) {
-                        t.status = TaskStatus::Paused;
-                    }
-                    if t.status == TaskStatus::Paused {
-                        t.speed = 0;
-                        t.upload_speed = 0;
-                        t.is_seeding = false;
-                    }
-                    if was_active != (t.status == TaskStatus::Active) {
-                        if t.status == TaskStatus::Active {
-                            state.tracking.active_count += 1;
-                        } else {
-                            state.tracking.active_count =
-                                state.tracking.active_count.saturating_sub(1);
-                        }
-                    }
-                    state.tracking.dirty.insert(gid.clone());
-                    let pct = t.progress_pct();
-                    state
-                        .progress_anim
-                        .entry(gid.clone())
-                        .or_insert_with(|| {
-                            crate::ui::animation::Animated::transition(
-                                pct,
-                                crate::ui::animation::ease_out_quad(
-                                    crate::ui::animation::PROGRESS_MS,
-                                ),
-                            )
-                        })
-                        .set_target(pct);
-                }
-                if status == "complete" && state.tracking.sync_done {
-                    if let Some(t) = state.tasks.get(&gid) {
-                        if !t.url.is_empty()
-                            && crate::engine::is_torrent_url(&t.url)
-                            && state.settings.aria2.bt_auto_download
-                        {
-                            if state.tracking.torrent_followed.insert(gid.clone()) {
-                                let path = t.save_dir.join(&t.name);
-                                let save_dir = t.save_dir.clone();
-                                let _ = state.handle.cmd_tx.send(EngineCmd::FollowTorrent {
-                                    gid: gid.clone(),
-                                    path,
-                                    save_dir,
-                                    split: state.settings.split,
-                                    advanced: TaskAdvancedOptions::default(),
-                                    delete_after: state.settings.delete_torrent_after_complete,
-                                });
-                                tracing::info!(
-                                    ?gid,
-                                    "ui: auto-adding downloaded torrent as new task"
-                                );
-                            } else {
-                                state.tracking.torrent_followed.remove(&gid);
-                            }
-                        }
-                    }
-                }
-                if !is_download_complete {
-                    state.tracking.completion_toasted.remove(&gid);
-                } else if !state.tracking.sync_done {
-                    state.tracking.completion_toasted.insert(gid.clone());
-                } else if !was_download_complete {
-                    if let Some(t) = state.tasks.get(&gid) {
-                        let name = t.name.clone();
-                        let open_path = t.save_dir.join(&t.name);
-                        state.tracking.completion_toasted.insert(gid.clone());
-                        let mut args = std::collections::HashMap::new();
-                        args.insert(
-                            std::borrow::Cow::from("name"),
-                            std::borrow::Cow::from(name).into(),
-                        );
-                        spawn_toast(
-                            state,
-                            ToastGroup::Task,
-                            ToastKind::Success,
-                            state.fluent.get_args(Tr::DownloadComplete, &args),
-                            Some(Duration::from_secs(4)),
-                            false,
-                        );
-                        if state.settings.notifications.download_complete {
-                            let title = state.fluent.get(Tr::DownloadCompleteTitle);
-                            let body = state.fluent.get_args(Tr::DownloadComplete, &args);
-                            let open_path_clone = open_path.clone();
-                            send_system_notification(
-                                state,
-                                title,
-                                body,
-                                vec![
-                                    (
-                                        state.fluent.get(Tr::Open),
-                                        crate::notify::NotifyAction::OpenFile(
-                                            open_path_clone.clone(),
-                                        ),
-                                    ),
-                                    (
-                                        state.fluent.get(Tr::Locate),
-                                        crate::notify::NotifyAction::RevealDir(open_path_clone),
-                                    ),
-                                ],
-                                crate::notify::NotifyAction::OpenFile(open_path),
-                            );
-                        }
-                        if state.shutdown.after_complete
-                            && !state.tasks.values().any(|t| t.is_download_active())
-                            && !matches!(state.confirm, Some(ConfirmAction::Shutdown { .. }))
-                        {
-                            trigger_shutdown_confirm(state);
-                            return Task::none();
-                        }
-                        return Task::none();
-                    }
-                }
-                if was_error && status != "error" {
-                    state.tracking.error_notified.remove(&gid);
-                }
-                if status == "error" && !was_error {
-                    if let Some(t) = state.tasks.get(&gid) {
-                        let name = t.name.clone();
-                        if state.tracking.error_notified.insert(gid.clone()) {
-                            let mut args = std::collections::HashMap::new();
-                            args.insert(
-                                std::borrow::Cow::from("name"),
-                                std::borrow::Cow::from(name).into(),
-                            );
-                            if state.tracking.sync_done
-                                && state.settings.notifications.download_error
-                            {
-                                let title = state.fluent.get(Tr::DownloadErrorTitle);
-                                let body = state.fluent.get_args(Tr::DownloadError, &args);
-                                send_system_notification(
-                                    state,
-                                    title,
-                                    body,
-                                    vec![],
-                                    crate::notify::NotifyAction::ActivateWindow,
-                                );
-                            }
-                            return Task::none();
-                        }
-                    }
-                }
-            }
-            EngineEvent::Removed(gid) => {
-                tracing::info!(?gid, "ui: task removed");
-                begin_task_exit(state, &gid, true);
-                sync_global_stat_cache(state);
-                refresh_tray(state);
-            }
-            EngineEvent::TaskDetails { gid, details } => {
-                tracing::debug!(?gid, "task details received");
-                if state.details.gid.as_deref() == Some(&gid) {
-                    let first_load = state.details.loading;
-                    state.details.details = Some(details);
-                    state.details.loading = false;
-                    state.details.fetch_failed = false;
-                    let save_dir = state.tasks.get(&gid).map(|t| t.save_dir.clone());
-                    let tree =
-                        details_files_tree(state.details.details.as_ref(), save_dir.as_deref());
-                    state.details.files_tree = tree;
-                    if first_load || state.details.files_tree.is_empty() {
-                        state.details.files_expanded.clear();
-                        crate::ui::components::file_tree::collect_dir_paths(
-                            &state.details.files_tree,
-                            &mut state.details.files_expanded,
-                        );
-                    }
-                }
-            }
-            EngineEvent::TaskDetailsFailed { gid } => {
-                tracing::debug!(?gid, "task details failed");
-                if state.details.gid.as_deref() == Some(&gid) {
-                    state.details.loading = false;
-                    state.details.fetch_failed = true;
-                }
-            }
-            EngineEvent::SelectFilesFailed { gid } => {
-                tracing::warn!(?gid, "change file selection failed");
-                spawn_toast(
-                    state,
-                    ToastGroup::Task,
-                    ToastKind::Warning,
-                    state.fluent.get(crate::i18n::Tr::SelectFilesFailed),
-                    Some(Duration::from_secs(4)),
-                    false,
-                );
-                return Task::none();
-            }
-            EngineEvent::TaskAdvancedLoaded { gid, options } => {
-                tracing::debug!(?gid, "task advanced options received");
-                if state.details.gid.as_deref() == Some(&gid) {
-                    state.details.advanced_loaded = true;
-                    state.details.advanced_saving = false;
-                    if !state.details.advanced_dirty {
-                        state.details.apply_advanced(&options);
-                        state.details.advanced_dirty = false;
-                    }
-                }
-            }
-            EngineEvent::TaskAdvancedLoadFailed { gid } => {
-                tracing::debug!(?gid, "task advanced options fetch failed");
-                if state.details.gid.as_deref() == Some(&gid) {
-                    state.details.advanced_loaded = false;
-                    state.details.advanced_saving = false;
-                }
-            }
-            EngineEvent::TaskAdvancedApplied { gid, options } => {
-                tracing::info!(?gid, "task advanced options applied");
-                if state.details.gid.as_deref() == Some(&gid) {
-                    state.details.advanced_dirty = false;
-                    state.details.advanced_saving = false;
-                }
-                if let Some(t) = state.tasks.get_mut(&gid) {
-                    t.advanced = if options.is_empty() {
-                        None
-                    } else {
-                        Some(options.clone())
-                    };
-                    if let Some(ref db) = state.db {
-                        db.upsert_meta(
-                            &gid,
-                            &t.name,
-                            &t.url,
-                            &t.save_dir.to_string_lossy(),
-                            crate::task::TaskStatus::to_str(t.status),
-                            t.added_at,
-                            t.info_hash.clone().unwrap_or_default().as_str(),
-                            Some(&options),
-                        );
-                    }
-                }
-                spawn_toast(
-                    state,
-                    ToastGroup::Task,
-                    ToastKind::Success,
-                    state.fluent.get(crate::i18n::Tr::AdvancedApplied),
-                    Some(Duration::from_secs(3)),
-                    false,
-                );
-                return Task::none();
-            }
-            EngineEvent::TaskAdvancedApplyFailed { gid } => {
-                tracing::warn!(?gid, "task advanced options apply failed");
-                if state.details.gid.as_deref() == Some(&gid) {
-                    state.details.advanced_saving = false;
-                }
-                spawn_toast(
-                    state,
-                    ToastGroup::Task,
-                    ToastKind::Warning,
-                    state.fluent.get(crate::i18n::Tr::AdvancedApplyFailed),
-                    Some(Duration::from_secs(4)),
-                    false,
-                );
-                return Task::none();
-            }
-            EngineEvent::Aria2Version { version } => {
-                tracing::info!(?version, "aria2 version received");
-                state.engine_ui.aria2_version = Some(version.clone());
-                return check_updates(state, true, false);
-            }
-            EngineEvent::Aria2UpdateApplied { version } => {
-                state.engine_ui.update_check_in_flight = false;
-                state.engine_ui.aria2_version = Some(version.clone());
-                state.engine_ui.aria2_downloading = false;
-                state.engine_ui.aria2_downloading_version = None;
-                state.engine_ui.aria2_download_progress = None;
-                spawn_toast(
-                    state,
-                    ToastGroup::Engine,
-                    ToastKind::Success,
-                    format!(
-                        "{} v{version}",
-                        state.fluent.get(crate::i18n::Tr::UpdatedTo)
-                    ),
-                    Some(Duration::from_secs(4)),
-                    false,
-                );
-            }
-            EngineEvent::Aria2UpdateProgress { downloaded, total } => {
-                state.engine_ui.aria2_downloading = true;
-                state.engine_ui.aria2_download_progress = Some((downloaded, total));
-            }
-            EngineEvent::Aria2UpdateFailed { error } => {
-                state.engine_ui.update_check_in_flight = false;
-                state.engine_ui.aria2_downloading = false;
-                state.engine_ui.aria2_downloading_version = None;
-                state.engine_ui.aria2_download_progress = None;
-                spawn_toast(
-                    state,
-                    ToastGroup::Engine,
-                    ToastKind::Error,
-                    format!("{}: {error}", state.fluent.get(Tr::UpdateFailed)),
-                    Some(Duration::from_secs(6)),
-                    true,
-                );
-            }
-            EngineEvent::Aria2UpdateStaged { version } => {
-                state.engine_ui.update_check_in_flight = false;
-                state.engine_ui.aria2_downloading = false;
-                state.engine_ui.aria2_downloading_version = None;
-                state.engine_ui.aria2_download_progress = None;
-                spawn_toast(
-                    state,
-                    ToastGroup::Engine,
-                    ToastKind::Normal,
-                    format!(
-                        "aria2-next v{version} - {}",
-                        state.fluent.get(crate::i18n::Tr::UpdateEngineRestart)
-                    ),
-                    Some(Duration::from_secs(5)),
-                    false,
-                );
-            }
-            EngineEvent::AppUpdateDownloaded { kind, path } => {
-                return Task::done(Message::Settings(SettingsMsg::UpdateDownloadStarted(Ok(
-                    crate::app_updater::AppUpdateOutcome { kind, path },
-                ))));
-            }
-            EngineEvent::AppUpdateDownloadFailed { error } => {
-                return Task::done(Message::Settings(SettingsMsg::UpdateDownloadStarted(Err(
-                    error,
-                ))));
-            }
-            EngineEvent::Aria2FetchFailed { error } => {
-                let msg = format!("{}: {error}", state.fluent.get(Tr::EngineStartFailed));
-                state.engine_ui.aria2_fetch_error = Some(error);
-                state.engine_ui.startup_starting_toast_shown = false;
-                if state.restart.engine_restart_in_progress {
-                    state.restart.engine_restart_in_progress = false;
-                    state.restart.restart_resume_gids.clear();
-                }
-                if let Some(id) = state.engine_ui.downloading_toast_id.take() {
-                    dismiss_toast(state, id);
-                }
-                if let Some(id) = state.engine_ui.startup_error_toast_id.take() {
-                    dismiss_toast(state, id);
-                }
-                let id = spawn_toast(state, ToastGroup::Engine, ToastKind::Error, msg, None, true);
-                state.engine_ui.startup_error_toast_id = Some(id);
-                if state.settings.notifications.engine_degraded
-                    && !state.engine_ui.degraded_notified
-                {
-                    state.engine_ui.degraded_notified = true;
-                    send_system_notification(
-                        state,
-                        state.fluent.get(Tr::EngineDegradedTitle),
-                        state.fluent.get(Tr::EngineDegradedBody),
-                        vec![],
-                        crate::notify::NotifyAction::ActivateWindow,
-                    );
-                }
-                return Task::none();
-            }
-            EngineEvent::EngineDegraded { reason } => {
-                state.engine_ui.aria2_fetch_error = Some(reason);
-                if state.restart.engine_restart_in_progress {
-                    state.restart.engine_restart_in_progress = false;
-                    state.restart.restart_resume_gids.clear();
-                }
-                if state.settings.notifications.engine_degraded
-                    && !state.engine_ui.degraded_notified
-                {
-                    state.engine_ui.degraded_notified = true;
-                    send_system_notification(
-                        state,
-                        state.fluent.get(Tr::EngineDegradedTitle),
-                        state.fluent.get(Tr::EngineDegradedBody),
-                        vec![],
-                        crate::notify::NotifyAction::ActivateWindow,
-                    );
-                }
-            }
-            EngineEvent::GlobalSpeed { download, upload } => {
-                state.global_speed = Some((download, upload));
-                if let Ok(mut cache) = state.stat_cache.lock() {
-                    cache.download_speed = download;
-                    cache.upload_speed = upload;
-                }
-                sync_global_stat_cache(state);
-                refresh_tray(state);
-            }
-            EngineEvent::Aria2Status { stage, message } => {
-                if stage == "ready" {
-                    state.engine_ui.aria2_fetch_error = None;
-                    state.engine_ui.degraded_notified = false;
-                }
-                if stage == "ready" || stage == "starting" {
-                    if let Some(id) = state.engine_ui.downloading_toast_id.take() {
-                        dismiss_toast(state, id);
-                    }
-                }
-                let mut toast_task = false;
-                if stage == "downloading" && state.engine_ui.downloading_toast_id.is_none() {
-                    let id = spawn_toast(
-                        state,
-                        ToastGroup::Engine,
-                        ToastKind::Normal,
-                        state.fluent.get(Tr::DownloadingAria2),
-                        None,
-                        false,
-                    );
-                    state.engine_ui.downloading_toast_id = Some(id);
-                    toast_task = true;
-                }
-                if stage == "starting" && !state.engine_ui.startup_starting_toast_shown {
-                    state.engine_ui.startup_starting_toast_shown = true;
-                    spawn_toast(
-                        state,
-                        ToastGroup::Engine,
-                        ToastKind::Normal,
-                        state.fluent.get(Tr::EngineStarting),
-                        Some(Duration::from_secs(3)),
-                        false,
-                    );
-                    toast_task = true;
-                }
-                state.engine_ui.aria2_status = Some((stage, message));
-                if toast_task {
-                    return Task::none();
-                }
-            }
-        },
-        Message::Window(WindowMsg::WindowResized(size)) => {
-            state.window.last_resize = Some(size);
-            #[cfg(target_os = "windows")]
-            {
-                state.window.resizing = true;
-                state.window.resize_quiet =
-                    Some(Instant::now() + Duration::from_millis(RESIZE_QUIET_MS));
-            }
-            #[cfg(not(target_os = "windows"))]
-            {
-                state.window.geometry_dirty = true;
-            }
-        }
-        Message::Window(WindowMsg::WindowOpened(id)) => {
-            if state.window.window_id.is_none() {
-                state.window.window_id = Some(id);
-                if state.window.hidden_to_tray && !state.tray.enabled() {
-                    state.window.hidden_to_tray = false;
-                    refresh_tray(state);
-                    return iced::window::set_mode::<Message>(id, iced::window::Mode::Windowed)
-                        .chain(read_clipboard(state));
-                }
-                return read_clipboard(state);
-            }
-            return Task::none();
-        }
-        Message::Window(WindowMsg::WindowFocused(id)) => {
-            if state.window.window_id.is_none() || state.window.window_id == Some(id) {
-                return read_clipboard(state);
-            }
-            return Task::none();
-        }
-        Message::Window(WindowMsg::ClipboardRead(content)) => {
-            let Some(text) = content else {
-                return Task::none();
-            };
-            let trimmed = text.trim().to_string();
-            let prefs = state.settings.clipboard_types;
-            return Task::perform(
-                async move {
-                    let payload = crate::clipboard_watch::parse_clipboard(&trimmed, prefs);
-                    let hash = crate::clipboard_watch::payload_hash(&payload);
-                    (payload, hash)
-                },
-                |(payload, hash)| Message::Window(WindowMsg::ClipboardParsed(payload, hash)),
-            );
-        }
-        Message::Window(WindowMsg::ClipboardParsed(payload, hash)) => {
-            let Some(payload) = payload else {
-                return Task::none();
-            };
-            if state.add_dialog.is_visible() {
-                return Task::none();
-            }
-            if hash == state.settings.last_clipboard_hash {
-                return Task::none();
-            }
-            state.settings.last_clipboard_hash = hash.clone();
-            state.applied_settings.last_clipboard_hash = hash;
-            config::save(&state.settings);
-            state.add_dialog.open_with(
-                state.settings.download_dir.clone(),
-                state.settings.split,
-                payload,
-            );
-            state.add_dialog_anim.open();
-            spawn_toast(
-                state,
-                ToastGroup::Task,
-                ToastKind::Normal,
-                state.fluent.get(Tr::ClipboardDetected),
-                Some(Duration::from_secs(3)),
-                false,
-            );
-            return Task::none();
-        }
-        Message::Window(WindowMsg::DragWindow) => {
-            if let Some(id) = state.window.window_id {
-                return iced::window::drag::<Message>(id);
-            }
-        }
-        Message::Window(WindowMsg::ResizeWindow(direction)) => {
-            if let Some(id) = state.window.window_id {
-                return iced::window::drag_resize::<Message>(id, direction);
-            }
-        }
-        Message::Window(WindowMsg::WindowAction(cmd)) => {
-            if let Some(id) = state.window.window_id {
-                return match cmd {
-                    WindowCmd::Minimize => iced::window::minimize::<Message>(id, true),
-                    WindowCmd::ToggleMaximize => {
-                        state.window.maximized = !state.window.maximized;
-                        iced::window::toggle_maximize::<Message>(id)
-                    }
-                };
-            }
-        }
-        Message::Window(WindowMsg::CloseRequested) => {
-            if state.window.closing {
-                return Task::none();
-            }
-            if state.settings_dirty {
-                state.confirm = Some(ConfirmAction::UnsavedOnClose);
-                state.confirm_anim.open();
-                return Task::none();
-            }
-            if state.settings.close_to_tray && state.tray.enabled() {
-                return hide_to_tray(state);
-            }
-            state.window.show_close_dialog = true;
-            open_close_dialog(state);
-        }
-        Message::Window(WindowMsg::HideToTray) => {
-            if state.window.closing {
-                return Task::none();
-            }
-            return hide_to_tray(state);
-        }
-        Message::Window(WindowMsg::CloseDialog(choice)) => {
-            return match choice {
-                CloseDialogChoice::Close => {
-                    state.window.show_close_dialog = false;
-                    state.window.close_dialog_anim = None;
-                    state.window.close_dialog_dismissing = false;
-                    begin_close(state)
-                }
-                CloseDialogChoice::Cancel => {
-                    if let Some(anim) = &mut state.window.close_dialog_anim {
-                        anim.set_target(0.0);
-                        state.window.close_dialog_dismissing = true;
-                    }
-                    Task::none()
-                }
-            };
-        }
-        Message::Window(WindowMsg::CloseDialogTrayPrefChanged(b)) => {
-            state.settings.close_to_tray = b;
-            state.applied_settings.close_to_tray = b;
-            config::save(&state.settings);
-        }
-        Message::Window(WindowMsg::ShutdownRequested) => {
-            return begin_close(state);
-        }
-        Message::Window(WindowMsg::ShutdownTimeout) => {
-            if state.window.closing {
-                tracing::warn!("engine did not stop in time, closing anyway");
-                if state.handle.cmd_tx.send(EngineCmd::ForceKill).is_err() {
-                    tracing::warn!("force-kill cmd send failed");
-                }
-            }
-            return finalize_close(state);
-        }
-        Message::Window(WindowMsg::PersistWindowGeometry) => {
-            if state.window.geometry_dirty {
-                if let Some(id) = state.window.window_id {
-                    return iced::window::is_maximized(id)
-                        .then(|max| Task::done(Message::Window(WindowMsg::WindowMaximized(max))));
-                }
-            }
-        }
-        Message::Window(WindowMsg::WindowMaximized(max)) => {
-            state.window.maximized = max;
-            if let Some(s) = state.window.last_resize {
-                if !max {
-                    state.window.window_size = s;
-                }
-                state.window.last_resize = None;
-            }
-            sync_geometry_to_settings(state);
-            config::save(&state.settings);
-            state.window.geometry_dirty = false;
-            if state.window.pending_close {
-                state.window.pending_close = false;
-                spawn_restart_if_pending(state);
-                if let Some(id) = state.window.window_id {
-                    return iced::window::close::<Message>(id);
-                }
-            }
-        }
-        Message::Settings(SettingsMsg::ThemeModeChanged(mode)) => {
-            state.settings.theme_mode = mode;
-            rebuild_theme(state);
-            config::save(&state.settings);
-            state.applied_settings.theme_mode = mode;
-        }
-        Message::Settings(SettingsMsg::ThemeColorChanged(color)) => {
-            state.settings.theme_color = theme::color_to_hex(color);
-            rebuild_theme(state);
-            config::save(&state.settings);
-            state.applied_settings.theme_color = state.settings.theme_color.clone();
-        }
-        Message::Settings(SettingsMsg::LocaleChanged(locale)) => {
-            state.settings.locale = locale;
-            state.fluent = Fluent::new(locale);
-            config::save(&state.settings);
-            state.applied_settings.locale = locale;
-        }
-        Message::Settings(SettingsMsg::FontFamilyChanged(family)) => {
-            state.settings.font_family = family;
-            mark_settings_dirty(state);
-        }
-        Message::Settings(SettingsMsg::RestartApp) => {
-            state.restart_pending = true;
-            return begin_close(state);
-        }
-        Message::Settings(SettingsMsg::SpeedUnitChanged(key, unit)) => {
-            state.settings_ui.speed_units.insert(key, unit);
-        }
-        Message::Settings(SettingsMsg::UaEditor(action)) => {
-            state.ua_editor.perform(action);
-            state.settings.aria2.user_agent = state.ua_editor.text();
-            mark_settings_dirty(state);
-        }
-        Message::Settings(SettingsMsg::BtTrackerEditor(action)) => {
-            state.bt_tracker_editor.perform(action);
-            state.settings.aria2.bt_tracker = state.bt_tracker_editor.text();
-            mark_settings_dirty(state);
-        }
-        Message::Settings(SettingsMsg::TrackerSourceToggled { source, enabled }) => {
-            if enabled {
-                if !state.settings.tracker.sources.contains(&source) {
-                    state.settings.tracker.sources.push(source);
-                }
-            } else {
-                state.settings.tracker.sources.retain(|s| s != &source);
-            }
-            mark_settings_dirty(state);
-        }
-        Message::Settings(SettingsMsg::TrackerCustomInputChanged(v)) => {
-            state.settings_ui.custom_tracker_input = v;
-        }
-        Message::Settings(SettingsMsg::TrackerCustomAdd) => {
-            let input = state.settings_ui.custom_tracker_input.trim().to_string();
-            if input.is_empty() {
-                return Task::none();
-            }
-            let is_http = input.starts_with("http://") || input.starts_with("https://");
-            if !is_http || reqwest::Url::parse(&input).is_err() {
-                let toast = Toast::new(
-                    ToastKind::Warning,
-                    state.fluent.get(Tr::BtTrackerSourceInvalidUrl),
-                )
-                .group(ToastGroup::Tracker)
-                .close_after(Some(Duration::from_secs(4)));
-                state.toasts.push(toast);
-                return Task::none();
-            }
-            if !state.settings.tracker.custom_urls.contains(&input) {
-                state.settings.tracker.custom_urls.push(input.clone());
-            }
-            if !state.settings.tracker.sources.contains(&input) {
-                state.settings.tracker.sources.push(input);
-            }
-            state.settings_ui.custom_tracker_input.clear();
-            mark_settings_dirty(state);
-        }
-        Message::Settings(SettingsMsg::TrackerCustomRemove(url)) => {
-            state.settings.tracker.custom_urls.retain(|u| u != &url);
-            state.settings.tracker.sources.retain(|u| u != &url);
-            mark_settings_dirty(state);
-        }
-        Message::Settings(SettingsMsg::SyncTrackers) => {
-            if state.settings_ui.syncing_trackers {
-                return Task::none();
-            }
-            let urls = state.settings.tracker.sources.clone();
-            if urls.is_empty() {
-                let toast = Toast::new(
-                    ToastKind::Warning,
-                    state.fluent.get(Tr::BtTrackerSelectSource),
-                )
-                .group(ToastGroup::Tracker)
-                .close_after(Some(Duration::from_secs(4)));
-                state.toasts.push(toast);
-                return Task::none();
-            }
-            return start_tracker_fetch(state, urls);
-        }
-        Message::Settings(SettingsMsg::TrackersSynced { fetched, failures }) => {
-            if !state.settings_ui.syncing_trackers {
-                if let Some(id) = state.settings_ui.tracker_sync_toast_id.take() {
-                    dismiss_toast(state, id);
-                }
-                return Task::none();
-            }
-            state.settings_ui.syncing_trackers = false;
-            if let Some(id) = state.settings_ui.tracker_sync_toast_id.take() {
-                dismiss_toast(state, id);
-            }
-            let ok = fetched.len();
-            let failed = failures.len();
-            let total = ok + failed;
-            let mut lines: Vec<String> = Vec::new();
-            let mut seen = HashSet::new();
-            for body in &fetched {
-                for line in crate::trackers::parse_lines(body) {
-                    if seen.insert(line.clone()) {
-                        lines.push(line);
-                    }
-                }
-            }
-            if lines.is_empty() && !failures.is_empty() {
-                let toast = Toast::new(ToastKind::Error, state.fluent.get(Tr::BtTrackerSyncFailed))
-                    .group(ToastGroup::Tracker)
-                    .close_after(Some(Duration::from_secs(5)));
-                state.toasts.push(toast);
-                return Task::none();
-            }
-            let text = crate::trackers::to_lines(&lines.join("\n"));
-            let count = crate::trackers::count(&text);
-            state.bt_tracker_editor = text_editor::Content::with_text(&text);
-            state.settings.aria2.bt_tracker = text;
-            state.applied_settings.aria2.bt_tracker = state.settings.aria2.bt_tracker.clone();
-            let now_ms = chrono::Local::now().timestamp_millis();
-            state.settings.tracker.last_sync_time = Some(now_ms);
-            state.applied_settings.tracker.last_sync_time = Some(now_ms);
-            config::save(&state.applied_settings);
-            let opts = state.settings.effective_task_options();
-            if state
-                .handle
-                .cmd_tx
-                .send(EngineCmd::ApplyAria2Options { options: opts })
-                .is_err()
-            {
-                tracing::warn!("ui: apply aria2 options cmd send failed");
-            }
-            let msg = if failures.is_empty() {
-                let mut args = std::collections::HashMap::new();
-                args.insert(std::borrow::Cow::from("count"), (count as i64).into());
-                state.fluent.get_args(Tr::BtTrackerSyncSucceed, &args)
-            } else {
-                let mut args = std::collections::HashMap::new();
-                args.insert(std::borrow::Cow::from("ok"), (ok as i64).into());
-                args.insert(std::borrow::Cow::from("total"), (total as i64).into());
-                args.insert(std::borrow::Cow::from("failed"), (failed as i64).into());
-                state.fluent.get_args(Tr::BtTrackerSyncPartial, &args)
-            };
-            let toast = Toast::new(
-                if failures.is_empty() {
-                    ToastKind::Success
-                } else {
-                    ToastKind::Warning
-                },
-                msg,
-            )
-            .group(ToastGroup::Tracker)
-            .close_after(Some(Duration::from_secs(4)));
-            state.toasts.push(toast);
-        }
-        Message::Settings(SettingsMsg::TrackerSyncTimedOut) => {
-            if !state.settings_ui.syncing_trackers {
-                return Task::none();
-            }
-            state.settings_ui.syncing_trackers = false;
-            if let Some(id) = state.settings_ui.tracker_sync_toast_id.take() {
-                dismiss_toast(state, id);
-            }
-            let toast = Toast::new(ToastKind::Error, state.fluent.get(Tr::BtTrackerSyncTimeout))
-                .group(ToastGroup::Tracker)
-                .close_after(Some(Duration::from_secs(5)));
-            state.toasts.push(toast);
-        }
-        Message::Settings(SettingsMsg::CheckTrackerAutoSync { startup }) => {
-            if state.settings_ui.syncing_trackers {
-                return Task::none();
-            }
-            if state.settings.aria2.bt_tracker != state.applied_settings.aria2.bt_tracker {
-                return Task::none();
-            }
-            let now_ms = chrono::Local::now().timestamp_millis();
-            if !crate::trackers::sync_due(
-                state.settings.tracker.auto_sync,
-                state.settings.tracker.sync_interval_hours,
-                state.settings.tracker.last_sync_time,
-                startup,
-                now_ms,
-            ) {
-                return Task::none();
-            }
-            let urls = state.settings.tracker.sources.clone();
-            if urls.is_empty() {
-                return Task::none();
-            }
-            return start_tracker_fetch(state, urls);
-        }
-        Message::Settings(SettingsMsg::CheckUpdatesNow) => {
-            return check_updates(state, false, true);
-        }
-        Message::Settings(SettingsMsg::CheckAutoUpdate { startup }) => {
-            return check_updates(state, startup, false);
-        }
-        Message::Settings(SettingsMsg::UpdateDialogTab(i)) => {
-            if let Some(dialog) = &mut state.update_dialog {
-                dialog.active_tab = i;
-            }
-        }
-        Message::Settings(SettingsMsg::RetryChangelog(tab)) => {
-            if let Some(dialog) = &mut state.update_dialog {
-                if let Some(changelog) = dialog.changelogs.get_mut(tab) {
-                    changelog.loading = true;
-                    changelog.failed = false;
-                }
-            }
-            return changelog_fetch_task(state, tab);
-        }
-        Message::Settings(SettingsMsg::UpdateChangelogLoaded { tab, releases }) => {
-            if let Some(dialog) = &mut state.update_dialog {
-                if let Some(changelog) = dialog.changelogs.get_mut(tab) {
-                    changelog.loading = false;
-                    match releases {
-                        Ok(rels) => {
-                            changelog.failed = false;
-                            let text = concat_changelog(&rels);
-                            changelog.md = iced::widget::markdown::Content::parse(&text);
-                            if let Some(offer) = dialog.offers.get_mut(tab) {
-                                offer.changelog = text;
-                            }
-                        }
-                        Err(e) => {
-                            changelog.failed = true;
-                            spawn_toast(
-                                state,
-                                ToastGroup::General,
-                                ToastKind::Error,
-                                format!("{}: {e}", state.fluent.get(Tr::UpdateFailed)),
-                                Some(Duration::from_secs(6)),
-                                true,
-                            );
-                        }
-                    }
-                }
-            }
-        }
-        Message::Settings(SettingsMsg::UpdateDialogCancel) => {
-            state.update_dialog_anim.begin_exit();
-        }
-        Message::Settings(SettingsMsg::UpdateDownloadStarted(result)) => {
-            state.app_update_in_flight = false;
-            match result {
-                Ok(outcome) => match outcome.kind {
-                    crate::app_updater::InstallKind::AppImage => {
-                        spawn_toast(
-                            state,
-                            ToastGroup::General,
-                            ToastKind::Success,
-                            state.fluent.get(Tr::UpdateAppimageReplaced),
-                            Some(Duration::from_secs(5)),
-                            false,
-                        );
-                        state.restart_pending = true;
-                        return begin_close(state);
-                    }
-                    crate::app_updater::InstallKind::WindowsSetup => {
-                        spawn_toast(
-                            state,
-                            ToastGroup::General,
-                            ToastKind::Success,
-                            state.fluent.get(Tr::UpdateRunInstaller),
-                            Some(Duration::from_secs(5)),
-                            false,
-                        );
-                    }
-                    crate::app_updater::InstallKind::Deb => {
-                        let path = outcome.path.unwrap_or_default();
-                        let download_dir = path
-                            .parent()
-                            .map(std::path::Path::to_path_buf)
-                            .unwrap_or_default();
-                        let mut args = std::collections::HashMap::new();
-                        args.insert(
-                            std::borrow::Cow::from("path"),
-                            std::borrow::Cow::from(path.to_string_lossy().into_owned()).into(),
-                        );
-                        spawn_toast(
-                            state,
-                            ToastGroup::General,
-                            ToastKind::Success,
-                            state.fluent.get_args(Tr::UpdatePackageDownloaded, &args),
-                            Some(Duration::from_secs(5)),
-                            false,
-                        );
-                        if state.settings.notifications.download_complete {
-                            let title = state.fluent.get(Tr::UpdatePackageDownloadedTitle);
-                            let body = state.fluent.get_args(Tr::UpdatePackageDownloaded, &args);
-                            let path_clone = path.clone();
-                            send_system_notification(
-                                state,
-                                title,
-                                body,
-                                vec![
-                                    (
-                                        state.fluent.get(Tr::Open),
-                                        crate::notify::NotifyAction::OpenFile(path_clone),
-                                    ),
-                                    (
-                                        state.fluent.get(Tr::Locate),
-                                        crate::notify::NotifyAction::RevealDir(
-                                            download_dir.clone(),
-                                        ),
-                                    ),
-                                ],
-                                crate::notify::NotifyAction::OpenFile(path),
-                            );
-                        }
-                        return open_path_in_manager(download_dir);
-                    }
-                },
-                Err(e) => {
-                    spawn_toast(
-                        state,
-                        ToastGroup::General,
-                        ToastKind::Error,
-                        format!("{}: {e}", state.fluent.get(Tr::UpdateFailed)),
-                        Some(Duration::from_secs(6)),
-                        true,
-                    );
-                }
-            }
-        }
-        Message::Settings(SettingsMsg::UpdateResult {
-            offers,
-            silent_applied,
-            errors,
-        }) => {
-            state.engine_ui.update_check_in_flight = false;
-            let checked_any = state.settings.update.scope.covers("aria2-next")
-                || state.settings.update.scope.covers("remotrix");
-            for e in errors.iter() {
-                spawn_toast(
-                    state,
-                    ToastGroup::General,
-                    ToastKind::Error,
-                    format!("{}: {e}", state.fluent.get(Tr::UpdateFailed)),
-                    Some(Duration::from_secs(6)),
-                    true,
-                );
-            }
-            for silent in &silent_applied {
-                send_download_aria2_update(state, silent);
-            }
-            if !offers.is_empty() {
-                let changelogs = offers
-                    .iter()
-                    .map(|_| crate::ui::update_dialog::ChangelogState {
-                        md: iced::widget::markdown::Content::default(),
-                        loading: true,
-                        failed: false,
-                    })
-                    .collect();
-                state.update_dialog = Some(UpdateDialogState {
-                    changelogs,
-                    offers,
-                    active_tab: 0,
-                });
-                state.update_dialog_anim.open();
-                let mut tasks = Vec::new();
-                for tab in 0..state.update_dialog.as_ref().unwrap().offers.len() {
-                    tasks.push(changelog_fetch_task(state, tab));
-                }
-                return Task::batch(tasks);
-            } else if checked_any && errors.is_empty() {
-                spawn_toast(
-                    state,
-                    ToastGroup::General,
-                    ToastKind::Success,
-                    state.fluent.get(Tr::UpToDate),
-                    Some(Duration::from_secs(3)),
-                    false,
-                );
-            }
-        }
-        Message::Settings(SettingsMsg::UpdateDialogApply) => {
-            if state.app_update_in_flight {
-                return Task::none();
-            }
-            if state.update_dialog_anim.is_dismissing() {
-                return Task::none();
-            }
-            let Some(offers) = state
-                .update_dialog
-                .as_ref()
-                .map(|d| d.offers.clone())
-                .filter(|o| !o.is_empty())
-            else {
-                return Task::none();
-            };
-            state.update_dialog_anim.begin_exit();
-            for offer in offers {
-                match offer.component {
-                    crate::ui::update_dialog::UpdateComponent::Aria2 => {
-                        send_download_aria2_update(state, &offer);
-                    }
-                    crate::ui::update_dialog::UpdateComponent::App => {
-                        if state.app_update_in_flight {
-                            continue;
-                        }
-                        state.app_update_in_flight = true;
-                        let kind = crate::app_updater::detect_install_kind();
-                        let version = offer.latest.clone();
-                        let download_url = offer.download_url.clone();
-                        let asset_name = offer.asset_name.clone();
-                        let offer_sha256 = offer.sha256.clone();
-                        let download_dir = state.settings.download_dir.clone();
-                        spawn_toast(
-                            state,
-                            ToastGroup::General,
-                            ToastKind::Normal,
-                            state.fluent.get(Tr::UpdateDownloading),
-                            None,
-                            true,
-                        );
-                        let _ = state.handle.cmd_tx.send(EngineCmd::DownloadAppUpdate {
-                            kind,
-                            version,
-                            url: download_url,
-                            asset_name,
-                            sha256: offer_sha256,
-                            download_dir,
-                        });
-                    }
-                }
-            }
-            return Task::none();
-        }
-        Message::Engine(EngineMsg::RetryAria2Fetch) => {
-            state.engine_ui.aria2_fetch_error = None;
-            if state
-                .handle
-                .cmd_tx
-                .send(EngineCmd::RetryAria2Fetch)
-                .is_err()
-            {
-                tracing::warn!("retry fetch cmd send failed");
-            }
-        }
-        Message::Engine(EngineMsg::RestartEngine) => {
-            if state.restart.engine_restart_in_progress {
-                return Task::none();
-            }
-            let has_active = state.tasks.values().any(|t| t.status == TaskStatus::Active);
-            state.confirm = Some(ConfirmAction::RestartEngine { has_active });
-            state.confirm_anim.open();
-        }
-        Message::Engine(EngineMsg::ConfirmRestartEngine) => {
-            if state.confirm_anim.is_dismissing() {
-                return Task::none();
-            }
-            state.confirm_anim.begin_exit();
-            state.restart.engine_restart_in_progress = true;
-            state.restart.restart_resume_gids = state
-                .tasks
-                .values()
-                .filter(|t| t.status == TaskStatus::Active)
-                .map(|t| t.gid.clone())
-                .collect();
-            if state.handle.cmd_tx.send(EngineCmd::RestartEngine).is_err() {
-                tracing::warn!("restart engine cmd send failed");
-            }
-            return engine_restart_safety_timeout_task();
-        }
-        Message::Engine(EngineMsg::EngineRestartCooldownFinished) => {
-            state.restart.engine_restart_in_progress = false;
-            state.restart.restart_resume_gids.clear();
-        }
-        Message::Engine(EngineMsg::EngineRestartSafetyTimeout) => {
-            if state.restart.engine_restart_in_progress {
-                state.restart.engine_restart_in_progress = false;
-                state.restart.restart_resume_gids.clear();
-            }
-        }
-        Message::Settings(SettingsMsg::ToggleScheduleDaysMenu) => {
-            state.settings_ui.schedule_days_menu_open = !state.settings_ui.schedule_days_menu_open;
-        }
-        Message::Settings(SettingsMsg::ReadOnlyHover { path, hovered }) => {
-            if hovered {
-                state.settings_ui.readonly_hovered.insert(path);
-            } else {
-                state.settings_ui.readonly_hovered.remove(&path);
-            }
-        }
-        Message::Settings(SettingsMsg::ScheduleDayToggled { day, enabled }) => {
-            let weekdays = &mut state.settings.speed_limit_schedule.weekdays;
-            if enabled {
-                if !weekdays.contains(&day) {
-                    weekdays.push(day);
-                    weekdays.sort_unstable();
-                }
-            } else {
-                weekdays.retain(|d| *d != day);
-            }
-            mark_settings_dirty(state);
-        }
-        Message::Task(TaskMsg::OpenTaskDetails(gid)) => {
-            state.details.select_gen = 0;
-            state.details.pending_select = None;
-            state.details.open(gid.clone());
-            state.details_anim.open();
-            if let Some(a) = state.tasks.get(&gid).and_then(|t| t.advanced.as_ref()) {
-                state.details.apply_advanced(a);
-                state.details.advanced_loaded = true;
-                state.details.advanced_dirty = false;
-                state.details.advanced_saving = false;
-            }
-            if state
-                .tasks
-                .get(&gid)
-                .map(|t| t.is_completed())
-                .unwrap_or(false)
-            {
-                state.details.loading = false;
-            } else if state
-                .handle
-                .cmd_tx
-                .send(EngineCmd::FetchTaskDetails(gid.clone()))
-                .is_err()
-            {
-                tracing::warn!("fetch task details cmd send failed");
-            } else if state
-                .handle
-                .cmd_tx
-                .send(EngineCmd::FetchTaskAdvanced(gid))
-                .is_err()
-            {
-                tracing::warn!("fetch task advanced cmd send failed");
-            }
-        }
-        Message::Task(TaskMsg::CloseTaskDetails) => {
-            state.details.select_gen += 1;
-            if let Some((gid, files)) = state.details.pending_select.take() {
-                let _ = state
-                    .handle
-                    .cmd_tx
-                    .send(EngineCmd::SelectFiles { gid, files });
-            }
-            state.details_anim.begin_exit();
-        }
-        Message::Task(TaskMsg::RefreshTaskDetails) => {
-            if state.details.is_visible() && !state.details.fetch_failed {
-                if let Some(ref gid) = state.details.gid {
-                    let queryable = state
-                        .tasks
-                        .get(gid)
-                        .map(|t| !t.is_completed())
-                        .unwrap_or(false);
-                    if queryable
-                        && state
-                            .handle
-                            .cmd_tx
-                            .send(EngineCmd::FetchTaskDetails(gid.clone()))
-                            .is_err()
-                    {
-                        tracing::warn!("refresh task details cmd send failed");
-                    }
-                    if queryable
-                        && !state.details.advanced_dirty
-                        && state
-                            .handle
-                            .cmd_tx
-                            .send(EngineCmd::FetchTaskAdvanced(gid.clone()))
-                            .is_err()
-                    {
-                        tracing::warn!("refresh task advanced cmd send failed");
-                    }
-                }
-            }
-        }
-        Message::Task(TaskMsg::DetailsAdvancedFieldChanged(field, value)) => {
-            let d = &mut state.details;
-            match field {
-                AddField::UserAgent => d.user_agent = value,
-                AddField::HttpUser => d.http_user = value,
-                AddField::HttpPasswd => d.http_passwd = value,
-                AddField::Referer => d.referer = value,
-                AddField::Cookie => d.cookie = value,
-                AddField::ProxyServer => d.proxy_server = value,
-                AddField::ProxyUsername => d.proxy_username = value,
-                AddField::ProxyPassword => d.proxy_password = value,
-                AddField::Out => {}
-            }
-            state.details.advanced_dirty = true;
-        }
-        Message::Task(TaskMsg::DetailsAdvancedSave) => {
-            if let Some(ref gid) = state.details.gid {
-                let advanced = state.details.to_advanced();
-                state.details.advanced_saving = true;
-                if state
-                    .handle
-                    .cmd_tx
-                    .send(EngineCmd::ChangeTaskAdvanced {
-                        gid: gid.clone(),
-                        advanced,
-                    })
-                    .is_err()
-                {
-                    tracing::warn!("change task advanced cmd send failed");
-                    state.details.advanced_saving = false;
-                }
-            }
-        }
-        Message::Window(WindowMsg::FlushDirty) => {
-            flush_dirty(state);
-        }
-        #[cfg(target_os = "windows")]
-        Message::Window(WindowMsg::ResizeTick) => {
-            if !state.window.resizing {
-                return Task::none();
-            }
-            let settled = state
-                .window
-                .resize_quiet
-                .map(|d| Instant::now() >= d)
-                .unwrap_or(false);
-            if let Some(s) = state.window.last_resize {
-                state.window.window_size = s;
-            }
-            if settled {
-                state.window.resizing = false;
-                state.window.resize_quiet = None;
-                state.window.geometry_dirty = true;
-            }
-        }
-        #[cfg(not(target_os = "windows"))]
-        Message::Window(WindowMsg::ResizeTick) => {
-            return Task::none();
-        }
-        Message::Nav(NavMsg::SelectDetailsTab(tab)) => {
-            state.details.active_tab = tab;
-        }
-        Message::Task(TaskMsg::DetailsTreeExpand(path)) => {
-            if state.details.files_expanded.contains(&path) {
-                state.details.files_expanded.remove(&path);
-            } else {
-                state.details.files_expanded.insert(path);
-            }
-        }
-        Message::Task(TaskMsg::DetailsTreeToggle(path)) => {
-            let Some(details) = state.details.details.clone() else {
-                return Task::none();
-            };
-            let Some(gid) = state.details.gid.clone() else {
-                return Task::none();
-            };
-            let save_dir = state.tasks.get(&gid).map(|t| t.save_dir.clone());
-            let tree = details_files_tree(Some(&details), save_dir.as_deref());
-            let Some(node) = crate::ui::components::file_tree::find_node(&tree, &path) else {
-                return Task::none();
-            };
-            let indices = crate::ui::components::file_tree::descendant_indices(node);
-            let mut pairs: Vec<(u64, bool)> = details
-                .files
-                .iter()
-                .map(|f| (f.index, f.selected))
-                .collect();
-            crate::ui::components::file_tree::flip_with_guard(&mut pairs, &indices);
-            if let Some(ref mut details) = state.details.details {
-                for (idx, selected) in pairs {
-                    if let Some(file) = details.files.iter_mut().find(|f| f.index == idx) {
-                        file.selected = selected;
-                    }
-                }
-            }
-            return schedule_details_select_flush(state);
-        }
-        Message::Task(TaskMsg::DetailsFilesSelectAll) => {
-            if let Some(ref mut details) = state.details.details {
-                for file in &mut details.files {
-                    file.selected = true;
-                }
-            }
-            return schedule_details_select_flush(state);
-        }
-        Message::Task(TaskMsg::DetailsFilesSelectNone) => {
-            if let Some(ref mut details) = state.details.details {
-                for file in &mut details.files {
-                    file.selected = false;
-                }
-                if let Some(first) = details.files.iter_mut().min_by_key(|f| f.index) {
-                    first.selected = true;
-                }
-            }
-            return schedule_details_select_flush(state);
-        }
-        Message::Task(TaskMsg::DetailsFilesScroll(off)) => {
-            state.details.files_scroll_offset = off;
-        }
-        Message::Task(TaskMsg::DetailsFilesFlush(gen)) => {
-            if gen != state.details.select_gen {
-                return Task::none();
-            }
-            if let Some((gid, files)) = state.details.pending_select.take() {
-                let _ = state.handle.cmd_tx.send(EngineCmd::SelectFiles {
-                    gid: gid.clone(),
-                    files,
-                });
-                let _ = state.handle.cmd_tx.send(EngineCmd::FetchTaskDetails(gid));
-            }
-        }
-        Message::Task(TaskMsg::OpenTaskFile(gid)) => {
-            let Some(t) = state.tasks.get(&gid).cloned() else {
-                return Task::none();
-            };
-            let path = t.save_dir.join(&t.name);
-            if path.exists()
-                && (crate::engine::is_torrent_url(&t.name) || t.name.starts_with("[METADATA]"))
-            {
-                let default_dir = if t.save_dir.as_os_str().is_empty() {
-                    state.settings.download_dir.clone()
-                } else {
-                    t.save_dir.clone()
-                };
-                state.add_dialog.save_picker.close_history();
-                state.add_dialog.open(default_dir, state.settings.split);
-                state.add_dialog_anim.open();
-                state
-                    .add_dialog
-                    .set_torrent_path(path.to_string_lossy().to_string());
-                state.add_dialog.active_tab = AddTab::Torrent;
-                return Task::none();
-            }
-            if path.exists() {
-                return Task::perform(
-                    async move {
-                        let _ = open::that(&path);
-                    },
-                    |_| Message::Noop,
-                );
-            }
-            if t.status == TaskStatus::Completed {
-                if state.settings.remove_task_if_files_missing {
-                    state.tracking.paused_gids.remove(&gid);
-                    let _ = state.handle.cmd_tx.send(EngineCmd::Remove {
-                        gid: gid.clone(),
-                        delete_files: false,
-                    });
-                    spawn_toast(
-                        state,
-                        ToastGroup::Task,
-                        ToastKind::Normal,
-                        state.fluent.get(Tr::FilesMissingRemoved),
-                        Some(Duration::from_secs(3)),
-                        false,
-                    );
-                    return Task::none();
-                }
-                state.confirm = Some(ConfirmAction::RemoveMissingFileTask(gid));
-                state.confirm_anim.open();
-                return Task::none();
-            }
-            spawn_toast(
-                state,
-                ToastGroup::Task,
-                ToastKind::Warning,
-                state.fluent.get(Tr::FileMissing),
-                Some(Duration::from_secs(4)),
-                false,
-            );
-            return Task::none();
-        }
-        Message::Task(TaskMsg::OpenTaskFolder(gid)) => {
-            let dir = state
-                .tasks
-                .get(&gid)
-                .map(|t| t.save_dir.clone())
-                .unwrap_or_default();
-            if !dir.as_os_str().is_empty() {
-                return Task::perform(
-                    async move {
-                        let _ = open::that(&dir);
-                    },
-                    |_| Message::Noop,
-                );
-            }
-        }
-        Message::Task(TaskMsg::CopyTaskLink(gid)) => {
-            let Some(t) = state.tasks.get(&gid) else {
-                return Task::none();
-            };
-            let content = if !t.url.is_empty() {
-                t.url.clone()
-            } else if let Some(hash) = t.info_hash.as_deref() {
-                if hash.is_empty() {
-                    return Task::none();
-                }
-                format!("magnet:?xt=urn:btih:{hash}")
-            } else {
-                return Task::none();
-            };
-            return copy_to_clipboard(state, content);
-        }
-        Message::Dialog(DialogMsg::RequestConfirm(action)) => {
-            state.confirm = Some(action);
-            state.confirm_anim.open();
-        }
-        Message::Dialog(DialogMsg::ConfirmCancel) => {
-            if state.confirm_anim.is_dismissing() {
-                return Task::none();
-            }
-            if matches!(state.confirm, Some(ConfirmAction::Shutdown { .. })) {
-                reset_shutdown_card(state);
-            }
-            state.confirm_anim.begin_exit();
-        }
-        Message::Settings(SettingsMsg::ApplyAndLeaveSettings) => {
-            if state.confirm_anim.is_dismissing() {
-                return Task::none();
-            }
-            if let Some(ConfirmAction::LeaveSettings { target }) = state.confirm.as_ref() {
-                let target = *target;
-                state.confirm_anim.begin_exit();
-                apply_settings(state);
-                set_page(state, target);
-            }
-        }
-        Message::Settings(SettingsMsg::DiscardAndLeaveSettings) => {
-            if state.confirm_anim.is_dismissing() {
-                return Task::none();
-            }
-            if let Some(ConfirmAction::LeaveSettings { target }) = state.confirm.as_ref() {
-                let target = *target;
-                state.confirm_anim.begin_exit();
-                revert_apply_settings(state);
-                config::save(&state.settings);
-                set_page(state, target);
-            }
-        }
-        Message::Settings(SettingsMsg::ApplyAndClose) => {
-            if state.confirm_anim.is_dismissing() {
-                return Task::none();
-            }
-            if matches!(state.confirm, Some(ConfirmAction::UnsavedOnClose)) {
-                state.confirm_anim.begin_exit();
-                apply_settings(state);
-                return continue_close_flow(state);
-            }
-        }
-        Message::Settings(SettingsMsg::DiscardAndClose) => {
-            if state.confirm_anim.is_dismissing() {
-                return Task::none();
-            }
-            if matches!(state.confirm, Some(ConfirmAction::UnsavedOnClose)) {
-                state.confirm_anim.begin_exit();
-                revert_apply_settings(state);
-                config::save(&state.settings);
-                return continue_close_flow(state);
-            }
-        }
-        Message::Toast(ToastMsg::DismissToast(id)) => {
-            dismiss_toast(state, id);
-        }
-        Message::Toast(ToastMsg::ToastHovered(id)) => {
-            state.toasts.hover(id);
-        }
-        Message::Toast(ToastMsg::ToastUnhovered(id)) => {
-            state.toasts.unhover(id);
-        }
-        Message::Toast(ToastMsg::ToastTick) => {
-            state.toasts.tick();
-        }
-        Message::CopyText(s) => return copy_to_clipboard(state, s),
-        Message::CursorMoved(pos) => {
-            state.last_cursor = pos;
-        }
-        Message::CtxOpen(target) => {
-            state.ctx_open = Some((target, state.last_cursor));
-            return iced::clipboard::read().map(Message::CtxClipboardRead);
-        }
-        Message::CtxClipboardRead(text) => {
-            if let Some((target, position)) = state.ctx_open.take() {
-                state.ctx_menu = Some(CtxMenuState {
-                    target,
-                    position,
-                    clipboard: text,
-                });
-            }
-        }
-        Message::CtxClose => {
-            state.ctx_menu = None;
-            state.ctx_open = None;
-        }
-        Message::CtxCopy(selected) => {
-            state.ctx_menu = None;
-            state.ctx_open = None;
-            return copy_to_clipboard(state, selected);
-        }
-        Message::CtxPaste(target, text) => {
-            state.ctx_menu = None;
-            state.ctx_open = None;
-            return Task::done(ctx_paste_message(state, target, text));
-        }
-        Message::OpenLink(url) => {
-            let scheme = url.split(':').next().unwrap_or_default();
-            if !matches!(scheme, "http" | "https") {
-                return Task::none();
-            }
-            return Task::perform(
-                async move {
-                    let _ = open::that(&url);
-                },
-                |_| Message::Noop,
-            );
-        }
-        Message::OpenFile(path) => {
-            return Task::perform(
-                async move {
-                    let _ = open::that(&path);
-                },
-                |_| Message::Noop,
-            );
-        }
-        Message::RevealDir(path) => {
-            return open_path_in_manager(path);
-        }
-        Message::ShowRequested => {
-            if state.window.closing {
-                return Task::none();
-            }
-            if state.window.hidden_to_tray {
-                return restore_window_from_tray(state);
-            }
-            let title = state.fluent.get(Tr::AppRunningTitle);
-            let body = state.fluent.get(Tr::AppRunningBody);
-            send_system_notification(
-                state,
-                title,
-                body,
-                vec![],
-                crate::notify::NotifyAction::ActivateWindow,
-            );
-            return Task::none();
-        }
-        Message::ActivateWindow => {
-            let attention = state
-                .window
-                .window_id
-                .map(|id| {
-                    iced::window::request_user_attention(
-                        id,
-                        Some(iced::window::UserAttention::Critical),
-                    )
-                })
-                .unwrap_or_else(Task::none);
-            return restore_window_from_tray(state).chain(attention);
-        }
-        Message::Tray(TrayMsg::ClickShow) => {
-            return restore_window_from_tray_wayland(state);
-        }
-        Message::Tray(TrayMsg::ToggleWindow) => {
-            if state.window.hidden_to_tray {
-                return restore_window_from_tray_wayland(state);
-            }
-            return hide_to_tray(state);
-        }
-        Message::Tray(TrayMsg::OpenAddDialog) => {
-            tracing::info!(
-                window_id = state.window.window_id.is_some(),
-                "tray new download"
-            );
-            open_add_dialog(state);
-            let attention = state
-                .window
-                .window_id
-                .map(|id| {
-                    iced::window::request_user_attention(
-                        id,
-                        Some(iced::window::UserAttention::Critical),
-                    )
-                })
-                .unwrap_or_else(Task::none);
-            return restore_window_from_tray_wayland(state).chain(attention);
-        }
-        Message::Tray(TrayMsg::OpenSettings) => {
-            tracing::info!(
-                window_id = state.window.window_id.is_some(),
-                "tray open settings"
-            );
-            state.settings_ui.download_picker.close_history();
-            set_page(state, Page::Settings);
-            let attention = state
-                .window
-                .window_id
-                .map(|id| {
-                    iced::window::request_user_attention(
-                        id,
-                        Some(iced::window::UserAttention::Critical),
-                    )
-                })
-                .unwrap_or_else(Task::none);
-            return restore_window_from_tray_wayland(state).chain(attention);
-        }
-        Message::Shutdown(msg) => return handle_shutdown(state, msg),
-        Message::Noop => {}
-        Message::Extension(ExtensionMsg::GenerateSecret) => {
-            state.settings.extension.secret = crate::extension_api::generate_secret();
-            mark_settings_dirty(state);
-        }
-        Message::Extension(ExtensionMsg::ShowAddDialog(download)) => {
-            state.add_dialog.open_external(
-                state.settings.download_dir.clone(),
-                state.settings.split,
-                download,
-            );
-        }
-        Message::Extension(ExtensionMsg::ServerRestarted { ok }) => {
-            let (msg, kind) = if ok {
-                (state.fluent.get(Tr::ExtensionRestarted), ToastKind::Success)
-            } else {
-                (
-                    state.fluent.get(Tr::ExtensionRestartFailed),
-                    ToastKind::Error,
-                )
-            };
-            spawn_toast(
-                state,
-                ToastGroup::Engine,
-                kind,
-                msg,
-                Some(Duration::from_secs(3)),
-                false,
-            );
-        }
-        Message::ProgressAnim(gid, event) => {
-            if let Some(anim) = state.progress_anim.get_mut(&gid) {
-                anim.update(event);
-            }
-        }
-        Message::CardAnim(gid, event) => {
-            let done = if let Some(anim) = state.card_anim.get_mut(&gid) {
-                anim.update(event);
-                !anim.is_animating()
-            } else {
-                true
-            };
-            if done && state.pending_removals.contains(&gid) {
-                finalize_task_removal(state, &gid);
-            }
-        }
-        Message::HudAnim(event) => {
-            state.hud_anim.update(event);
-        }
-        Message::PillAnim(event) => {
-            state.filter_pill.update(event);
-        }
-        Message::AddDialogAnim(event) => {
-            state.add_dialog_anim.update(event);
-            if state.add_dialog_anim.completed_dismiss() {
-                state.add_dialog.close();
-            }
-        }
-        Message::AboutDialogAnim(event) => {
-            state.about_dialog_anim.update(event);
-            if state.about_dialog_anim.completed_dismiss() {
-                state.about_dialog_visible = false;
-            }
-        }
-        Message::DetailsAnim(event) => {
-            state.details_anim.update(event);
-            if state.details_anim.completed_dismiss() {
-                state.details.close();
-            }
-        }
-        Message::ConfirmAnim(event) => {
-            state.confirm_anim.update(event);
-            if state.confirm_anim.completed_dismiss() {
-                state.confirm = None;
-            }
-        }
-        Message::UpdateDialogAnim(event) => {
-            state.update_dialog_anim.update(event);
-            if state.update_dialog_anim.completed_dismiss() {
-                state.update_dialog = None;
-            }
-        }
-        Message::CloseDialogAnim(event) => {
-            if let Some(anim) = &mut state.window.close_dialog_anim {
-                anim.update(event);
-                if state.window.close_dialog_dismissing && !anim.is_animating() {
-                    state.window.show_close_dialog = false;
-                    state.window.close_dialog_anim = None;
-                    state.window.close_dialog_dismissing = false;
-                }
-            }
-        }
-    }
-    state
-        .hud_anim
-        .set_target(if state.tracking.active_count > 0 {
-            1.0
-        } else {
-            0.0
-        });
-    Task::none()
+    crate::update::dispatch(state, message)
 }
 
 pub fn view(state: &Remotrix) -> Element<'_, Message> {
@@ -4779,7 +1812,7 @@ fn build_extension_stream(slot: &ExtensionSlot) -> impl iced::futures::Stream<It
     )
 }
 
-fn picker_mut(
+pub(crate) fn picker_mut(
     state: &mut Remotrix,
     id: PathPickerId,
 ) -> &mut crate::ui::components::path_picker::PathPicker {
@@ -4792,7 +1825,7 @@ fn picker_mut(
     }
 }
 
-fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
+pub(crate) fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
     let s = p.to_string_lossy().to_string();
     match id {
         PathPickerId::DownloadDir => {
@@ -4847,7 +1880,7 @@ fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
     }
 }
 
-fn details_files_tree(
+pub(crate) fn details_files_tree(
     details: Option<&crate::task::TaskDetails>,
     save_dir: Option<&std::path::Path>,
 ) -> Vec<FileTreeNode> {
@@ -4876,7 +1909,7 @@ fn details_files_tree(
     crate::ui::components::file_tree::build_tree(&tuples)
 }
 
-fn selected_details_indices(state: &Remotrix) -> Vec<u64> {
+pub(crate) fn selected_details_indices(state: &Remotrix) -> Vec<u64> {
     state
         .details
         .details
@@ -4891,7 +1924,7 @@ fn selected_details_indices(state: &Remotrix) -> Vec<u64> {
         .unwrap_or_default()
 }
 
-fn schedule_details_select_flush(state: &mut Remotrix) -> Task<Message> {
+pub(crate) fn schedule_details_select_flush(state: &mut Remotrix) -> Task<Message> {
     let Some(gid) = state.details.gid.clone() else {
         return Task::none();
     };
@@ -4911,7 +1944,7 @@ fn schedule_details_select_flush(state: &mut Remotrix) -> Task<Message> {
     )
 }
 
-fn spawn_toast(
+pub(crate) fn spawn_toast(
     state: &mut Remotrix,
     group: ToastGroup,
     kind: ToastKind,
@@ -4924,7 +1957,7 @@ fn spawn_toast(
         .spawn(group, kind, message, close_after, show_close)
 }
 
-fn copy_to_clipboard(state: &mut Remotrix, content: String) -> Task<Message> {
+pub(crate) fn copy_to_clipboard(state: &mut Remotrix, content: String) -> Task<Message> {
     if content.is_empty() {
         return Task::none();
     }
@@ -4939,14 +1972,14 @@ fn copy_to_clipboard(state: &mut Remotrix, content: String) -> Task<Message> {
     iced::clipboard::write::<Message>(content)
 }
 
-fn dismiss_toast(state: &mut Remotrix, id: u64) {
+pub(crate) fn dismiss_toast(state: &mut Remotrix, id: u64) {
     state.toasts.dismiss(id);
 }
 
 const SHUTDOWN_CONFIRM_SECS: u32 = 30;
 const SHUTDOWN_CARD_ANCHOR: f32 = 112.0;
 
-fn reset_shutdown_card(state: &mut Remotrix) {
+pub(crate) fn reset_shutdown_card(state: &mut Remotrix) {
     let minutes = state.shutdown.timer_minutes.max(1);
     state.shutdown = crate::shutdown::ShutdownControl {
         timer_minutes: minutes,
@@ -4954,7 +1987,7 @@ fn reset_shutdown_card(state: &mut Remotrix) {
     };
 }
 
-fn trigger_shutdown_confirm(state: &mut Remotrix) {
+pub(crate) fn trigger_shutdown_confirm(state: &mut Remotrix) {
     if matches!(state.confirm, Some(ConfirmAction::Shutdown { .. })) {
         return;
     }
@@ -4964,7 +1997,10 @@ fn trigger_shutdown_confirm(state: &mut Remotrix) {
     state.confirm_anim.open();
 }
 
-fn handle_shutdown(state: &mut Remotrix, msg: crate::message::ShutdownMsg) -> Task<Message> {
+pub(crate) fn handle_shutdown(
+    state: &mut Remotrix,
+    msg: crate::message::ShutdownMsg,
+) -> Task<Message> {
     use crate::message::ShutdownMsg;
     match msg {
         ShutdownMsg::ToggleCard => {
@@ -5056,7 +2092,7 @@ fn handle_shutdown(state: &mut Remotrix, msg: crate::message::ShutdownMsg) -> Ta
     Task::none()
 }
 
-fn send_system_notification(
+pub(crate) fn send_system_notification(
     state: &mut Remotrix,
     title: String,
     body: String,
@@ -5090,7 +2126,7 @@ fn send_system_notification(
     }
 }
 
-fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -> Task<Message> {
+pub(crate) fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -> Task<Message> {
     if state.engine_ui.update_check_in_flight {
         return Task::none();
     }
@@ -5216,7 +2252,7 @@ fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -> Task<Mess
     )
 }
 
-fn changelog_fetch_task(state: &Remotrix, tab: usize) -> Task<Message> {
+pub(crate) fn changelog_fetch_task(state: &Remotrix, tab: usize) -> Task<Message> {
     let Some(dialog) = &state.update_dialog else {
         return Task::none();
     };
@@ -5255,7 +2291,7 @@ fn changelog_fetch_task(state: &Remotrix, tab: usize) -> Task<Message> {
     })
 }
 
-fn concat_changelog(rels: &[crate::updater::ReleaseInfo]) -> String {
+pub(crate) fn concat_changelog(rels: &[crate::updater::ReleaseInfo]) -> String {
     let mut parts = Vec::new();
     for rel in rels {
         let mut block = format!("v{}", rel.version);
@@ -5268,7 +2304,10 @@ fn concat_changelog(rels: &[crate::updater::ReleaseInfo]) -> String {
     parts.join("\n\n---\n\n")
 }
 
-fn send_download_aria2_update(state: &mut Remotrix, offer: &crate::ui::update_dialog::UpdateOffer) {
+pub(crate) fn send_download_aria2_update(
+    state: &mut Remotrix,
+    offer: &crate::ui::update_dialog::UpdateOffer,
+) {
     state.engine_ui.aria2_downloading = true;
     state.engine_ui.aria2_downloading_version = Some(offer.latest.clone());
     state.engine_ui.aria2_download_progress = None;
@@ -5280,7 +2319,7 @@ fn send_download_aria2_update(state: &mut Remotrix, offer: &crate::ui::update_di
     });
 }
 
-fn start_tracker_fetch(state: &mut Remotrix, urls: Vec<String>) -> Task<Message> {
+pub(crate) fn start_tracker_fetch(state: &mut Remotrix, urls: Vec<String>) -> Task<Message> {
     state.settings_ui.syncing_trackers = true;
     let id = spawn_toast(
         state,
@@ -5306,7 +2345,7 @@ fn start_tracker_fetch(state: &mut Remotrix, urls: Vec<String>) -> Task<Message>
     Task::batch([fetch, timeout])
 }
 
-fn pick_path(id: PathPickerId) -> Task<Message> {
+pub(crate) fn pick_path(id: PathPickerId) -> Task<Message> {
     let task = async move {
         let dialog = rfd::AsyncFileDialog::new();
         let picked = match id {
@@ -5343,7 +2382,7 @@ fn pick_path(id: PathPickerId) -> Task<Message> {
     })
 }
 
-fn open_path_in_manager(p: PathBuf) -> Task<Message> {
+pub(crate) fn open_path_in_manager(p: PathBuf) -> Task<Message> {
     if p.as_os_str().is_empty() {
         return Task::none();
     }
@@ -5363,7 +2402,7 @@ fn open_path_in_manager(p: PathBuf) -> Task<Message> {
     )
 }
 
-fn continue_close_flow(state: &mut Remotrix) -> Task<Message> {
+pub(crate) fn continue_close_flow(state: &mut Remotrix) -> Task<Message> {
     if state.settings.close_to_tray && state.tray.enabled() {
         return hide_to_tray(state);
     }
@@ -5372,7 +2411,7 @@ fn continue_close_flow(state: &mut Remotrix) -> Task<Message> {
     Task::none()
 }
 
-fn open_close_dialog(state: &mut Remotrix) {
+pub(crate) fn open_close_dialog(state: &mut Remotrix) {
     state.window.close_dialog_anim = Some(
         crate::ui::animation::Animated::transition(
             0.0,
@@ -5383,7 +2422,7 @@ fn open_close_dialog(state: &mut Remotrix) {
     state.window.close_dialog_dismissing = false;
 }
 
-fn hide_to_tray(state: &mut Remotrix) -> Task<Message> {
+pub(crate) fn hide_to_tray(state: &mut Remotrix) -> Task<Message> {
     state.window.show_close_dialog = false;
     state.window.close_dialog_anim = None;
     state.window.close_dialog_dismissing = false;
@@ -5404,7 +2443,7 @@ fn hide_to_tray(state: &mut Remotrix) -> Task<Message> {
     }
 }
 
-fn restore_window_from_tray_wayland(state: &mut Remotrix) -> Task<Message> {
+pub(crate) fn restore_window_from_tray_wayland(state: &mut Remotrix) -> Task<Message> {
     let task = restore_window_from_tray(state);
     if state.window.wayland {
         let title = state.fluent.get(Tr::TrayWaylandFocusTitle);
@@ -5420,7 +2459,7 @@ fn restore_window_from_tray_wayland(state: &mut Remotrix) -> Task<Message> {
     task
 }
 
-fn restore_window_from_tray(state: &mut Remotrix) -> Task<Message> {
+pub(crate) fn restore_window_from_tray(state: &mut Remotrix) -> Task<Message> {
     if state.window.hidden_to_tray {
         state.window.hidden_to_tray = false;
         refresh_tray(state);
@@ -5433,7 +2472,7 @@ fn restore_window_from_tray(state: &mut Remotrix) -> Task<Message> {
     task
 }
 
-fn open_add_dialog(state: &mut Remotrix) {
+pub(crate) fn open_add_dialog(state: &mut Remotrix) {
     state.add_dialog.save_picker.close_history();
     state
         .add_dialog
@@ -5441,7 +2480,7 @@ fn open_add_dialog(state: &mut Remotrix) {
     state.add_dialog_anim.open();
 }
 
-fn refresh_tray(state: &mut Remotrix) {
+pub(crate) fn refresh_tray(state: &mut Remotrix) {
     if !state.tray.enabled() {
         return;
     }
