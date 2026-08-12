@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use notify_rust::Notification as RustNotification;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-use crate::message::Message;
+use crate::message::{EngineMsg, Message};
 
 #[cfg(target_os = "linux")]
 use notify_rust::NotificationHandle;
@@ -28,12 +28,15 @@ pub struct DesktopNotifier;
 const OPEN_ACTION: &str = "open";
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 const REVEAL_ACTION: &str = "reveal";
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+const RESTART_ACTION: &str = "restart";
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 fn action_key(a: &NotifyAction) -> Option<&'static str> {
     match a {
         NotifyAction::OpenFile(_) => Some(OPEN_ACTION),
         NotifyAction::RevealDir(_) => Some(REVEAL_ACTION),
+        NotifyAction::RestartEngine => Some(RESTART_ACTION),
         NotifyAction::ActivateWindow => Some(OPEN_ACTION),
     }
 }
@@ -64,6 +67,7 @@ fn response_to_message(
     target.map(|action| match action {
         NotifyAction::OpenFile(path) => Message::OpenFile(path),
         NotifyAction::RevealDir(path) => Message::RevealDir(path),
+        NotifyAction::RestartEngine => Message::Engine(EngineMsg::RestartEngine),
         NotifyAction::ActivateWindow => Message::ActivateWindow,
     })
 }
@@ -253,6 +257,7 @@ pub enum NotifyAction {
     ActivateWindow,
     OpenFile(PathBuf),
     RevealDir(PathBuf),
+    RestartEngine,
 }
 
 #[cfg(target_os = "linux")]

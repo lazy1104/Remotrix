@@ -143,6 +143,7 @@ pub(crate) struct EngineUiState {
     pub(crate) aria2_downloading: bool,
     pub(crate) aria2_downloading_version: Option<String>,
     pub(crate) aria2_download_progress: Option<(u64, u64)>,
+    pub(crate) aria2_download_silent: bool,
 }
 
 impl EngineUiState {
@@ -159,6 +160,7 @@ impl EngineUiState {
             aria2_downloading: false,
             aria2_downloading_version: None,
             aria2_download_progress: None,
+            aria2_download_silent: false,
         }
     }
 }
@@ -2312,10 +2314,29 @@ pub(crate) fn concat_changelog(rels: &[crate::updater::ReleaseInfo]) -> String {
 pub(crate) fn send_download_aria2_update(
     state: &mut Remotrix,
     offer: &crate::ui::update_dialog::UpdateOffer,
+    silent: bool,
 ) {
+    state.engine_ui.aria2_download_silent = silent;
     state.engine_ui.aria2_downloading = true;
     state.engine_ui.aria2_downloading_version = Some(offer.latest.clone());
     state.engine_ui.aria2_download_progress = None;
+    if !silent {
+        spawn_toast(
+            state,
+            ToastGroup::Engine,
+            ToastKind::Normal,
+            state.fluent.get(Tr::UpdateDownloading),
+            Some(Duration::from_secs(4)),
+            false,
+        );
+        send_system_notification(
+            state,
+            state.fluent.get(Tr::Aria2UpdateStartingTitle),
+            state.fluent.get(Tr::Aria2UpdateStartingBody),
+            vec![],
+            crate::notify::NotifyAction::ActivateWindow,
+        );
+    }
     let _ = state.handle.cmd_tx.send(EngineCmd::DownloadAria2Update {
         version: offer.latest.clone(),
         asset_name: offer.asset_name.clone(),

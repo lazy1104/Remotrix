@@ -764,7 +764,7 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                 );
             }
             for silent in &silent_applied {
-                send_download_aria2_update(state, silent);
+                send_download_aria2_update(state, silent, true);
             }
             if !offers.is_empty() {
                 let changelogs = offers
@@ -817,7 +817,7 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
             for offer in offers {
                 match offer.component {
                     crate::ui::update_dialog::UpdateComponent::Aria2 => {
-                        send_download_aria2_update(state, &offer);
+                        send_download_aria2_update(state, &offer, false);
                     }
                     crate::ui::update_dialog::UpdateComponent::App => {
                         if state.app_update_in_flight {

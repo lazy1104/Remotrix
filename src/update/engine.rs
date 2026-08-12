@@ -730,17 +730,19 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
             state.engine_ui.aria2_downloading = false;
             state.engine_ui.aria2_downloading_version = None;
             state.engine_ui.aria2_download_progress = None;
-            spawn_toast(
-                state,
-                ToastGroup::Engine,
-                ToastKind::Success,
-                format!(
-                    "{} v{version}",
-                    state.fluent.get(crate::i18n::Tr::UpdatedTo)
-                ),
-                Some(Duration::from_secs(4)),
-                false,
-            );
+            if !state.engine_ui.aria2_download_silent {
+                spawn_toast(
+                    state,
+                    ToastGroup::Engine,
+                    ToastKind::Success,
+                    format!(
+                        "{} v{version}",
+                        state.fluent.get(crate::i18n::Tr::UpdatedTo)
+                    ),
+                    Some(Duration::from_secs(4)),
+                    false,
+                );
+            }
             Task::none()
         }
         EngineEvent::Aria2UpdateProgress { downloaded, total } => {
@@ -753,14 +755,16 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
             state.engine_ui.aria2_downloading = false;
             state.engine_ui.aria2_downloading_version = None;
             state.engine_ui.aria2_download_progress = None;
-            spawn_toast(
-                state,
-                ToastGroup::Engine,
-                ToastKind::Error,
-                format!("{}: {error}", state.fluent.get(Tr::UpdateFailed)),
-                Some(Duration::from_secs(6)),
-                true,
-            );
+            if !state.engine_ui.aria2_download_silent {
+                spawn_toast(
+                    state,
+                    ToastGroup::Engine,
+                    ToastKind::Error,
+                    format!("{}: {error}", state.fluent.get(Tr::UpdateFailed)),
+                    Some(Duration::from_secs(6)),
+                    true,
+                );
+            }
             Task::none()
         }
         EngineEvent::Aria2UpdateStaged { version } => {
@@ -768,17 +772,27 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
             state.engine_ui.aria2_downloading = false;
             state.engine_ui.aria2_downloading_version = None;
             state.engine_ui.aria2_download_progress = None;
-            spawn_toast(
-                state,
-                ToastGroup::Engine,
-                ToastKind::Normal,
-                format!(
-                    "aria2-next v{version} - {}",
-                    state.fluent.get(crate::i18n::Tr::UpdateEngineRestart)
-                ),
-                Some(Duration::from_secs(5)),
-                false,
-            );
+            let restart_text = state.fluent.get(crate::i18n::Tr::UpdateEngineRestart);
+            if !state.engine_ui.aria2_download_silent {
+                spawn_toast(
+                    state,
+                    ToastGroup::Engine,
+                    ToastKind::Normal,
+                    format!("aria2-next v{version} - {restart_text}"),
+                    Some(Duration::from_secs(5)),
+                    false,
+                );
+                send_system_notification(
+                    state,
+                    state.fluent.get(crate::i18n::Tr::Aria2UpdateReadyTitle),
+                    format!("aria2-next v{version} - {restart_text}"),
+                    vec![(
+                        state.fluent.get(crate::i18n::Tr::RestartEngine),
+                        crate::notify::NotifyAction::RestartEngine,
+                    )],
+                    crate::notify::NotifyAction::ActivateWindow,
+                );
+            }
             Task::none()
         }
         EngineEvent::AppUpdateDownloaded { kind, path } => {
