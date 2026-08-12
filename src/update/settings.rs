@@ -14,7 +14,25 @@ use crate::config;
 use crate::engine::EngineCmd;
 use crate::i18n::{Fluent, Tr};
 use crate::message::{ConfirmAction, Message, SettingKey, SettingValue, SettingsMsg};
+use crate::port_guard::{check_port, port_value, PortKind};
 use crate::ui::components::toast::{Toast, ToastGroup, ToastKind};
+
+fn refresh_port_status(state: &mut Remotrix, edited: PortKind) {
+    let mut kinds = vec![edited];
+    if edited.is_tcp() {
+        for peer in [PortKind::Rpc, PortKind::ExtensionApi, PortKind::Ed2k] {
+            if peer != edited && state.port_status.contains_key(&peer) {
+                kinds.push(peer);
+            }
+        }
+    }
+    for kind in kinds {
+        let port = port_value(&state.settings, kind);
+        state
+            .port_status
+            .insert(kind, (port, check_port(&state.settings, kind)));
+    }
+}
 
 pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
     match msg {
@@ -259,10 +277,12 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                 }
                 SettingKey::ExtensionApiPort => {
                     if let SettingValue::Num(n) = value {
-                        state.settings.extension.port = n.clamp(
+                        let port = n.clamp(
                             crate::config::EXTENSION_API_MIN_PORT as u64,
                             crate::config::EXTENSION_API_MAX_PORT as u64,
                         ) as u16;
+                        state.settings.extension.port = port;
+                        refresh_port_status(state, PortKind::ExtensionApi);
                     }
                 }
                 SettingKey::ExtensionApiSecret => {
@@ -317,12 +337,23 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                 }
                 SettingKey::Ed2kListenPort => {
                     if let SettingValue::Num(n) = value {
-                        state.settings.aria2.ed2k_listen_port = n as u16;
+                        let port = n as u16;
+                        state.settings.aria2.ed2k_listen_port = port;
+                        refresh_port_status(state, PortKind::Ed2k);
                     }
                 }
                 SettingKey::Ed2kUdpListenPort => {
                     if let SettingValue::Num(n) = value {
-                        state.settings.aria2.ed2k_udp_listen_port = n as u16;
+                        let port = n as u16;
+                        state.settings.aria2.ed2k_udp_listen_port = port;
+                        refresh_port_status(state, PortKind::Ed2kUdp);
+                    }
+                }
+                SettingKey::RpcListenPort => {
+                    if let SettingValue::Num(n) = value {
+                        let port = n as u16;
+                        state.settings.aria2.rpc_listen_port = port;
+                        refresh_port_status(state, PortKind::Rpc);
                     }
                 }
                 SettingKey::Ed2kUploadSlots => {

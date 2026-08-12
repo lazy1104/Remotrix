@@ -15,9 +15,14 @@ pub const MAX_CONCURRENT_DOWNLOADS: u32 = 32;
 pub const EXTENSION_API_DEFAULT_PORT: u16 = 29110;
 pub const EXTENSION_API_MIN_PORT: u16 = 1024;
 pub const EXTENSION_API_MAX_PORT: u16 = 65535;
+pub const PORT_AUTO: u16 = 0;
 
 fn default_extension_api_port() -> u16 {
     EXTENSION_API_DEFAULT_PORT
+}
+
+fn default_rpc_listen_port() -> u16 {
+    PORT_AUTO
 }
 
 pub(crate) fn generate_secret() -> String {
@@ -110,6 +115,8 @@ pub struct Aria2Options {
     pub ed2k_udp_listen_port: u16,
     #[serde(default = "default_ed2k_upload_slots")]
     pub ed2k_upload_slots: u16,
+    #[serde(default = "default_rpc_listen_port")]
+    pub rpc_listen_port: u16,
 }
 
 fn default_max_connection_per_server() -> u32 {
@@ -207,6 +214,7 @@ impl Default for Aria2Options {
             ed2k_listen_port: default_ed2k_listen_port(),
             ed2k_udp_listen_port: default_ed2k_udp_listen_port(),
             ed2k_upload_slots: default_ed2k_upload_slots(),
+            rpc_listen_port: default_rpc_listen_port(),
         }
     }
 }
@@ -423,6 +431,12 @@ impl Aria2Options {
             && self.ed2k_listen_port == other.ed2k_listen_port
             && self.ed2k_udp_listen_port == other.ed2k_udp_listen_port
             && self.ed2k_upload_slots == other.ed2k_upload_slots
+    }
+
+    /// True when any engine spawn-time setting changed such that a restart is
+    /// required (ed2k ports/servers or the RPC listen port).
+    pub fn engine_restart_needed(&self, other: &Aria2Options) -> bool {
+        !self.ed2k_equal(other) || self.rpc_listen_port != other.rpc_listen_port
     }
 }
 

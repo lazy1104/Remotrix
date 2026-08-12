@@ -246,10 +246,16 @@ struct SidecarConfig {
     download_dir: PathBuf,
 }
 
-fn find_free_port() -> Result<u16, std::io::Error> {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
-    let addr = listener.local_addr()?;
-    Ok(addr.port())
+fn find_free_port_excluding(
+    reserved: &std::collections::HashSet<u16>,
+) -> Result<u16, std::io::Error> {
+    loop {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+        let addr = listener.local_addr()?;
+        if !reserved.contains(&addr.port()) {
+            return Ok(addr.port());
+        }
+    }
 }
 
 fn generate_secret() -> String {
@@ -267,9 +273,32 @@ fn pipe_lines<R: tokio::io::AsyncRead + Unpin + Send + 'static>(reader: R, targe
 }
 
 impl Sidecar {
-    async fn spawn(bin_path: &Path, config: &SidecarConfig) -> Result<Self, String> {
-        let port = find_free_port().map_err(|e| format!("port allocation: {e}"))?;
+    async fn spawn(
+        bin_path: &Path,
+        config: &SidecarConfig,
+        event_tx: &EventTx,
+    ) -> Result<Self, String> {
         let secret = generate_secret();
+        let settings = crate::config::load();
+        let reserved_tcp: std::collections::HashSet<u16> =
+            crate::port_guard::reserved_tcp_ports(&settings);
+        let configured = settings.aria2.rpc_listen_port;
+        let port = if configured > 0 && crate::port_guard::tcp_available(configured) {
+            configured
+        } else if configured > 0 {
+            let _ = event_tx.send(EngineEvent::Aria2Status {
+                stage: "warning".to_string(),
+                message: format!(
+                    "RPC port {configured} is occupied; falling back to an auto-assigned port"
+                ),
+            });
+            tracing::warn!(port = configured, "rpc port occupied, falling back to auto");
+            find_free_port_excluding(&reserved_tcp).map_err(|e| format!("port allocation: {e}"))?
+        } else {
+            // Auto-allocated port that explicitly avoids the Extension API and
+            // ed2k TCP ports, so the random port can never collide with them.
+            find_free_port_excluding(&reserved_tcp).map_err(|e| format!("port allocation: {e}"))?
+        };
 
         let session_file = config.session_path.join("session.txt");
         if !session_file.exists() {
@@ -288,7 +317,6 @@ impl Sidecar {
         // allocates a new console window for it alongside our GUI.
         #[cfg(windows)]
         cmd.creation_flags(0x08000000);
-        let settings = crate::config::load();
         for arg in settings.aria2.ed2k_startup_args() {
             cmd.arg(arg);
         }
@@ -1743,7 +1771,7 @@ async fn boot(
         stage: "starting".to_string(),
         message: "Starting aria2-next engine...".to_string(),
     });
-    let mut sidecar = Sidecar::spawn(&bin_path, config).await?;
+    let mut sidecar = Sidecar::spawn(&bin_path, config, event_tx).await?;
 
     if let Some(mut child) = sidecar.child.take() {
         let tx = restart_tx.clone();

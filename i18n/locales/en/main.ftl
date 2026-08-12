@@ -51,6 +51,11 @@ ed2k-listen-port = TCP listen port (0 = automatic)
 ed2k-udp-listen-port = UDP listen port (0 = automatic)
 ed2k-upload-slots = Upload slots
 ed2k-restart-hint = ED2K settings take effect after the engine restarts
+rpc-listen-port = RPC listen port (0 = auto)
+port-available = Port available
+port-in-use = Port in use
+port-conflict-with = Conflicts with { $other }
+port-auto-hint = 0 = auto-assigned
 download-folder = Download folder
 connection-segment = Connection & Segment
 max-concurrent = Max concurrent downloads

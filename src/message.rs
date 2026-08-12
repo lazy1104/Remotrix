@@ -474,6 +474,7 @@ pub enum SettingKey {
     Ed2kListenPort,
     Ed2kUdpListenPort,
     Ed2kUploadSlots,
+    RpcListenPort,
     SpeedLimitScheduleEnabled,
     ScheduleStart,
     ScheduleEnd,

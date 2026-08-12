@@ -13,6 +13,7 @@ mod i18n;
 mod logging;
 mod message;
 mod notify;
+mod port_guard;
 mod scheduler;
 mod shutdown;
 mod task;

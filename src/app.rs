@@ -336,6 +336,10 @@ pub struct Remotrix {
     pub(crate) confirm_anim: crate::ui::animation::DialogAnim,
     pub(crate) update_dialog_anim: crate::ui::animation::DialogAnim,
     pub(crate) shutdown: crate::shutdown::ShutdownControl,
+    pub(crate) port_status: std::collections::HashMap<
+        crate::port_guard::PortKind,
+        (u16, crate::port_guard::PortStatus),
+    >,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
@@ -485,6 +489,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
             timer_minutes: 30,
             ..Default::default()
         },
+        port_status: std::collections::HashMap::new(),
     };
 
     state.window.hidden_to_tray =
@@ -613,10 +618,10 @@ pub(crate) fn apply_settings(state: &mut Remotrix) -> bool {
     {
         tracing::warn!("ui: reload schedules cmd send failed");
     }
-    let restart_needed = !state
+    let restart_needed = state
         .settings
         .aria2
-        .ed2k_equal(&state.applied_settings.aria2);
+        .engine_restart_needed(&state.applied_settings.aria2);
     if restart_needed && state.handle.cmd_tx.send(EngineCmd::RestartEngine).is_err() {
         tracing::warn!("ui: restart engine cmd send failed");
     }
@@ -1219,6 +1224,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                 path_history: &state.settings.path_history,
                 font_restart_required: state.settings.font_family != state.applied_font_family,
                 ctx_mirrors: &state.input_cursors,
+                port_status: &state.port_status,
             };
             crate::ui::settings_page::view(&ctx)
         }

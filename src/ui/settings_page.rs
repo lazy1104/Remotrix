@@ -116,6 +116,10 @@ pub struct SettingsPageContext<'a> {
     pub path_history: &'a HashMap<String, Vec<String>>,
     pub font_restart_required: bool,
     pub ctx_mirrors: &'a CtxMirrors,
+    pub port_status: &'a std::collections::HashMap<
+        crate::port_guard::PortKind,
+        (u16, crate::port_guard::PortStatus),
+    >,
 }
 
 pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
@@ -140,6 +144,7 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
         path_history,
         font_restart_required,
         ctx_mirrors,
+        port_status,
     } = ctx;
     let accent = theme::accent(theme);
     let base_text = theme.extended_palette().background.base.text;
@@ -177,7 +182,7 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
             accent,
             ctx_mirrors,
         ),
-        SettingsCategory::Ed2k => ed2k_view(fluent, theme, settings, settings_ui),
+        SettingsCategory::Ed2k => ed2k_view(fluent, theme, settings, settings_ui, port_status),
         SettingsCategory::Network => network_view(fluent, settings, ua_editor, accent),
         SettingsCategory::Advanced => advanced_view(
             fluent,
@@ -189,6 +194,7 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
             *aria2_version,
             *aria2_status,
             *aria2_fetch_error,
+            port_status,
         ),
     };
 
@@ -1055,6 +1061,10 @@ fn extension_view<'a>(
     fluent: &'a Fluent,
     theme: &'a iced::Theme,
     settings: &'a Settings,
+    port_status: &'a std::collections::HashMap<
+        crate::port_guard::PortKind,
+        (u16, crate::port_guard::PortStatus),
+    >,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
     let secret = settings.extension.secret.clone();
@@ -1069,12 +1079,15 @@ fn extension_view<'a>(
         ));
     if settings.extension.enabled {
         col = col.push(sub_items([
-            labeled_number(
+            labeled_port(
+                fluent,
+                theme,
                 fluent.get(Tr::ExtensionApiPort),
                 settings.extension.port,
                 crate::config::EXTENSION_API_MIN_PORT..=crate::config::EXTENSION_API_MAX_PORT,
-                1,
                 SettingKey::ExtensionApiPort,
+                crate::port_guard::PortKind::ExtensionApi,
+                port_status,
             ),
             setting_row(
                 fluent.get(Tr::ExtensionApiSecret),
@@ -1375,6 +1388,10 @@ fn ed2k_view<'a>(
     theme: &'a iced::Theme,
     settings: &'a Settings,
     settings_ui: &'a SettingsUiState,
+    port_status: &'a std::collections::HashMap<
+        crate::port_guard::PortKind,
+        (u16, crate::port_guard::PortStatus),
+    >,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
     column![]
@@ -1426,19 +1443,25 @@ fn ed2k_view<'a>(
         )
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::Network, accent))
-        .push(labeled_number(
+        .push(labeled_port(
+            fluent,
+            theme,
             fluent.get(Tr::Ed2kListenPort),
             settings.aria2.ed2k_listen_port,
             0..=65535u16,
-            1,
             SettingKey::Ed2kListenPort,
+            crate::port_guard::PortKind::Ed2k,
+            port_status,
         ))
-        .push(labeled_number(
+        .push(labeled_port(
+            fluent,
+            theme,
             fluent.get(Tr::Ed2kUdpListenPort),
             settings.aria2.ed2k_udp_listen_port,
             0..=65535u16,
-            1,
             SettingKey::Ed2kUdpListenPort,
+            crate::port_guard::PortKind::Ed2kUdp,
+            port_status,
         ))
         .push(labeled_number(
             fluent.get(Tr::Ed2kUploadSlots),
@@ -1540,6 +1563,10 @@ fn advanced_view<'a>(
     aria2_version: Option<&'a str>,
     aria2_status: Option<(&'a str, &'a str)>,
     aria2_fetch_error: Option<&'a str>,
+    port_status: &'a std::collections::HashMap<
+        crate::port_guard::PortKind,
+        (u16, crate::port_guard::PortStatus),
+    >,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
     let text_secondary = theme::text_secondary(theme);
@@ -1639,6 +1666,16 @@ fn advanced_view<'a>(
     for elem in engine_rows {
         engine_col = engine_col.push(elem);
     }
+    engine_col = engine_col.push(labeled_port(
+        fluent,
+        theme,
+        fluent.get(Tr::RpcListenPort),
+        settings.aria2.rpc_listen_port,
+        0..=65535u16,
+        SettingKey::RpcListenPort,
+        crate::port_guard::PortKind::Rpc,
+        port_status,
+    ));
 
     let mut clipboard_col = column![].spacing(SPACE_SM);
     clipboard_col = clipboard_col
@@ -1685,7 +1722,7 @@ fn advanced_view<'a>(
 
     column![]
         .spacing(SPACE_2XL)
-        .push(extension_view(fluent, theme, settings))
+        .push(extension_view(fluent, theme, settings, port_status))
         .push(clipboard_col)
         .push(group_title(fluent, Tr::Performance, accent))
         .push({
@@ -1944,6 +1981,73 @@ where
             Length::Fixed(160.0),
         ),
     )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn labeled_port<'a>(
+    fluent: &'a Fluent,
+    theme: &'a iced::Theme,
+    label: String,
+    value: u16,
+    bounds: std::ops::RangeInclusive<u16>,
+    key: SettingKey,
+    kind: crate::port_guard::PortKind,
+    port_status: &'a std::collections::HashMap<
+        crate::port_guard::PortKind,
+        (u16, crate::port_guard::PortStatus),
+    >,
+) -> Element<'a, Message> {
+    let stepper = number_stepper(
+        value,
+        bounds,
+        1,
+        move |v| Message::Settings(SettingsMsg::SettingChanged(key, v.to_setting_value())),
+        Length::Fixed(160.0),
+    );
+    let status = if port_status.get(&kind).map(|(p, _)| *p) == Some(value) {
+        match port_status.get(&kind).map(|(_, s)| s) {
+            Some(crate::port_guard::PortStatus::InUse) => Some(
+                text(fluent.get(Tr::PortInUse))
+                    .size(FONT_SMALL)
+                    .color(theme::danger(theme)),
+            ),
+            Some(crate::port_guard::PortStatus::ConflictWith(other)) => {
+                let mut args = std::collections::HashMap::new();
+                args.insert(
+                    std::borrow::Cow::from("other"),
+                    fluent.get(other.tr()).into(),
+                );
+                Some(
+                    text(fluent.get_args(Tr::PortConflictWith, &args))
+                        .size(FONT_SMALL)
+                        .color(theme::warning(theme)),
+                )
+            }
+            Some(crate::port_guard::PortStatus::Available) => {
+                let msg = if value == 0 {
+                    Tr::PortAutoHint
+                } else {
+                    Tr::PortAvailable
+                };
+                Some(
+                    text(fluent.get(msg))
+                        .size(FONT_SMALL)
+                        .style(theme::style::text::secondary),
+                )
+            }
+            None => None,
+        }
+    } else {
+        None
+    };
+    let control = match status {
+        Some(s) => row![stepper, s]
+            .spacing(SPACE_SM)
+            .align_y(Alignment::Center)
+            .into(),
+        None => stepper,
+    };
+    setting_row(label, control)
 }
 
 fn labeled_toggle<'a>(label: String, value: bool, key: SettingKey) -> Element<'a, Message> {

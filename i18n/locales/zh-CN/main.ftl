@@ -51,6 +51,11 @@ ed2k-listen-port = TCP 监听端口（0=自动）
 ed2k-udp-listen-port = UDP 监听端口（0=自动）
 ed2k-upload-slots = 上传槽位
 ed2k-restart-hint = ED2K 设置在引擎重启后生效
+rpc-listen-port = RPC 监听端口（0=自动）
+port-available = 端口可用
+port-in-use = 端口被占用
+port-conflict-with = 与 { $other } 端口冲突
+port-auto-hint = 0=自动分配
 download-folder = 下载目录
 connection-segment = 连接与分段
 max-concurrent = 最大并发数
