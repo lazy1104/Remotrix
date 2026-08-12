@@ -365,6 +365,8 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
             connections,
             info_hash,
             is_seeding,
+            error_code,
+            error_message,
         } => {
             refresh_tray(state);
             state.tracking.synced_gids.insert(gid.clone());
@@ -582,9 +584,17 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
                             std::borrow::Cow::from("name"),
                             std::borrow::Cow::from(name).into(),
                         );
+                        let reason = match (error_message, error_code) {
+                            (Some(m), _) if !m.trim().is_empty() => Some(m.trim().to_string()),
+                            (_, Some(c)) if !c.trim().is_empty() => Some(format!("(error {c})")),
+                            _ => None,
+                        };
                         if state.tracking.sync_done && state.settings.notifications.download_error {
                             let title = state.fluent.get(Tr::DownloadErrorTitle);
-                            let body = state.fluent.get_args(Tr::DownloadError, &args);
+                            let mut body = state.fluent.get_args(Tr::DownloadError, &args);
+                            if let Some(reason) = reason {
+                                body = format!("{body}\n{reason}");
+                            }
                             send_system_notification(
                                 state,
                                 title,

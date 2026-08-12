@@ -140,6 +140,8 @@ pub enum EngineEvent {
         connections: u64,
         info_hash: Option<String>,
         is_seeding: bool,
+        error_code: Option<String>,
+        error_message: Option<String>,
     },
     TorrentAdded {
         gid: String,
@@ -475,6 +477,8 @@ async fn emit_progress(event_tx: &EventTx, s: &aria2_ws::response::Status) {
         connections: s.connections,
         info_hash: s.info_hash.clone(),
         is_seeding: s.seeder.unwrap_or(false),
+        error_code: s.error_code.clone(),
+        error_message: s.error_message.clone(),
     });
 }
 
