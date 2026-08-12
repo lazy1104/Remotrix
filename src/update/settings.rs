@@ -270,6 +270,11 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                         state.settings.notifications.download_added = b;
                     }
                 }
+                SettingKey::PreventSleep => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.prevent_sleep = b;
+                    }
+                }
                 SettingKey::ExtensionApiEnabled => {
                     if let SettingValue::Bool(b) = value {
                         state.settings.extension.enabled = b;

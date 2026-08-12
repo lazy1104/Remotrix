@@ -112,6 +112,7 @@ notify-download-complete = 下载完成时通知
 notify-download-error = 下载出错时通知
 notify-engine-degraded = 引擎故障时通知
 notify-download-added = 浏览器下载已添加时通知
+prevent-sleep = 下载时阻止系统休眠
 extension-category = 浏览器接管
 extension-api-enabled = 启用扩展 API
 extension-api-port = 端口

@@ -6,8 +6,8 @@ use iced::Task;
 use crate::app::{
     apply_task_name, begin_task_exit, check_updates, dismiss_toast, engine_restart_cooldown_task,
     engine_restart_safety_timeout_task, finalize_close, gid_recently_removed, refresh_tray,
-    send_system_notification, spawn_toast, sync_global_stat_cache, trigger_shutdown_confirm,
-    Remotrix,
+    send_system_notification, spawn_toast, sync_global_stat_cache, sync_sleep_block,
+    trigger_shutdown_confirm, Remotrix,
 };
 use crate::engine::{EngineCmd, EngineEvent};
 use crate::i18n::Tr;
@@ -403,6 +403,7 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
                 if task_status == TaskStatus::Active {
                     state.tracking.active_count += 1;
                 }
+                sync_sleep_block(state);
                 state.tasks.insert(
                     gid.clone(),
                     DownloadTask {
@@ -495,6 +496,7 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
                     })
                     .set_target(pct);
             }
+            sync_sleep_block(state);
             if status == "complete" && state.tracking.sync_done {
                 if let Some(t) = state.tasks.get(&gid) {
                     if !t.url.is_empty()

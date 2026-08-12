@@ -14,6 +14,7 @@ mod logging;
 mod message;
 mod notify;
 mod port_guard;
+mod power;
 mod scheduler;
 mod shutdown;
 mod task;

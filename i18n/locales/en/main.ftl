@@ -112,6 +112,7 @@ notify-download-complete = Notify on download complete
 notify-download-error = Notify on download error
 notify-engine-degraded = Notify on engine failure
 notify-download-added = Notify when a browser download is added
+prevent-sleep = Prevent system sleep while downloading
 extension-category = Browser Takeover
 extension-api-enabled = Enable extension API
 extension-api-port = API port

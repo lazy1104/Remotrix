@@ -459,6 +459,7 @@ pub enum SettingKey {
     NotificationDownloadError,
     NotificationEngineDegraded,
     NotificationDownloadAdded,
+    PreventSleep,
     ExtensionApiEnabled,
     ExtensionApiPort,
     ExtensionApiSecret,

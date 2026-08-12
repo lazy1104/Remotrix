@@ -1050,6 +1050,11 @@ fn download_view<'a>(
             SettingKey::NotificationDownloadAdded,
         ))
         .push(labeled_toggle(
+            fluent.get(Tr::PreventSleep),
+            settings.prevent_sleep,
+            SettingKey::PreventSleep,
+        ))
+        .push(labeled_toggle(
             fluent.get(Tr::NavToTasksAfterAdd),
             settings.nav_to_tasks_after_add,
             SettingKey::NavToTasksAfterAdd,

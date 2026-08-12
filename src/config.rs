@@ -671,6 +671,8 @@ pub struct Settings {
     pub autostart_enabled: bool,
     #[serde(default)]
     pub start_hidden_on_autostart: bool,
+    #[serde(default)]
+    pub prevent_sleep: bool,
 }
 
 impl Settings {
@@ -720,6 +722,7 @@ impl Default for Settings {
             extension: ExtensionPrefs::default(),
             autostart_enabled: false,
             start_hidden_on_autostart: false,
+            prevent_sleep: false,
         }
     }
 }

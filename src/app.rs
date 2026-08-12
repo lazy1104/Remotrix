@@ -323,6 +323,7 @@ pub struct Remotrix {
     pub(crate) window: WindowState,
     pub(crate) restart: EngineRestartState,
     pub(crate) tracking: TaskTracking,
+    pub(crate) sleep_block_active: bool,
     pub(crate) update_dialog: Option<UpdateDialogState>,
     pub(crate) app_update_in_flight: bool,
     pub(crate) progress_anim: HashMap<String, crate::ui::animation::Animated<f32>>,
@@ -467,6 +468,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         window: WindowState::new(iced::Size::new(window_w, window_h), window_maximized),
         restart: EngineRestartState::new(),
         tracking: TaskTracking::new(active_count),
+        sleep_block_active: false,
         update_dialog: None,
         app_update_in_flight: false,
         progress_anim: HashMap::new(),
@@ -518,6 +520,8 @@ pub fn init() -> (Remotrix, Task<Message>) {
             true,
         );
     }
+
+    sync_sleep_block(&mut state);
 
     (
         state,
@@ -580,6 +584,16 @@ pub(crate) fn revert_apply_settings(state: &mut Remotrix) {
         &state.settings.aria2.bt_tracker,
     ));
     crate::logging::set_app_level(&state.settings.log.app_level);
+    sync_sleep_block(state);
+}
+
+pub(crate) fn sync_sleep_block(state: &mut Remotrix) {
+    let should = state.applied_settings.prevent_sleep && state.tracking.active_count > 0;
+    if should == state.sleep_block_active {
+        return;
+    }
+    crate::power::set_sleep_blocked(should);
+    state.sleep_block_active = should;
 }
 
 pub(crate) fn apply_settings(state: &mut Remotrix) -> bool {
@@ -664,6 +678,7 @@ pub(crate) fn apply_settings(state: &mut Remotrix) -> bool {
     }
     state.applied_settings = state.settings.clone();
     state.settings_dirty = false;
+    sync_sleep_block(state);
     restart_needed
 }
 
@@ -705,6 +720,7 @@ pub(crate) fn clear_all_local(state: &mut Remotrix) {
     if let Some(ref db) = state.db {
         db.delete_all();
     }
+    sync_sleep_block(state);
 }
 
 pub(crate) fn begin_task_exit(state: &mut Remotrix, gid: &str, delete_db: bool) {
@@ -743,6 +759,7 @@ pub(crate) fn finalize_task_removal(state: &mut Remotrix, gid: &str) {
             state.tracking.active_count = state.tracking.active_count.saturating_sub(1);
         }
     }
+    sync_sleep_block(state);
     let _ = state.tracking.torrent_files.remove(gid);
     state.tracking.torrent_followed.remove(gid);
     state.tracking.completion_toasted.remove(gid);
@@ -911,6 +928,8 @@ pub(crate) fn begin_close(state: &mut Remotrix) -> Task<Message> {
         clear_completed_local(state, &completed);
     }
     tracing::info!("ui: shutdown requested");
+    crate::power::release();
+    state.sleep_block_active = false;
     state.tray.quit();
     if state.handle.cmd_tx.send(EngineCmd::Shutdown).is_err() {
         tracing::warn!("ui: shutdown cmd send failed");
