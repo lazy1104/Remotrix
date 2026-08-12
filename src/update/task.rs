@@ -349,12 +349,12 @@ pub(crate) fn handle(state: &mut Remotrix, msg: TaskMsg) -> Task<Message> {
                     if let Some(real) = name {
                         t.name = real;
                         if let Some(ref db) = state.db {
-                            db.update_name(&gid, &t.name);
+                            db.update_name(&gid, &t.name, t.metadata_only);
                         }
                     } else if !t.name.starts_with("[METADATA]") {
                         t.name = incoming;
                         if let Some(ref db) = state.db {
-                            db.update_name(&gid, &t.name);
+                            db.update_name(&gid, &t.name, t.metadata_only);
                         }
                     }
                 }
@@ -437,10 +437,16 @@ pub(crate) fn handle(state: &mut Remotrix, msg: TaskMsg) -> Task<Message> {
             let Some(t) = state.tasks.get(&gid).cloned() else {
                 return Task::none();
             };
-            let path = t.save_dir.join(&t.name);
-            if path.exists()
-                && (crate::engine::is_torrent_url(&t.name) || t.name.starts_with("[METADATA]"))
-            {
+            let metadata_preview = t.metadata_only || t.name.starts_with("[METADATA]");
+            let path = if metadata_preview {
+                match t.info_hash.as_deref() {
+                    Some(hash) => t.save_dir.join(format!("{hash}.torrent")),
+                    None => t.save_dir.join(&t.name),
+                }
+            } else {
+                t.save_dir.join(&t.name)
+            };
+            if path.exists() && (metadata_preview || crate::engine::is_torrent_url(&t.name)) {
                 let default_dir = if t.save_dir.as_os_str().is_empty() {
                     state.settings.download_dir.clone()
                 } else {

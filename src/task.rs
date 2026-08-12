@@ -96,6 +96,7 @@ pub struct DownloadTask {
     pub info_hash: Option<String>,
     pub metadata_probe_size: Option<u64>,
     pub is_seeding: bool,
+    pub metadata_only: bool,
     pub advanced: Option<TaskAdvancedOptions>,
 }
 

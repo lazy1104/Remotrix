@@ -67,6 +67,19 @@ impl Db {
             conn.execute_batch("ALTER TABLE tasks ADD COLUMN info_hash TEXT NOT NULL DEFAULT '';")
                 .map_err(|e| format!("add column: {e}"))?;
         }
+        let has_metadata_only: bool = conn
+            .prepare("PRAGMA table_info(tasks)")
+            .map_err(|e| format!("pragma: {e}"))?
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| format!("query map: {e}"))?
+            .filter_map(|r| r.ok())
+            .any(|c| c == "metadata_only");
+        if !has_metadata_only {
+            conn.execute_batch(
+                "ALTER TABLE tasks ADD COLUMN metadata_only INTEGER NOT NULL DEFAULT 0;",
+            )
+            .map_err(|e| format!("add column: {e}"))?;
+        }
         let advanced_cols = [
             "user_agent",
             "http_user",
@@ -100,7 +113,7 @@ impl Db {
     pub fn load_all(&self) -> Vec<DownloadTask> {
         let conn = self.conn.lock().expect("db lock");
         let mut stmt = match conn.prepare(
-            "SELECT gid, name, url, dir, downloaded, total, speed, upload_speed, connections, status, added_at, info_hash,
+            "SELECT gid, name, url, dir, downloaded, total, speed, upload_speed, connections, status, added_at, info_hash, metadata_only,
                    user_agent, http_user, http_passwd, referer, cookie, proxy_server, proxy_username, proxy_password
              FROM tasks ORDER BY added_at DESC",
         ) {
@@ -124,14 +137,14 @@ impl Db {
             let info_hash: String = row.get(11)?;
             let advanced = crate::task::TaskAdvancedOptions {
                 out: String::new(),
-                user_agent: row.get(12)?,
-                http_user: row.get(13)?,
-                http_passwd: row.get(14)?,
-                referer: row.get(15)?,
-                cookie: row.get(16)?,
-                proxy_server: row.get(17)?,
-                proxy_username: row.get(18)?,
-                proxy_password: row.get(19)?,
+                user_agent: row.get(13)?,
+                http_user: row.get(14)?,
+                http_passwd: row.get(15)?,
+                referer: row.get(16)?,
+                cookie: row.get(17)?,
+                proxy_server: row.get(18)?,
+                proxy_username: row.get(19)?,
+                proxy_password: row.get(20)?,
             };
             Ok(DownloadTask {
                 gid: row.get(0)?,
@@ -152,6 +165,7 @@ impl Db {
                 },
                 metadata_probe_size: None,
                 is_seeding: false,
+                metadata_only: row.get::<_, i64>(12)? != 0,
                 advanced: if advanced.is_empty() {
                     None
                 } else {
@@ -248,11 +262,11 @@ impl Db {
         }
     }
 
-    pub fn update_name(&self, gid: &str, name: &str) {
+    pub fn update_name(&self, gid: &str, name: &str, metadata_only: bool) {
         let conn = self.conn.lock().expect("db lock");
         if let Err(e) = conn.execute(
-            "UPDATE tasks SET name=?1 WHERE gid=?2",
-            rusqlite::params![name, gid],
+            "UPDATE tasks SET name=?1, metadata_only=?2 WHERE gid=?3",
+            rusqlite::params![name, metadata_only, gid],
         ) {
             tracing::error!(?gid, error = %e, "db update_name failed");
         }

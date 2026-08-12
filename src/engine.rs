@@ -400,6 +400,8 @@ fn apply_bt_url_options(opts: &mut TaskOptions, url: &str, bt_metadata_only: boo
     if bt_metadata_only && is_magnet_url(url) {
         opts.extra_options
             .insert("bt-metadata-only".to_string(), "true".into());
+        opts.extra_options
+            .insert("bt-save-metadata".to_string(), "true".into());
     }
 }
 

@@ -781,16 +781,21 @@ pub(crate) fn apply_task_name(
         if t.name != incoming {
             t.name = incoming;
             if let Some(ref db) = db {
-                db.update_name(gid, &t.name);
+                db.update_name(gid, &t.name, t.metadata_only);
             }
         }
         return Task::none();
     }
+    t.metadata_only = true;
     let placeholder = t.name.is_empty() || t.name.starts_with("[METADATA]") || t.name == "magnet:";
     if !placeholder {
         return Task::none();
     }
-    let path = t.save_dir.join(&incoming);
+    let infohash = incoming
+        .strip_prefix("[METADATA]")
+        .or(t.info_hash.as_deref())
+        .unwrap_or(&incoming);
+    let path = t.save_dir.join(format!("{infohash}.torrent"));
     let prev_size = t.metadata_probe_size;
     let gid = gid.to_string();
     Task::perform(

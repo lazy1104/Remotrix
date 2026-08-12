@@ -293,6 +293,7 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
                     info_hash,
                     metadata_probe_size: None,
                     is_seeding: false,
+                    metadata_only: false,
                     advanced: saved_advanced.clone(),
                 };
                 state.tasks.insert(gid.clone(), task);
@@ -417,6 +418,7 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
                         info_hash: info_hash.clone(),
                         metadata_probe_size: None,
                         is_seeding,
+                        metadata_only: false,
                         advanced: None,
                     },
                 );
