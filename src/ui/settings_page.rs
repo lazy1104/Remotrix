@@ -471,6 +471,19 @@ fn general_view<'a>(
                 ]
                 .align_y(Alignment::Center)
                 .into(),
+                labeled_toggle(
+                    fluent.get(Tr::UpdateBetaChannel),
+                    settings.update.beta_channel,
+                    SettingKey::BetaChannel,
+                ),
+                row![
+                    iced::widget::Space::new().width(Length::Fixed(200.0)),
+                    text(fluent.get(Tr::UpdateBetaChannelHint))
+                        .size(FONT_TINY)
+                        .style(theme::style::text::secondary),
+                ]
+                .align_y(Alignment::Center)
+                .into(),
             ])
         } else {
             iced::widget::Space::new().height(Length::Fixed(0.0)).into()

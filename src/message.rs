@@ -483,6 +483,7 @@ pub enum SettingKey {
     UpdateCheckInterval,
     UpdateScope,
     Aria2SilentUpdate,
+    BetaChannel,
     AppLogLevel,
     EngineLogLevel,
 }

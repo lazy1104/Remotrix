@@ -114,6 +114,7 @@ pub async fn ensure_aria2_next(
         slug,
         true,
         proxy.clone(),
+        false,
     )
     .await?;
     let bin_name = format!("aria2-next-{}-{}", release.version, slug);

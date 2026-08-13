@@ -28,37 +28,53 @@ pub async fn fetch_latest_release(
     slug: &str,
     fetch_checksum: bool,
     proxy: Option<String>,
+    beta: bool,
 ) -> Result<ReleaseInfo, String> {
     let client = http_client(proxy.as_deref())?;
-    let api_url = format!("https://api.github.com/repos/{repo}/releases/latest");
-    let resp = client
-        .get(&api_url)
-        .send()
-        .await
-        .map_err(|e| format!("fetch release: {e}"))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("GitHub API HTTP {status}: {body}"));
-    }
-
-    let body: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("parse release json: {e}"))?;
-
-    let prefix = asset_prefix.to_string();
-    let slug = slug.to_string();
     let not_found = format!("no matching asset '{asset_prefix}-*-{slug}' in latest release");
-    release_from_json(
-        &client,
-        &body,
-        move |name, version| name == format!("{prefix}-{version}-{slug}"),
-        fetch_checksum,
-    )
-    .await
-    .ok_or(not_found)
+
+    if !beta {
+        let api_url = format!("https://api.github.com/repos/{repo}/releases/latest");
+        let resp = client
+            .get(&api_url)
+            .send()
+            .await
+            .map_err(|e| format!("fetch release: {e}"))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("GitHub API HTTP {status}: {body}"));
+        }
+
+        let body: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("parse release json: {e}"))?;
+
+        let prefix = asset_prefix.to_string();
+        let slug = slug.to_string();
+        release_from_json(
+            &client,
+            &body,
+            move |name, version| name == format!("{prefix}-{version}-{slug}"),
+            fetch_checksum,
+            true,
+        )
+        .await
+        .ok_or(not_found)
+    } else {
+        let prefix = asset_prefix.to_string();
+        let slug = slug.to_string();
+        fetch_beta_release(
+            &client,
+            repo,
+            move |name, version| name == format!("{prefix}-{version}-{slug}"),
+            fetch_checksum,
+        )
+        .await
+        .ok_or(not_found)
+    }
 }
 
 /// Fetch the latest release whose asset matches `asset_match` (suffix/kind based),
@@ -68,34 +84,72 @@ pub async fn fetch_latest_asset(
     asset_match: impl Fn(&str) -> bool,
     fetch_checksum: bool,
     proxy: Option<String>,
+    beta: bool,
 ) -> Result<ReleaseInfo, String> {
     let client = http_client(proxy.as_deref())?;
-    let api_url = format!("https://api.github.com/repos/{repo}/releases/latest");
-    let resp = client
-        .get(&api_url)
-        .send()
-        .await
-        .map_err(|e| format!("fetch release: {e}"))?;
 
+    let info = if beta {
+        fetch_beta_release(
+            &client,
+            repo,
+            move |name, _| asset_match(name),
+            fetch_checksum,
+        )
+        .await
+    } else {
+        let api_url = format!("https://api.github.com/repos/{repo}/releases/latest");
+        let resp = client
+            .get(&api_url)
+            .send()
+            .await
+            .map_err(|e| format!("fetch release: {e}"))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("GitHub API HTTP {status}: {body}"));
+        }
+
+        let body: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("parse release json: {e}"))?;
+
+        release_from_json(
+            &client,
+            &body,
+            move |name, _| asset_match(name),
+            fetch_checksum,
+            true,
+        )
+        .await
+    };
+
+    info.ok_or_else(|| "no matching installer asset in latest release".to_string())
+}
+
+/// Query the releases list endpoint (newest-first, includes pre-releases) and return
+/// the first release whose asset matches. Used when beta channel is enabled.
+async fn fetch_beta_release(
+    client: &reqwest::Client,
+    repo: &str,
+    asset_match: impl Fn(&str, &str) -> bool,
+    fetch_checksum: bool,
+) -> Option<ReleaseInfo> {
+    let api_url = format!("https://api.github.com/repos/{repo}/releases?per_page=5&page=1");
+    let resp = client.get(&api_url).send().await.ok()?;
     if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("GitHub API HTTP {status}: {body}"));
+        return None;
     }
-
-    let body: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("parse release json: {e}"))?;
-
-    release_from_json(
-        &client,
-        &body,
-        move |name, _| asset_match(name),
-        fetch_checksum,
-    )
-    .await
-    .ok_or_else(|| "no matching installer asset in latest release".to_string())
+    let body: serde_json::Value = resp.json().await.ok()?;
+    let releases = body.as_array()?;
+    for rel in releases {
+        if let Some(info) = release_from_json(client, rel, &asset_match, fetch_checksum, true).await
+        {
+            return Some(info);
+        }
+    }
+    None
 }
 
 pub async fn fetch_changelog(
@@ -103,6 +157,7 @@ pub async fn fetch_changelog(
     current: String,
     asset_match: impl Fn(&str, &str) -> bool,
     proxy: Option<String>,
+    beta: bool,
 ) -> Result<Vec<ReleaseInfo>, String> {
     let client = http_client(proxy.as_deref())?;
     let mut out = Vec::new();
@@ -137,7 +192,8 @@ pub async fn fetch_changelog(
         }
 
         for rel in releases {
-            let Some(info) = release_from_json(&client, rel, &asset_match, false).await else {
+            let Some(info) = release_from_json(&client, rel, &asset_match, false, beta).await
+            else {
                 continue;
             };
             if version_gt(&info.version, &current) {
@@ -175,7 +231,12 @@ async fn release_from_json(
     body: &serde_json::Value,
     asset_match: impl Fn(&str, &str) -> bool,
     fetch_checksum: bool,
+    include_prerelease: bool,
 ) -> Option<ReleaseInfo> {
+    let prerelease = body["prerelease"].as_bool().unwrap_or(false);
+    if prerelease && !include_prerelease {
+        return None;
+    }
     let tag = body["tag_name"].as_str()?.to_string();
     let version = tag.strip_prefix('v').unwrap_or(&tag).to_string();
     let notes = body["body"].as_str().unwrap_or("").to_string();

@@ -165,6 +165,11 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                         state.settings.update.aria2_silent_update = b;
                     }
                 }
+                SettingKey::BetaChannel => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.update.beta_channel = b;
+                    }
+                }
                 SettingKey::SeedRatio => {
                     if let SettingValue::NumF(n) = value {
                         state.settings.aria2.seed_ratio = n.max(0.0);

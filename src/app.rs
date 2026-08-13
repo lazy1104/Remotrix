@@ -2184,6 +2184,7 @@ pub(crate) fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -
 
     let scope = state.settings.update.scope;
     let silent = state.settings.update.aria2_silent_update;
+    let beta = state.settings.update.beta_channel;
     let aria2_downloading = state.engine_ui.aria2_downloading;
     let proxy = state.settings.aria2.all_proxy_value();
     let app_current = crate::app_updater::current_app_version().to_string();
@@ -2206,6 +2207,7 @@ pub(crate) fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -
                         slug,
                         false,
                         proxy.clone(),
+                        false,
                     )
                     .await
                     {
@@ -2241,6 +2243,7 @@ pub(crate) fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -
                         move |name| kind.asset_matches(name),
                         false,
                         proxy.clone(),
+                        beta,
                     )
                     .await
                     {
@@ -2293,6 +2296,7 @@ pub(crate) fn changelog_fetch_task(state: &Remotrix, tab: usize) -> Task<Message
     };
     let current = offer.current.clone();
     let proxy = state.settings.aria2.all_proxy_value();
+    let beta = state.settings.update.beta_channel;
     let task: std::pin::Pin<
         Box<
             dyn std::future::Future<Output = Result<Vec<crate::updater::ReleaseInfo>, String>>
@@ -2306,6 +2310,7 @@ pub(crate) fn changelog_fetch_task(state: &Remotrix, tab: usize) -> Task<Message
                 current,
                 move |name, _| kind.asset_matches(name),
                 proxy,
+                beta,
             ))
         }
         crate::ui::update_dialog::UpdateComponent::Aria2 => {
@@ -2315,6 +2320,7 @@ pub(crate) fn changelog_fetch_task(state: &Remotrix, tab: usize) -> Task<Message
                 current,
                 move |name, version| name == format!("aria2-next-{version}-{slug}"),
                 proxy,
+                false,
             ))
         }
     };

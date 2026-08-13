@@ -778,6 +778,8 @@ pub struct UpdatePrefs {
     pub components: HashMap<String, ComponentUpdatePrefs>,
     #[serde(default = "default_true")]
     pub aria2_silent_update: bool,
+    #[serde(default)]
+    pub beta_channel: bool,
 }
 
 impl Default for UpdatePrefs {
@@ -789,6 +791,7 @@ impl Default for UpdatePrefs {
             last_check_time: None,
             components: HashMap::new(),
             aria2_silent_update: true,
+            beta_channel: false,
         }
     }
 }
