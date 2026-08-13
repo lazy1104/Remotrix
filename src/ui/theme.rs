@@ -114,90 +114,30 @@ where
 
 pub const DEFAULT_THEME_COLOR: Color = Color::from_rgb8(0x58, 0x65, 0xF2);
 
-pub const SURFACE_TONE_DARK_S: f32 = 0.12;
-pub const SURFACE_TONE_DARK_L: f32 = 0.18;
-pub const SURFACE_TONE_LIGHT_S: f32 = 0.10;
-pub const SURFACE_TONE_LIGHT_L: f32 = 0.96;
-
-fn rgb_to_hsl(c: Color) -> (f32, f32, f32) {
-    let max = c.r.max(c.g).max(c.b);
-    let min = c.r.min(c.g).min(c.b);
-    let l = (max + min) / 2.0;
-    let d = max - min;
-    let (h, s) = if d == 0.0 {
-        (0.0, 0.0)
-    } else {
-        let s = d / (1.0 - (2.0 * l - 1.0).abs());
-        let h = if max == c.r {
-            (c.g - c.b) / d % 6.0
-        } else if max == c.g {
-            (c.b - c.r) / d + 2.0
-        } else {
-            (c.r - c.g) / d + 4.0
-        };
-        (h / 6.0, s)
-    };
-    (h.rem_euclid(1.0), s, l)
-}
-
-fn hue_to_rgb(p: f32, q: f32, t: f32) -> f32 {
-    let t = t.rem_euclid(1.0);
-    if t < 1.0 / 6.0 {
-        p + (q - p) * 6.0 * t
-    } else if t < 1.0 / 2.0 {
-        q
-    } else if t < 2.0 / 3.0 {
-        p + (q - p) * (2.0 / 3.0 - t) * 6.0
-    } else {
-        p
-    }
-}
-
-fn hsl_to_rgb(h: f32, s: f32, l: f32) -> Color {
-    if s == 0.0 {
-        return Color {
-            r: l,
-            g: l,
-            b: l,
-            a: 1.0,
-        };
-    }
-    let q = if l < 0.5 {
-        l * (1.0 + s)
-    } else {
-        l + s - l * s
-    };
-    let p = 2.0 * l - q;
-    Color {
-        r: hue_to_rgb(p, q, h + 1.0 / 3.0),
-        g: hue_to_rgb(p, q, h),
-        b: hue_to_rgb(p, q, h - 1.0 / 3.0),
-        a: 1.0,
-    }
-}
-
-pub fn surface_from_seed(seed: Color, dark: bool) -> Color {
-    let (h, _, _) = rgb_to_hsl(seed);
-    if dark {
-        hsl_to_rgb(h, SURFACE_TONE_DARK_S, SURFACE_TONE_DARK_L)
-    } else {
-        hsl_to_rgb(h, SURFACE_TONE_LIGHT_S, SURFACE_TONE_LIGHT_L)
-    }
-}
+const MIN_SEP: f64 = 25.0;
 
 pub fn build_iced(color: Color, dark: bool) -> iced::Theme {
-    let palette = if dark {
-        Palette {
-            background: surface_from_seed(color, true),
-            primary: color,
-            ..Palette::DARK
-        }
+    let seed = crate::ui::hct::Hct::from_rgb(color);
+    let h = seed.hue;
+    let c = seed.chroma;
+
+    let error_h = crate::ui::hct::push_hue_away(25.0, h, MIN_SEP);
+    let success_h = crate::ui::hct::push_hue_away(140.0, h, MIN_SEP);
+    let warning_h = crate::ui::hct::push_hue_away(60.0, h, MIN_SEP);
+
+    let (bg, text, primary_tone, danger_tone, success_tone, warning_tone) = if dark {
+        (10.0, 90.0, 80.0, 80.0, 65.0, 70.0)
     } else {
-        Palette {
-            background: surface_from_seed(color, false),
-            primary: color,
-            ..Palette::LIGHT
-        }
+        (98.0, 10.0, 40.0, 40.0, 35.0, 45.0)
+    };
+
+    let palette = Palette {
+        background: crate::ui::hct::ramp(h, c * 0.10, bg),
+        text: crate::ui::hct::ramp(h, c * 0.10, text),
+        primary: crate::ui::hct::ramp(h, c, primary_tone),
+        danger: crate::ui::hct::ramp(error_h, 84.0, danger_tone),
+        success: crate::ui::hct::ramp(success_h, 70.0, success_tone),
+        warning: crate::ui::hct::ramp(warning_h, 80.0, warning_tone),
     };
     iced::Theme::custom("remotrix", palette)
 }

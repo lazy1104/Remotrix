@@ -38,6 +38,7 @@ sys-locale = "0.3"
 iced_aw = { version = "0.14", default-features = false }
 iced_anim = "=0.3.1"
 app-single-instance = "0.1"
+palette = "0.7"
 notify-rust = { version = "4.17", features = ["tokio"] }
 ldtray = "=0.1.2"
 salvo = { version = "0.95", default-features = false, features = [

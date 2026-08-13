@@ -7,6 +7,7 @@ pub mod components;
 pub mod confirm_dialog;
 pub mod details_dialog;
 pub mod dims;
+pub mod hct;
 pub mod icon;
 pub mod icons;
 pub mod resize_frame;
