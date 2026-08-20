@@ -469,6 +469,33 @@ pub(crate) fn handle(state: &mut Remotrix, msg: TaskMsg) -> Task<Message> {
                     |_| Message::Noop,
                 );
             }
+            let is_bt = t.info_hash.is_some()
+                || crate::engine::is_torrent_url(&t.url)
+                || crate::engine::is_magnet_url(&t.url);
+            if is_bt {
+                let hash = t.info_hash.as_deref().filter(|h| !h.is_empty());
+                let has_url =
+                    crate::engine::is_magnet_url(&t.url) || crate::engine::is_torrent_url(&t.url);
+                if hash.is_some() || has_url {
+                    let default_dir = if t.save_dir.as_os_str().is_empty() {
+                        state.settings.download_dir.clone()
+                    } else {
+                        t.save_dir.clone()
+                    };
+                    state.add_dialog.save_picker.close_history();
+                    state.add_dialog.open(default_dir, state.settings.split);
+                    if let Some(h) = hash {
+                        state
+                            .add_dialog
+                            .set_urls(vec![format!("magnet:?xt=urn:btih:{h}")]);
+                    } else {
+                        state.add_dialog.set_urls(vec![t.url.clone()]);
+                    }
+                    state.add_dialog.active_tab = AddTab::Url;
+                    state.add_dialog_anim.open();
+                    return Task::none();
+                }
+            }
             if t.status == TaskStatus::Completed {
                 if state.settings.remove_task_if_files_missing {
                     state.tracking.paused_gids.remove(&gid);

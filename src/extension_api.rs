@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn auth_passes_without_secret() {
-        assert!(authorized(&request_with_auth("")));
+        assert!(is_authorized(&request_with_auth(""), ""));
     }
 
     #[test]
