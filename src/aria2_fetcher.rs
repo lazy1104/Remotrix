@@ -20,6 +20,16 @@ struct PendingInfo {
     sha256: String,
 }
 
+/// If `dir/.pending-update` points at a valid staged binary, promote it to
+/// the active `aria2-next` install: remove the previous binary, write
+/// `.installed`, and delete the marker. Returns `Some(version)` on success
+/// or `None` when no pending update exists / is invalid.
+///
+/// # Errors
+/// Returns an error only when the post-promotion `.installed` write fails;
+/// every other failure mode (missing file, bad json, sha mismatch) is
+/// treated as "no pending update" so the caller falls through to a fresh
+/// download.
 pub fn apply_pending_update(dir: &Path) -> Result<Option<String>, String> {
     let pending_path = dir.join(".pending-update");
     let Ok(content) = std::fs::read_to_string(&pending_path) else {
@@ -61,6 +71,18 @@ pub fn apply_pending_update(dir: &Path) -> Result<Option<String>, String> {
     Ok(Some(pending.version))
 }
 
+/// Ensure a working `aria2-next` binary is available, downloading from
+/// GitHub Releases on first launch and reusing the cached version
+/// thereafter. Progress and status are forwarded through `event_tx` so
+/// the UI can show a status card during the initial fetch.
+///
+/// Honours the `ARIA2_BIN` env var as a fully-resolved override and
+/// applies any staged `.pending-update` before consulting the cache.
+///
+/// # Errors
+/// Returns a string error if the data directory cannot be resolved, the
+/// GitHub request fails, or the downloaded binary's sha256 mismatches
+/// the release manifest.
 pub async fn ensure_aria2_next(
     event_tx: &EventTx,
     proxy: Option<String>,
@@ -154,6 +176,13 @@ pub async fn ensure_aria2_next(
 /// Write the `.pending-update` marker for a staged aria2-next binary that has
 /// already been downloaded (and verified) to `dir`. The engine applies it on
 /// next restart.
+/// Write a `.pending-update` marker next to a newly downloaded (and
+/// verified) aria2-next binary so the engine promotes it to the active
+/// install on next restart.
+///
+/// # Errors
+/// Returns an error if JSON serialisation or writing the marker file
+/// fails.
 pub fn stage_pending(
     dir: &Path,
     version: &str,
@@ -171,6 +200,9 @@ pub fn stage_pending(
         .map_err(|e| format!("write .pending-update: {e}"))
 }
 
+/// Return the version of the locally installed aria2-next binary, or
+/// `None` if none is present. Used by the about dialog and to decide
+/// whether the update notification should mention a pending upgrade.
 pub fn installed_version() -> Option<String> {
     let dir = aria2_bin_dir()?;
     if let Some(info) = read_installed(&dir) {
@@ -202,7 +234,7 @@ fn write_installed(dir: &Path, info: &InstalledInfo) -> Result<(), String> {
     std::fs::write(&path, &json).map_err(|e| format!("write .installed: {e}"))
 }
 
-fn parse_version_from_filename(filename: &str, slug: &str) -> Option<String> {
+pub(crate) fn parse_version_from_filename(filename: &str, slug: &str) -> Option<String> {
     let prefix = "aria2-next-";
     let suffix = format!("-{slug}");
     let rest = filename.strip_prefix(prefix)?;
@@ -391,4 +423,56 @@ fn emit_status(event_tx: &EventTx, stage: &str, message: &str) {
         stage: stage.to_string(),
         message: message.to_string(),
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_version_from_filename_valid() {
+        let slug = "linux-x86_64";
+        assert_eq!(
+            parse_version_from_filename("aria2-next-1.2.3-linux-x86_64", slug),
+            Some("1.2.3".to_string()),
+        );
+        assert_eq!(
+            parse_version_from_filename("aria2-next-0.1.0-linux-x86_64", slug),
+            Some("0.1.0".to_string()),
+        );
+    }
+
+    #[test]
+    fn parse_version_from_filename_no_prefix() {
+        assert_eq!(
+            parse_version_from_filename("aria2c-1.2.3-linux-x86_64", "linux-x86_64"),
+            None
+        );
+    }
+
+    #[test]
+    fn parse_version_from_filename_slug_mismatch() {
+        assert_eq!(
+            parse_version_from_filename("aria2-next-1.2.3-windows-x86_64", "linux-x86_64"),
+            None,
+        );
+    }
+
+    #[test]
+    fn parse_version_from_filename_no_version() {
+        // Empty version string is rejected.
+        assert_eq!(
+            parse_version_from_filename("aria2-next--linux-x86_64", "linux-x86_64"),
+            None,
+        );
+    }
+
+    #[test]
+    fn parse_version_from_filename_non_numeric_version() {
+        // The version_tuple guard rejects non-numeric tokens.
+        assert_eq!(
+            parse_version_from_filename("aria2-next-abc-linux-x86_64", "linux-x86_64"),
+            None,
+        );
+    }
 }

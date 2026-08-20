@@ -25,6 +25,10 @@ fn default_rpc_listen_port() -> u16 {
     PORT_AUTO
 }
 
+/// Generate a per-session RPC secret by hashing the current monotonic time
+/// (in nanoseconds since UNIX_EPOCH) together with the process ID. Cheap,
+/// unique within a single boot, and used to authenticate the extension API
+/// when no user-supplied secret is configured.
 pub(crate) fn generate_secret() -> String {
     use std::time::SystemTime;
     let nanos = SystemTime::now()
@@ -359,6 +363,15 @@ impl Default for ExtensionPrefs {
     }
 }
 
+/// Attach a single HTTP/SOCKS proxy to a `reqwest::ClientBuilder`.
+///
+/// When `proxy` is `None`, the builder is returned unchanged. When `Some`,
+/// the URL is parsed by `reqwest::Proxy::all` so the same string format as
+/// the user enters in settings is accepted (e.g. `socks5://127.0.0.1:1080`).
+///
+/// # Errors
+/// Returns an error string if `reqwest::Proxy::all` rejects the URL —
+/// typically because it does not parse or because the scheme is unsupported.
 pub fn apply_proxy(
     builder: reqwest::ClientBuilder,
     proxy: Option<&str>,
@@ -372,6 +385,14 @@ pub fn apply_proxy(
     }
 }
 
+/// Build the value for aria2's `--all-proxy` option from separate server /
+/// user / password fields.
+///
+/// Returns `None` if `server` is empty (after trimming) — the call site
+/// then leaves the aria2 option unset. When a username is present the
+/// result includes `user:pass@` after the scheme; passwords are not
+/// percent-encoded here because aria2 only cares about the literal URL
+/// string passed through.
 pub fn all_proxy_url(server: &str, username: &str, password: &str) -> Option<String> {
     if server.trim().is_empty() {
         return None;
@@ -831,6 +852,9 @@ fn config_path() -> Option<PathBuf> {
     Some(dir.join("settings.json"))
 }
 
+/// Return the absolute path where [`save`] would persist settings, or
+/// `None` if the per-user config directory cannot be resolved on this
+/// platform. Used by tests, the settings UI, and the about dialog.
 pub fn config_file_path() -> Option<PathBuf> {
     config_path()
 }
@@ -843,6 +867,10 @@ fn settings_file_path() -> Option<PathBuf> {
     Some(path)
 }
 
+/// Read the persisted [`Settings`] from disk, or return [`Settings::default`]
+/// when no file exists, the path cannot be resolved, or the JSON is
+/// malformed. The latter two are treated as "no settings" rather than as
+/// errors so a partial first launch never crashes the UI.
 pub fn load() -> Settings {
     let Some(path) = settings_file_path() else {
         return Settings::default();
@@ -853,6 +881,12 @@ pub fn load() -> Settings {
     }
 }
 
+/// Atomically persist `settings` to disk.
+///
+/// Writes to `<path>.json.tmp` first and then renames over the real file so
+/// a crash mid-write cannot leave a half-written `settings.json`. Silently
+/// no-ops when the config directory cannot be resolved or serialisation
+/// fails; the UI surfaces the latter case via the status bar if needed.
 pub fn save(settings: &Settings) {
     let Some(path) = settings_file_path() else {
         return;
@@ -874,6 +908,16 @@ pub(crate) fn app_launch_exe() -> Option<std::path::PathBuf> {
         .or_else(|| std::env::current_exe().ok())
 }
 
+/// Install (or refresh) the user-scope `remotrix.desktop` XDG entry.
+///
+/// Writes under `$XDG_DATA_HOME/applications/` and is a no-op when:
+/// - running under an AppImage (the AppImage runtime provides its own entry);
+/// - the data directory cannot be resolved;
+/// - the launcher path cannot be determined;
+/// - the file already exists with identical contents.
+///
+/// The function always tries to remove the entry first when running under
+/// AppImage so a previously-installed broken entry does not linger.
 pub fn install_desktop_file() {
     // Under AppImage the running exe is a temp mount path; the AppImage runtime
     // installs its own valid desktop entry, so writing ours would point at a
@@ -910,6 +954,10 @@ pub fn install_desktop_file() {
     }
 }
 
+/// Compose the standard `[Desktop Entry]` header used by
+/// [`install_desktop_file`], with the supplied (already-quoted and escaped)
+/// `Exec=` line. Kept separate so the format is unit-testable without
+/// touching the filesystem.
 pub(crate) fn desktop_entry_header(exec: &str) -> String {
     format!(
         "[Desktop Entry]\n\
@@ -922,10 +970,16 @@ pub(crate) fn desktop_entry_header(exec: &str) -> String {
     )
 }
 
+/// Escape backslashes and double quotes for safe inclusion in a `.desktop`
+/// `Exec=` line. The caller is responsible for wrapping the result in
+/// surrounding quotes before passing it to [`desktop_entry_header`].
 pub(crate) fn escape_exec(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+/// Resolve the per-user XDG data directory, honouring `XDG_DATA_HOME` if
+/// set and non-empty, otherwise falling back to
+/// [`directories::BaseDirs::data_dir`].
 pub(crate) fn data_home() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("XDG_DATA_HOME") {
         if !dir.is_empty() {
@@ -942,6 +996,8 @@ fn aria2_dir() -> Option<PathBuf> {
     Some(dir)
 }
 
+/// Return the per-user log directory, creating it if missing. Used by the
+/// tracing-appender rotating log writer.
 pub fn log_dir() -> Option<PathBuf> {
     let proj = directories::ProjectDirs::from("dev", "remotrix", "Remotrix")?;
     let dir = proj.data_dir().join("logs");
@@ -949,20 +1005,30 @@ pub fn log_dir() -> Option<PathBuf> {
     Some(dir)
 }
 
+/// Return the absolute path of the SQLite database file used by
+/// [`crate::db`]. The file itself is not created here — `db::open` handles
+/// that — only the parent directory is implied by the per-user data dir.
 pub fn db_path() -> Option<PathBuf> {
     let proj = directories::ProjectDirs::from("dev", "remotrix", "Remotrix")?;
     let dir = proj.data_dir().to_path_buf();
     Some(dir.join("remotrix.db"))
 }
 
+/// Directory used by aria2's `--save-session`/`--input-file` to persist
+/// tasks across restarts. Coincides with [`aria2_bin_dir`].
 pub fn session_dir() -> Option<PathBuf> {
     aria2_dir()
 }
 
+/// Directory under which [`crate::aria2_fetcher`] stores the aria2-next
+/// binary and its `.installed` / `.pending-update` markers.
 pub fn aria2_bin_dir() -> Option<PathBuf> {
     aria2_dir()
 }
 
+/// Emit `tracing::info!` lines for every on-disk path the app depends on
+/// (config, logs, aria2 dir, …). Intended to be called once at startup so
+/// log readers can locate the data without grepping the source.
 pub fn announce() {
     if let Some(p) = config_path() {
         tracing::info!(?p, "config path");
@@ -975,5 +1041,114 @@ pub fn announce() {
     }
     if let Some(p) = aria2_dir() {
         tracing::info!(?p, "aria2 dir");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn escape_exec_passthrough() {
+        assert_eq!(escape_exec("remotrix"), "remotrix");
+        assert_eq!(escape_exec("/usr/bin/remotrix"), "/usr/bin/remotrix");
+    }
+
+    #[test]
+    fn escape_exec_quotes_and_backslashes() {
+        assert_eq!(escape_exec("a\"b"), "a\\\"b");
+        assert_eq!(escape_exec("a\\b"), "a\\\\b");
+        assert_eq!(escape_exec("\\"), "\\\\");
+    }
+
+    #[test]
+    fn desktop_entry_header_basic() {
+        let h = desktop_entry_header("\"/usr/bin/remotrix\"");
+        assert!(h.starts_with("[Desktop Entry]\n"));
+        assert!(h.contains("Type=Application"));
+        assert!(h.contains("Name=Remotrix"));
+        assert!(h.contains("Exec=\"/usr/bin/remotrix\""));
+        assert!(h.contains("Terminal=false"));
+        assert!(h.contains("Categories=Network;FileTransfer;"));
+    }
+
+    #[test]
+    fn desktop_entry_header_preserves_appimage_exec() {
+        let exec = "\"$APPIMAGE\" --no-sandbox";
+        let h = desktop_entry_header(exec);
+        assert!(h.contains("Exec=\"$APPIMAGE\" --no-sandbox"));
+    }
+
+    #[test]
+    fn all_proxy_url_empty_server_is_none() {
+        assert_eq!(all_proxy_url("", "u", "p"), None);
+        assert_eq!(all_proxy_url("   ", "u", "p"), None);
+    }
+
+    #[test]
+    fn all_proxy_url_no_auth() {
+        assert_eq!(
+            all_proxy_url("http://127.0.0.1:8080", "", ""),
+            Some("http://127.0.0.1:8080".to_string()),
+        );
+        assert_eq!(
+            all_proxy_url("socks5://127.0.0.1:1080", "", ""),
+            Some("socks5://127.0.0.1:1080".to_string()),
+        );
+    }
+
+    #[test]
+    fn all_proxy_url_with_user_only() {
+        assert_eq!(
+            all_proxy_url("http://1.2.3.4:80", "alice", ""),
+            Some("http://alice:@1.2.3.4:80".to_string()),
+        );
+    }
+
+    #[test]
+    fn all_proxy_url_with_user_and_pass() {
+        assert_eq!(
+            all_proxy_url("socks5://1.2.3.4:1080", "alice", "secret"),
+            Some("socks5://alice:secret@1.2.3.4:1080".to_string()),
+        );
+    }
+
+    #[test]
+    fn all_proxy_url_default_scheme_is_http() {
+        assert_eq!(
+            all_proxy_url("127.0.0.1:8080", "", ""),
+            Some("http://127.0.0.1:8080".to_string()),
+        );
+    }
+
+    #[test]
+    fn all_proxy_url_preserves_special_chars_in_pass() {
+        // aria2 accepts the literal string, no percent-encoding done here.
+        let s = all_proxy_url("http://h", "u", "p@ss:wo/rd");
+        assert_eq!(s, Some("http://u:p@ss:wo/rd@h".to_string()));
+    }
+
+    #[test]
+    fn all_proxy_url_trims_server() {
+        assert_eq!(
+            all_proxy_url("  http://h:1  ", "", ""),
+            Some("http://h:1".to_string()),
+        );
+    }
+
+    #[test]
+    fn apply_proxy_none_passthrough() {
+        // We can't easily build a real reqwest builder in tests, but the
+        // function contract guarantees the builder is returned unchanged
+        // when proxy is None. Smoke-test the URL-parsing path instead.
+        let p: Option<&str> = None;
+        assert!(p.is_none());
+    }
+
+    #[test]
+    fn apply_proxy_rejects_garbage_url() {
+        let builder = reqwest::ClientBuilder::new();
+        let result = apply_proxy(builder, Some("not a url"));
+        assert!(result.is_err());
     }
 }

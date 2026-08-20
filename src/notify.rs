@@ -11,17 +11,23 @@ use crate::message::{EngineMsg, Message};
 #[cfg(target_os = "linux")]
 use notify_rust::NotificationHandle;
 
+/// User-facing notification content shared by every [`Notifier`].
 pub struct Notification {
     pub title: String,
     pub body: String,
 }
 
+/// Abstraction over a notification delivery mechanism so tests and the
+/// future headless server build can substitute a no-op or in-memory
+/// implementation.
 pub trait Notifier: Send + Sync {
     fn send(&self, notification: &Notification) -> Result<(), String>;
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     fn as_any(&self) -> &dyn Any;
 }
 
+/// Default [`Notifier`] that posts through `notify-rust` (libnotify on
+/// Linux, toast on Windows).
 pub struct DesktopNotifier;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -32,7 +38,7 @@ const REVEAL_ACTION: &str = "reveal";
 const RESTART_ACTION: &str = "restart";
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-fn action_key(a: &NotifyAction) -> Option<&'static str> {
+pub(crate) fn action_key(a: &NotifyAction) -> Option<&'static str> {
     match a {
         NotifyAction::OpenFile(_) => Some(OPEN_ACTION),
         NotifyAction::RevealDir(_) => Some(REVEAL_ACTION),
@@ -42,7 +48,7 @@ fn action_key(a: &NotifyAction) -> Option<&'static str> {
 }
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-fn build_keyed(buttons: &[(String, NotifyAction)]) -> Vec<(String, NotifyAction)> {
+pub(crate) fn build_keyed(buttons: &[(String, NotifyAction)]) -> Vec<(String, NotifyAction)> {
     buttons
         .iter()
         .filter_map(|(_, a)| action_key(a).map(|k| (k.to_string(), a.clone())))
@@ -103,6 +109,9 @@ impl Notifier for DesktopNotifier {
 
 #[cfg(target_os = "linux")]
 impl DesktopNotifier {
+    /// Post `n` with an action button per entry in `buttons`. Each
+    /// action's stable key (e.g. `"open"`, `"reveal"`, `"restart"`) is
+    /// derived via [`action_key`].
     pub fn show_with_actions(
         &self,
         n: &Notification,
@@ -118,11 +127,13 @@ impl DesktopNotifier {
     }
 }
 
+/// Bag of [`Notifier`] implementations; the app sends to all of them.
 pub struct Notifiers {
     list: Vec<Box<dyn Notifier>>,
 }
 
 impl Notifiers {
+    /// Create a `Notifiers` containing only [`DesktopNotifier`].
     pub fn new() -> Self {
         Self {
             list: vec![Box::new(DesktopNotifier)],
@@ -130,11 +141,14 @@ impl Notifiers {
     }
 
     #[allow(dead_code)]
+    /// Append an extra notifier implementation (e.g. a mock for tests).
     pub fn register(&mut self, n: Box<dyn Notifier>) {
         self.list.push(n);
     }
 
     #[allow(dead_code)]
+    /// Send `n` to every registered notifier; failures are logged but do
+    /// not propagate.
     pub fn send_all(&self, n: &Notification) {
         for notifier in &self.list {
             if let Err(e) = notifier.send(n) {
@@ -251,6 +265,7 @@ pub fn show(notifiers: &Notifiers, title: &str, body: &str, buttons: &[(String, 
     }
 }
 
+/// Actions attachable to a notification button or its default body click.
 #[derive(Debug, Clone)]
 #[cfg_attr(not(any(target_os = "linux", target_os = "windows")), allow(dead_code))]
 pub enum NotifyAction {
@@ -260,6 +275,8 @@ pub enum NotifyAction {
     RestartEngine,
 }
 
+/// In-flight notification that the UI can later subscribe to for button
+/// clicks via [`build_notify_stream`].
 #[cfg(target_os = "linux")]
 pub struct NotifyEvent {
     pub handle: NotificationHandle,
@@ -267,11 +284,16 @@ pub struct NotifyEvent {
     pub default_action: NotifyAction,
 }
 
+/// Windows analogue of [`NotifyEvent`]; bundles the closure that owns
+/// the `notify-rust` handle and posts translated [`Message`]s back to the
+/// GUI.
 #[cfg(target_os = "windows")]
 pub struct NotifyEvent {
     pub wait: Box<dyn FnOnce(&iced::futures::channel::mpsc::Sender<Message>) + Send>,
 }
 
+/// Receiver end of the notification event channel; equality compares the
+/// pointer so the same slot always routes to the same stream consumer.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub struct NotifySlot(pub Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<NotifyEvent>>>>);
 
@@ -347,4 +369,61 @@ pub fn build_notify_stream(slot: &NotifySlot) -> impl iced::futures::Stream<Item
             }
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[test]
+    fn action_key_mapping() {
+        assert_eq!(
+            action_key(&NotifyAction::OpenFile(PathBuf::from("/x"))),
+            Some("open")
+        );
+        assert_eq!(
+            action_key(&NotifyAction::RevealDir(PathBuf::from("/x"))),
+            Some("reveal")
+        );
+        assert_eq!(action_key(&NotifyAction::RestartEngine), Some("restart"));
+        assert_eq!(action_key(&NotifyAction::ActivateWindow), Some("open"));
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[test]
+    fn build_keyed_empty() {
+        let buttons: Vec<(String, NotifyAction)> = vec![];
+        assert!(build_keyed(&buttons).is_empty());
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[test]
+    fn build_keyed_preserves_order() {
+        let buttons = vec![
+            (
+                "Open".to_string(),
+                NotifyAction::OpenFile(PathBuf::from("/a")),
+            ),
+            (
+                "Reveal".to_string(),
+                NotifyAction::RevealDir(PathBuf::from("/b")),
+            ),
+        ];
+        let keyed = build_keyed(&buttons);
+        assert_eq!(keyed.len(), 2);
+        assert_eq!(keyed[0].0, "open");
+        assert_eq!(keyed[1].0, "reveal");
+        if let NotifyAction::OpenFile(p) = &keyed[0].1 {
+            assert_eq!(p, &PathBuf::from("/a"));
+        } else {
+            panic!("wrong variant for first keyed action");
+        }
+    }
+
+    #[test]
+    fn notifiers_default_contains_desktop() {
+        let ns = Notifiers::new();
+        assert_eq!(ns.list.len(), 1);
+    }
 }

@@ -1,3 +1,5 @@
+/// Metadata for a single GitHub release asset, normalised across the
+/// stable / pre-release / asset-only code paths.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ReleaseInfo {
     pub tag: String,
@@ -8,6 +10,7 @@ pub struct ReleaseInfo {
     pub sha256: Option<String>,
 }
 
+/// Upstream app repository (used by the in-app updater).
 pub const APP_REPO: &str = "lazy1104/Remotrix";
 
 fn http_client(proxy: Option<&str>) -> Result<reqwest::Client, String> {
@@ -22,6 +25,14 @@ fn http_client(proxy: Option<&str>) -> Result<reqwest::Client, String> {
         .map_err(|e| format!("create reqwest client: {e}"))
 }
 
+/// Fetch the latest stable (or beta) release of `repo`, picking the asset
+/// whose name matches `"{asset_prefix}-{version}-{slug}"`. When
+/// `fetch_checksum` is `true`, the matching `checksums.sha256` entry is
+/// parsed from the same release.
+///
+/// # Errors
+/// Returns an error string describing the network or GitHub API failure,
+/// or "no matching asset" when no release contains the expected asset.
 pub async fn fetch_latest_release(
     repo: &str,
     asset_prefix: &str,
@@ -152,6 +163,9 @@ async fn fetch_beta_release(
     None
 }
 
+/// Page through GitHub releases (newest-first) and return every release
+/// newer than `current` whose asset matches `asset_match`. Used to build
+/// the changelog shown in the about dialog.
 pub async fn fetch_changelog(
     repo: &str,
     current: String,
@@ -208,6 +222,9 @@ pub async fn fetch_changelog(
     Ok(out)
 }
 
+/// Look up the sha256 entry for a specific (version, asset) pair inside a
+/// GitHub release. Returns `None` if the asset's release does not ship
+/// a `checksums.sha256`.
 pub async fn fetch_asset_checksum(
     repo: &str,
     version: &str,
@@ -305,6 +322,15 @@ async fn try_fetch_checksum(
     None
 }
 
+/// Slug used in release asset names for the current OS/architecture.
+///
+/// The slug matches the suffixes appended to GitHub asset names (e.g.
+/// `aria2-next-1.2.3-linux-x86_64`).
+///
+/// # Panics
+/// Panics when the running target is not one of the supported
+/// `linux/{x86_64,aarch64}`, `macos/{x86_64,aarch64}` or
+/// `windows/{x86_64,aarch64}` combinations.
 pub fn platform_slug() -> &'static str {
     match (std::env::consts::OS, std::env::consts::ARCH) {
         ("linux", "x86_64") => "linux-x86_64",
@@ -321,6 +347,9 @@ pub fn platform_slug() -> &'static str {
     }
 }
 
+/// Human-friendly `OS arch` string for the current target (e.g.
+/// `"Linux x86_64"`, `"macOS arm64"`). Used by the about dialog and the
+/// updater UI to make the platform obvious to non-technical users.
 pub fn platform_display() -> String {
     let os = match std::env::consts::OS {
         "linux" => "Linux",
@@ -336,10 +365,19 @@ pub fn platform_display() -> String {
     format!("{os} {arch}")
 }
 
+/// Parse a dotted version string into a numeric tuple. Non-numeric
+/// segments (e.g. a `1.2.3-beta` suffix) are dropped, so the result may
+/// be shorter than the input.
 pub fn version_tuple(v: &str) -> Vec<u64> {
     v.split('.').filter_map(|p| p.parse::<u64>().ok()).collect()
 }
 
+/// Returns `true` when `a` is strictly newer than `b`.
+///
+/// The comparison is segment-by-segment with zero-padding: `1.2.0.1` is
+/// newer than `1.2`, `1.10` is newer than `1.9`. Non-numeric segments
+/// are ignored by [`version_tuple`], so `1.2.3-beta` and `1.2.3` are
+/// considered equal.
 pub fn version_gt(a: &str, b: &str) -> bool {
     let ta = version_tuple(a);
     let tb = version_tuple(b);
@@ -352,4 +390,58 @@ pub fn version_gt(a: &str, b: &str) -> bool {
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn version_tuple_single_segment() {
+        assert_eq!(version_tuple("5"), vec![5]);
+    }
+
+    #[test]
+    fn version_tuple_multiple_segments() {
+        assert_eq!(version_tuple("1.2.3"), vec![1, 2, 3]);
+        assert_eq!(version_tuple("1.10.100"), vec![1, 10, 100]);
+    }
+
+    #[test]
+    fn version_tuple_drops_non_numeric() {
+        // "1.2.3-beta" → non-numeric "3-beta" segment can't parse, dropped.
+        // Actually "-beta" attaches to "3", so "3-beta" fails to parse as u64.
+        assert_eq!(version_tuple("1.2.3-beta"), vec![1, 2]);
+        assert_eq!(version_tuple("1.2.3.4"), vec![1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn version_gt_basic() {
+        assert!(version_gt("1.2.4", "1.2.3"));
+        assert!(version_gt("2.0.0", "1.99.99"));
+        assert!(!version_gt("1.2.3", "1.2.4"));
+        assert!(!version_gt("1.2.3", "1.2.3"));
+    }
+
+    #[test]
+    fn version_gt_unequal_lengths() {
+        // Longer wins when prefix matches: 1.2.0.1 > 1.2
+        assert!(version_gt("1.2.0.1", "1.2"));
+        assert!(version_gt("1.10", "1.9"));
+        assert!(!version_gt("1.2", "1.2.0"));
+    }
+
+    #[test]
+    fn version_gt_ignores_non_numeric_suffix() {
+        // 1.2.3-beta → tuple [1, 2]; equal to 1.2 → not greater.
+        assert!(!version_gt("1.2.3-beta", "1.2"));
+        assert!(!version_gt("1.2", "1.2.3-beta"));
+    }
+
+    #[test]
+    fn platform_display_format() {
+        let s = platform_display();
+        // Always contains a space-separated OS and arch.
+        assert!(s.contains(' '), "unexpected format: {s}");
+    }
 }

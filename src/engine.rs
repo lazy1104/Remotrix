@@ -390,6 +390,8 @@ impl Sidecar {
     }
 }
 
+/// Map an aria2-ws [`TaskStatus`] enum to the lowercase string used on
+/// the wire and persisted in our database.
 fn status_to_string(status: &aria2_ws::response::TaskStatus) -> &'static str {
     match status {
         Aria2TaskStatus::Active => "active",
@@ -401,7 +403,11 @@ fn status_to_string(status: &aria2_ws::response::TaskStatus) -> &'static str {
     }
 }
 
-fn basename(uri: &str) -> Option<String> {
+/// Extract the basename of `uri`, stripping any query/fragment and trailing
+/// `/`s. Returns `None` if the URL has no path segment or the result is
+/// empty. Both `/` and `\\` are accepted as path separators so Windows file
+/// paths still parse.
+pub(crate) fn basename(uri: &str) -> Option<String> {
     let trimmed = uri.split('?').next().unwrap_or(uri);
     let trimmed = trimmed.trim_end_matches('/');
     let seg = trimmed.rsplit(['/', '\\']).next()?;
@@ -412,12 +418,16 @@ fn basename(uri: &str) -> Option<String> {
     }
 }
 
+/// Returns `true` when `url` points to a `.torrent` file (case-insensitive,
+/// after stripping the query string).
 pub(crate) fn is_torrent_url(url: &str) -> bool {
     basename(url)
         .map(|n| n.to_lowercase().ends_with(".torrent"))
         .unwrap_or(false)
 }
 
+/// Returns `true` when `url` is a `magnet:` link (case-insensitive,
+/// leading whitespace tolerated).
 pub(crate) fn is_magnet_url(url: &str) -> bool {
     url.trim_start().to_ascii_lowercase().starts_with("magnet:")
 }
@@ -571,6 +581,9 @@ fn path_exists(p: &str) -> bool {
     }
 }
 
+/// Return the lower-cased host of `uri`, or `None` when the URI does not
+/// parse. Used to deduplicate proxy exceptions and the "same-origin"
+/// check in the extension API.
 fn url_host(uri: &str) -> Option<String> {
     reqwest::Url::parse(uri)
         .ok()?
@@ -644,7 +657,10 @@ async fn delete_task_files(paths: &[String]) {
     }
 }
 
-fn select_file_csv(files: &[u64]) -> Option<String> {
+/// Join a slice of file indices into the comma-separated string accepted
+/// by aria2's `--select-file` option. Returns `None` for an empty input,
+/// which means "select all" rather than "select nothing".
+pub(crate) fn select_file_csv(files: &[u64]) -> Option<String> {
     if files.is_empty() {
         return None;
     }
@@ -657,7 +673,14 @@ fn select_file_csv(files: &[u64]) -> Option<String> {
     )
 }
 
-fn parse_all_proxy(url: &str) -> (String, String, String) {
+/// Split a proxy URL into `(server, username, password)` for aria2's
+/// `--all-proxy` plus auth options. Accepts URLs with or without a scheme
+/// (defaults to whatever aria2 accepts); userinfo is optional and only
+/// the part before the last `@` is split.
+///
+/// Passwords containing `:` or `@` are returned verbatim — callers must
+/// handle percent-encoding if needed.
+pub(crate) fn parse_all_proxy(url: &str) -> (String, String, String) {
     let url = url.trim();
     if url.is_empty() {
         return (String::new(), String::new(), String::new());
@@ -695,6 +718,9 @@ fn base_task_options(dir: &Path, split: u16) -> TaskOptions {
     }
 }
 
+/// Returns `true` if either `name` or `value` contains `\r`, `\n`, or
+/// `\0`. Used to reject attacker-controlled HTTP headers that could
+/// inject extra request lines.
 fn has_header_control_chars(name: &str, value: &str) -> bool {
     [name, value]
         .iter()
@@ -2264,4 +2290,226 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
     }
     let _ = std::fs::remove_file(config.session_path.join("aria2.pid"));
     tracing::info!("engine supervisor stopped");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aria2_ws::response::TaskStatus as Aria2TaskStatus;
+
+    #[test]
+    fn status_to_string_all_variants() {
+        assert_eq!(status_to_string(&Aria2TaskStatus::Active), "active");
+        assert_eq!(status_to_string(&Aria2TaskStatus::Waiting), "waiting");
+        assert_eq!(status_to_string(&Aria2TaskStatus::Paused), "paused");
+        assert_eq!(status_to_string(&Aria2TaskStatus::Complete), "complete");
+        assert_eq!(status_to_string(&Aria2TaskStatus::Error), "error");
+        assert_eq!(status_to_string(&Aria2TaskStatus::Removed), "removed");
+    }
+
+    #[test]
+    fn basename_with_query() {
+        assert_eq!(
+            basename("https://example.com/path/file.bin?download=1"),
+            Some("file.bin".to_string()),
+        );
+    }
+
+    #[test]
+    fn basename_with_fragment() {
+        // Fragments are NOT stripped — only the query is.
+        assert_eq!(
+            basename("https://example.com/file.zip#section"),
+            Some("file.zip#section".to_string()),
+        );
+    }
+
+    #[test]
+    fn basename_trailing_slash() {
+        assert_eq!(
+            basename("https://example.com/path/"),
+            Some("path".to_string()),
+        );
+        // The hostname is itself the trailing path segment.
+        assert_eq!(
+            basename("https://example.com/"),
+            Some("example.com".to_string())
+        );
+    }
+
+    #[test]
+    fn basename_relative_path() {
+        assert_eq!(basename("dir/file.iso"), Some("file.iso".to_string()));
+        assert_eq!(basename("file.iso"), Some("file.iso".to_string()));
+        assert_eq!(basename("C:\\dir\\file.iso"), Some("file.iso".to_string()));
+    }
+
+    #[test]
+    fn basename_percent_encoded() {
+        assert_eq!(
+            basename("https://example.com/my%20file.bin"),
+            Some("my%20file.bin".to_string()),
+        );
+    }
+
+    #[test]
+    fn is_torrent_url_matches_extension() {
+        assert!(is_torrent_url("https://example.com/x.torrent"));
+        assert!(is_torrent_url("https://example.com/X.TORRENT?x=1"));
+        assert!(!is_torrent_url("https://example.com/file.bin"));
+        assert!(!is_torrent_url("not a url"));
+    }
+
+    #[test]
+    fn is_magnet_url_case_and_whitespace() {
+        assert!(is_magnet_url("magnet:?xt=urn:btih:abc"));
+        assert!(is_magnet_url("MAGNET:?xt=urn:btih:abc"));
+        assert!(is_magnet_url("Magnet:?xt=urn:btih:abc"));
+        assert!(is_magnet_url("  magnet:?xt=urn:btih:abc"));
+        assert!(!is_magnet_url("http://example.com"));
+        assert!(!is_magnet_url(""));
+    }
+
+    #[test]
+    fn select_file_csv_empty() {
+        assert_eq!(select_file_csv(&[]), None);
+    }
+
+    #[test]
+    fn select_file_csv_single() {
+        assert_eq!(select_file_csv(&[3]), Some("3".to_string()));
+    }
+
+    #[test]
+    fn select_file_csv_consecutive() {
+        assert_eq!(select_file_csv(&[0, 1, 2]), Some("0,1,2".to_string()));
+    }
+
+    #[test]
+    fn select_file_csv_with_gaps() {
+        assert_eq!(select_file_csv(&[0, 2, 5]), Some("0,2,5".to_string()));
+    }
+
+    #[test]
+    fn parse_all_proxy_empty() {
+        assert_eq!(
+            parse_all_proxy(""),
+            (String::new(), String::new(), String::new())
+        );
+    }
+
+    #[test]
+    fn parse_all_proxy_http_no_auth() {
+        assert_eq!(
+            parse_all_proxy("http://127.0.0.1:8080"),
+            (
+                "http://127.0.0.1:8080".to_string(),
+                String::new(),
+                String::new()
+            ),
+        );
+    }
+
+    #[test]
+    fn parse_all_proxy_socks5() {
+        assert_eq!(
+            parse_all_proxy("socks5://127.0.0.1:1080"),
+            (
+                "socks5://127.0.0.1:1080".to_string(),
+                String::new(),
+                String::new()
+            ),
+        );
+        assert_eq!(
+            parse_all_proxy("socks5h://1.2.3.4:1080"),
+            (
+                "socks5h://1.2.3.4:1080".to_string(),
+                String::new(),
+                String::new()
+            ),
+        );
+        assert_eq!(
+            parse_all_proxy("socks4://1.2.3.4:1080"),
+            (
+                "socks4://1.2.3.4:1080".to_string(),
+                String::new(),
+                String::new()
+            ),
+        );
+    }
+
+    #[test]
+    fn parse_all_proxy_with_user_and_pass() {
+        assert_eq!(
+            parse_all_proxy("http://alice:secret@1.2.3.4:80"),
+            (
+                "http://1.2.3.4:80".to_string(),
+                "alice".to_string(),
+                "secret".to_string()
+            ),
+        );
+    }
+
+    #[test]
+    fn parse_all_proxy_user_only() {
+        assert_eq!(
+            parse_all_proxy("socks5://alice@1.2.3.4:1080"),
+            (
+                "socks5://1.2.3.4:1080".to_string(),
+                "alice".to_string(),
+                String::new()
+            ),
+        );
+    }
+
+    #[test]
+    fn parse_all_proxy_no_scheme() {
+        assert_eq!(
+            parse_all_proxy("1.2.3.4:8080"),
+            ("1.2.3.4:8080".to_string(), String::new(), String::new()),
+        );
+    }
+
+    #[test]
+    fn parse_all_proxy_pass_with_colon() {
+        // userinfo `u:p@ss:wo/rd` → split on LAST `:` → user=`u:p@ss`,
+        // pass=`wo/rd` (rsplit_once).
+        let (server, user, pass) = parse_all_proxy("http://u:p@ss:wo/rd@h:1");
+        assert_eq!(server, "http://h:1");
+        assert_eq!(user, "u:p@ss");
+        assert_eq!(pass, "wo/rd");
+    }
+
+    #[test]
+    fn has_header_control_chars_rejects_crlf() {
+        assert!(has_header_control_chars("X-Header", "value\r\nInjection"));
+        assert!(has_header_control_chars("X-Header", "value\n"));
+        assert!(has_header_control_chars("X-Header", "value\r"));
+        assert!(has_header_control_chars("X-Header\rinjected", "value"));
+        assert!(has_header_control_chars("X-Header\ninjected", "value"));
+    }
+
+    #[test]
+    fn has_header_control_chars_rejects_null() {
+        assert!(has_header_control_chars("X-Header", "value\0here"));
+    }
+
+    #[test]
+    fn has_header_control_chars_allows_tabs_and_spaces() {
+        assert!(!has_header_control_chars("X-Header", "value with spaces"));
+        assert!(!has_header_control_chars("X-Header", "value\twith\ttabs"));
+    }
+
+    #[test]
+    fn url_host_extracts_lowercase() {
+        assert_eq!(
+            url_host("https://Example.COM/path"),
+            Some("example.com".to_string())
+        );
+        assert_eq!(
+            url_host("http://127.0.0.1:8080/"),
+            Some("127.0.0.1".to_string())
+        );
+        assert_eq!(url_host("not a url"), None);
+    }
 }
