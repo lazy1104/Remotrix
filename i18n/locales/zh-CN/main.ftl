@@ -426,6 +426,7 @@ ed2k-search-cancel = 取消搜索
 ed2k-search-progress = 正在搜索
 ed2k-search-completed = 搜索完成
 ed2k-search-empty = 未找到结果
+ed2k-search-add-all = 全部添加
 ed2k-search-failed = ED2K 搜索失败
 ed2k-search-cancelled = 搜索已取消
 ed2k-bootstrap-auto-sync = 自动同步引导文件

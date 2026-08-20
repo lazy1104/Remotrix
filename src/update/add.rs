@@ -156,6 +156,19 @@ pub(crate) fn handle(state: &mut Remotrix, msg: AddMsg) -> Task<Message> {
             }
             Task::none()
         }
+        AddMsg::AddFromEd2kResult(uris) => {
+            if uris.is_empty() {
+                return Task::none();
+            }
+            let default_dir = state.settings.download_dir.clone();
+            let split = state.settings.split;
+            state.add_dialog.save_picker.close_history();
+            state.add_dialog.open(default_dir, split);
+            state.add_dialog.set_urls(uris);
+            state.add_dialog.active_tab = AddTab::Url;
+            state.add_dialog_anim.open();
+            Task::none()
+        }
         AddMsg::AddDownload => {
             if state.add_dialog_anim.is_dismissing() {
                 return Task::none();

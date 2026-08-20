@@ -984,6 +984,8 @@ async fn add_metalink_and_emit(
     }
     Ok(gid)
 }
+
+/// Resume paused aria2 tasks in a host-keyed staggered burst, never
 /// hitting the same remote server with a tight burst of simultaneous
 /// connections.
 ///

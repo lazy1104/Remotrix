@@ -23,6 +23,7 @@ use crate::message::{
     AddMsg, CtxTarget, EngineMsg, Message, PathPickerId, SettingKey, SettingValue,
     SettingsCategory, SettingsMsg, SpeedUnit, TaskMsg,
 };
+use crate::task::format_size;
 use chrono::TimeZone;
 use iced::Color;
 
@@ -145,8 +146,7 @@ impl Ed2kSearchUiState {
     }
 
     pub fn cancel(&mut self) -> Vec<String> {
-        self.sessions.clear();
-        Vec::new()
+        self.sessions.drain().map(|(gid, _)| gid).collect()
     }
 }
 
@@ -1819,8 +1819,130 @@ fn ed2k_search_view<'a>(
             .size(FONT_SMALL)
             .style(theme::style::text::secondary),
         );
+        let mut sessions: Vec<(&String, &Ed2kSearchSession)> = state.sessions.iter().collect();
+        sessions.sort_by_key(|s| std::cmp::Reverse(s.1.started_at_ms));
+        for (_, session) in sessions {
+            col = col.push(ed2k_search_session_card(fluent, session));
+        }
     }
     col.into()
+}
+
+fn ed2k_search_session_card<'a>(
+    fluent: &'a Fluent,
+    session: &'a Ed2kSearchSession,
+) -> Element<'a, Message> {
+    let entries = parse_ed2k_results(&session.results);
+    let is_complete = session
+        .results
+        .get("moreResults")
+        .and_then(|v| v.as_bool())
+        .map(|more| !more)
+        .unwrap_or(false);
+    let status_text = if is_complete {
+        fluent.get(Tr::Ed2kSearchCompleted)
+    } else {
+        fluent.get(Tr::Ed2kSearchProgress)
+    };
+    let all_uris: Vec<String> = entries.iter().filter_map(|e| e.ed2k_link.clone()).collect();
+    let mut body = column![].spacing(SPACE_XS);
+    if entries.is_empty() {
+        body = body.push(
+            text(fluent.get(Tr::Ed2kSearchEmpty))
+                .size(FONT_SMALL)
+                .style(theme::style::text::secondary),
+        );
+    } else {
+        if all_uris.len() > 1 {
+            body = body.push(
+                button(text(fluent.get(Tr::Ed2kSearchAddAll)).size(FONT_BODY))
+                    .on_press(Message::Add(AddMsg::AddFromEd2kResult(all_uris)))
+                    .padding(PADDING_BUTTON_SM)
+                    .style(theme::style::button::secondary()),
+            );
+        }
+        for entry in &entries {
+            let name = entry.name.clone();
+            let size = entry.size_bytes.map(format_size).unwrap_or_default();
+            let sources = entry.source_count.to_string();
+            let uris = entry.ed2k_link.clone().map(|u| vec![u]).unwrap_or_default();
+            body = body.push(
+                container(
+                    row![
+                        text(name)
+                            .size(FONT_SMALL)
+                            .width(Length::Fill)
+                            .wrapping(text::Wrapping::Glyph),
+                        text(size).size(FONT_SMALL).width(Length::Fixed(80.0)),
+                        text(sources).size(FONT_SMALL).width(Length::Fixed(50.0)),
+                        button(icon::plus().size(FONT_BODY))
+                            .on_press(Message::Add(AddMsg::AddFromEd2kResult(uris)))
+                            .padding(PADDING_BUTTON_SM)
+                            .style(theme::style::button::text()),
+                    ]
+                    .spacing(SPACE_SM)
+                    .align_y(Alignment::Center)
+                    .width(Length::Fill),
+                )
+                .padding([4, 8])
+                .width(Length::Fill)
+                .style(theme::style::card),
+            );
+        }
+    }
+    column![]
+        .spacing(SPACE_XS)
+        .push(
+            row![
+                text(session.keyword.clone())
+                    .size(FONT_MEDIUM)
+                    .width(Length::Fill),
+                text(status_text).size(FONT_SMALL),
+            ]
+            .spacing(SPACE_SM)
+            .align_y(Alignment::Center)
+            .width(Length::Fill),
+        )
+        .push(body)
+        .into()
+}
+
+struct Ed2kResultEntry {
+    name: String,
+    size_bytes: Option<u64>,
+    source_count: u64,
+    ed2k_link: Option<String>,
+}
+
+fn parse_ed2k_results(value: &serde_json::Value) -> Vec<Ed2kResultEntry> {
+    let Some(arr) = value.get("results").and_then(|r| r.as_array()) else {
+        return Vec::new();
+    };
+    arr.iter()
+        .map(|v| {
+            let name = v
+                .get("name")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
+            let size_bytes = v
+                .get("length")
+                .and_then(|x| x.as_str())
+                .and_then(|s| s.parse::<u64>().ok());
+            let source_count = v.get("sourceCount").and_then(|x| x.as_u64()).unwrap_or(0);
+            let ed2k_link = v
+                .get("ed2kLink")
+                .and_then(|x| x.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+            Ed2kResultEntry {
+                name,
+                size_bytes,
+                source_count,
+                ed2k_link,
+            }
+        })
+        .collect()
 }
 
 fn network_view<'a>(

@@ -426,6 +426,7 @@ ed2k-search-cancel = Cancel
 ed2k-search-progress = Searching
 ed2k-search-completed = Completed
 ed2k-search-empty = No results
+ed2k-search-add-all = Add all
 ed2k-search-failed = ED2K search failed
 ed2k-search-cancelled = Cancelled
 ed2k-bootstrap-auto-sync = Auto-sync bootstrap files

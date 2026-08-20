@@ -1775,6 +1775,18 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         Subscription::none()
     };
 
+    let ed2k_bootstrap_auto_sync = if state.settings.aria2.ed2k_bootstrap_auto_sync {
+        let hours = state
+            .settings
+            .aria2
+            .ed2k_bootstrap_sync_interval_hours
+            .max(1);
+        iced::time::every(Duration::from_secs(hours as u64 * 3600))
+            .map(|_| Message::Settings(SettingsMsg::Ed2kBootstrapSyncNow))
+    } else {
+        Subscription::none()
+    };
+
     let shutdown_tick = if state.shutdown.timer_enabled
         || matches!(state.confirm, Some(ConfirmAction::Shutdown { .. }))
     {
@@ -1806,6 +1818,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         signals,
         tracker_auto_sync,
         auto_update,
+        ed2k_bootstrap_auto_sync,
         shutdown_tick,
     ])
 }

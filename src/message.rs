@@ -168,6 +168,7 @@ pub enum AddMsg {
     FilesHoveredLeft,
     SplitChanged(String),
     AddDownload,
+    AddFromEd2kResult(Vec<String>),
     AddFieldChanged(AddField, String),
     ToggleAdvanced(bool),
     CancelAdd,

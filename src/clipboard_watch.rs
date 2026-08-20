@@ -12,6 +12,8 @@ use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::engine::is_metalink_file as is_metalink_path;
+
 /// Maximum clipboard payload size, in bytes, that the watcher will inspect
 /// for either inline text or pasted file content. 64 KiB matches the upper
 /// bound we are willing to allocate on the watcher thread; anything larger
@@ -415,15 +417,6 @@ fn file_path_from_line(line: &str) -> Option<(PathBuf, u64)> {
 fn is_torrent_path(path: &Path) -> bool {
     path.extension()
         .map(|e| e.eq_ignore_ascii_case("torrent"))
-        .unwrap_or(false)
-}
-
-fn is_metalink_path(path: &Path) -> bool {
-    path.extension()
-        .map(|e| {
-            let l = e.to_string_lossy().to_ascii_lowercase();
-            l == "metalink" || l == "meta4"
-        })
         .unwrap_or(false)
 }
 
