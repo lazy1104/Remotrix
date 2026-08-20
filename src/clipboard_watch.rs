@@ -1,3 +1,9 @@
+//! Detects whether a clipboard payload (text or a pasted file path) should be
+//! offered as a download. Used by the periodic clipboard watcher in `app.rs`
+//! to decide whether a new payload is worth forwarding to the "Add download"
+//! dialog. URLs are classified by scheme (http / ftp / magnet / ed2k /
+//! thunder), and bare BitTorrent info-hashes are lifted into `magnet:` links.
+
 use std::collections::HashSet;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -6,20 +12,33 @@ use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+/// Maximum clipboard payload size, in bytes, that the watcher will inspect
+/// for either inline text or pasted file content. 64 KiB matches the upper
+/// bound we are willing to allocate on the watcher thread; anything larger
+/// is ignored to avoid unbounded memory use when users copy huge blobs (e.g.
+/// a binary file marked as text).
 pub const MAX_CLIPBOARD_CONTENT: u64 = 64 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ClipboardLinkTypes {
+    /// Whether `http://` / `https://` URLs are extracted from clipboard text.
     #[serde(default = "default_true")]
     pub http: bool,
+    /// Whether `ftp://` / `ftps://` URLs are extracted from clipboard text.
     #[serde(default = "default_true")]
     pub ftp: bool,
+    /// Whether `magnet:?xt=urn:btih:...` links are extracted.
     #[serde(default = "default_true")]
     pub magnet: bool,
+    /// Whether `ed2k://` links are extracted.
     #[serde(default = "default_true")]
     pub ed2k: bool,
+    /// Whether `thunder://` links are extracted and base64-decoded into the
+    /// underlying URL they wrap.
     #[serde(default = "default_true")]
     pub thunder: bool,
+    /// Whether bare 40-char hex / 32-char base32 BitTorrent info-hashes are
+    /// detected and lifted into `magnet:?xt=urn:btih:<hash>` links.
     #[serde(default = "default_true")]
     pub bt_infohash: bool,
 }
@@ -41,12 +60,31 @@ impl Default for ClipboardLinkTypes {
     }
 }
 
+/// What the clipboard currently looks like to the watcher.
+///
+/// Returned from [`parse_clipboard`]. Single-line payloads that resolve to an
+/// existing local `.torrent` file are surfaced as [`ClipboardPayload::Torrent`]
+/// (so the caller can hand the file to aria2 directly); everything else is
+/// classified into URLs.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClipboardPayload {
+    /// One or more download links extracted from the clipboard text (or from
+    /// the contents of a small pasted file). Order reflects first appearance
+    /// in the source text after de-duplication.
     Urls(Vec<String>),
+    /// A single local `.torrent` file path that the user appears to have
+    /// pasted on the clipboard.
     Torrent(PathBuf),
 }
 
+/// Parse clipboard text into a [`ClipboardPayload`] if it contains anything
+/// worth downloading.
+///
+/// Returns `None` if the payload exceeds [`MAX_CLIPBOARD_CONTENT`], if no
+/// enabled link type matched, or if a single-line paste that looked like a
+/// file path turned out to be unreadable / over the size cap / non-UTF-8.
+/// On the single-line path, a file with a `.torrent` extension is returned
+/// as [`ClipboardPayload::Torrent`] without inspecting its contents.
 pub fn parse_clipboard(text: &str, prefs: ClipboardLinkTypes) -> Option<ClipboardPayload> {
     if text.len() as u64 > MAX_CLIPBOARD_CONTENT {
         return None;
@@ -72,6 +110,13 @@ pub fn parse_clipboard(text: &str, prefs: ClipboardLinkTypes) -> Option<Clipboar
     }
 }
 
+/// Compute a stable hex-encoded SHA-256 fingerprint of a clipboard payload,
+/// used to deduplicate consecutive updates from the OS clipboard watcher.
+///
+/// Tags the input with the payload variant (`urls|...` vs `torrent|...`) so
+/// that an identical URL set and a torrent path sharing bytes cannot collide.
+/// Returns an empty string for `None`, which the watcher treats as "no
+/// payload" and is distinct from any real hash.
 pub fn payload_hash(payload: &Option<ClipboardPayload>) -> String {
     match payload {
         Some(ClipboardPayload::Urls(urls)) => hex::encode(Sha256::digest(

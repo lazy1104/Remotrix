@@ -1,3 +1,10 @@
+//! Heat-map visualisation of a BitTorrent task's piece bitfield. Each
+//! piece is rendered as a small square: pieces with bit set are drawn in
+//! the theme's success colour, the next few pieces after the high-water
+//! mark are tinted (in-flight / downloading), and the rest use the panel
+//! background colour. Capped at [`MAX_HEIGHT`] pixels of vertical space so
+//! large torrents stay scrollable.
+
 use iced::mouse;
 use iced::widget::canvas;
 use iced::{Element, Length, Point, Rectangle, Renderer, Size, Theme};
@@ -9,6 +16,20 @@ const CELL_GAP: f32 = 1.0;
 const MAX_HEIGHT: f32 = 160.0;
 const DOWNLOADING_WINDOW: i64 = 8;
 
+/// Render the piece map for a BitTorrent task.
+///
+/// Returns `None` when the task has no pieces or the bitfield is empty
+/// (so callers can drop the widget from the layout entirely). Otherwise
+/// returns a self-sizing canvas filled with one square per piece, sized
+/// to fit `avail_width` and bounded vertically by [`MAX_HEIGHT`].
+///
+/// Inputs:
+/// - `bitfield`: hex-encoded aria2 bitfield (`tell_status.bitfield`). When
+///   decode fails or it is shorter than `num_pieces`, the function simply
+///   paints more pieces in the "missing" colour.
+/// - `num_pieces`: total piece count for the torrent.
+/// - `avail_width`: pixel width the widget is allowed to occupy; columns
+///   are computed from this.
 pub fn view<'a>(
     bitfield: Option<String>,
     num_pieces: u64,

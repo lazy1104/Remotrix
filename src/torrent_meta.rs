@@ -1,18 +1,43 @@
+//! Minimal BitTorrent `.torrent` bencode parser.
+//!
+//! Extracts only the metadata the Add dialog needs: the info-dict `name` and
+//! the flattened file list (with per-file `index`, `path`, `length`). Intended
+//! to drive the file-selection checkbox grid in `ui::components::torrent_upload`
+//! before the torrent is handed off to aria2's `add_torrent`. Not a full
+//! bencode implementation: no piece hashes, trackers, or DHT nodes are read.
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TorrentFile {
+    /// 1-based ordinal of the file within the torrent, matching the order
+    /// declared in the `info.files` list (or `1` for single-file torrents).
     pub index: u64,
+    /// Path relative to the download root, using `/` as separator.
+    /// For multi-file torrents this is `<torrent-name>/<file-segments>`.
     pub path: String,
+    /// Declared file length in bytes (always non-negative).
     pub length: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TorrentMeta {
+    /// Value of the `info.name` field, used as the torrent's display name and
+    /// as the parent directory for multi-file torrents.
     pub name: String,
+    /// Files declared by this torrent. Always non-empty when `parse_torrent`
+    /// returns `Some`.
     pub files: Vec<TorrentFile>,
 }
 
 const MAX_BENCODE_DEPTH: usize = 64;
 
+/// Parse a raw `.torrent` file payload into a [`TorrentMeta`].
+///
+/// Returns `None` for any structural problem: missing `info` dict, neither
+/// `length` nor `files`, negative file lengths, empty file list, byte strings
+/// that are not valid UTF-8 (lossy decode still produces a string, so this
+/// only triggers if conversion fails entirely), or nesting deeper than
+/// [`MAX_BENCODE_DEPTH`]. Invalid bencode input also returns `None` rather
+/// than panicking.
 pub fn parse_torrent(bytes: &[u8]) -> Option<TorrentMeta> {
     let mut parser = Parser::new(bytes);
     let root = parser.parse_value()?;

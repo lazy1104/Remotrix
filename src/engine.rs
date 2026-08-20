@@ -432,6 +432,15 @@ pub(crate) fn is_magnet_url(url: &str) -> bool {
     url.trim_start().to_ascii_lowercase().starts_with("magnet:")
 }
 
+/// Apply aria2 task-option tweaks that depend on the URL kind.
+///
+/// - For `.torrent` file URLs (`http(s)://.../foo.torrent`), disable
+///   `follow-torrent` so aria2 treats the payload as a regular file rather
+///   than auto-loading it as a BitTorrent swarm (the caller has already
+///   resolved it through `add_torrent` and wants the bytes saved as-is).
+/// - For `bt_metadata_only` metadata-only magnet downloads, set both
+///   `bt-metadata-only=true` and `bt-save-metadata=true` so aria2 stops
+///   after fetching the `.torrent` metadata and writes it back to disk.
 fn apply_bt_url_options(opts: &mut TaskOptions, url: &str, bt_metadata_only: bool) {
     if is_torrent_url(url) {
         opts.extra_options
@@ -445,6 +454,13 @@ fn apply_bt_url_options(opts: &mut TaskOptions, url: &str, bt_metadata_only: boo
     }
 }
 
+/// Collect the local filesystem paths aria2 will write (or already wrote)
+/// for the task in `s`, used by file deletion and missing-file detection.
+///
+/// aria2 reports a per-file `path` (filled in once the file is created /
+/// resolved); for downloads still buffering we fall back to `dir + basename`
+/// of the first source URI when no path is yet known. Entries with neither
+/// a path nor a usable URI basename are skipped.
 fn collect_file_paths(s: &aria2_ws::response::Status) -> Vec<String> {
     let mut paths = Vec::new();
     for f in &s.files {
@@ -464,6 +480,13 @@ fn collect_file_paths(s: &aria2_ws::response::Status) -> Vec<String> {
     paths
 }
 
+/// Derive a human-readable display name for a task from its aria2 status,
+/// used by the GUI before the user-visible torrent name has been resolved.
+///
+/// Falls back through: file basename of the first file's declared `path`,
+/// then basename of the first source URI, then the gid itself when neither
+/// yields a usable name. The gid fallback guarantees we always emit a
+/// non-empty name (the UI expects `name` to be present).
 fn name_from_status(s: &aria2_ws::response::Status) -> String {
     if let Some(file) = s.files.first() {
         let path = std::path::Path::new(&file.path);
@@ -552,6 +575,17 @@ async fn fetch_all_tasks_strict(
     Ok((all, truncated))
 }
 
+/// Detect completed aria2 tasks whose output files are no longer on disk
+/// (e.g. the user cleared the download directory) so the UI can offer
+/// re-download / relink actions.
+///
+/// Issues a single `tell_stopped(0, 1)` probe first: when the server has no
+/// stopped results at all we short-circuit to avoid the heavier full
+/// `tell_stopped(-1, 1000)` query. Only tasks whose status is `Complete`
+/// are considered; for each we collect every reported file path via
+/// `collect_file_paths` and treat the task as missing when *none* of them
+/// resolve on disk. Partial-loss tasks (some files present) are not
+/// flagged here.
 async fn check_missing_files(client: &Client) -> Vec<String> {
     let probe = client.tell_stopped(0, 1).await.unwrap_or_default();
     if probe.is_empty() {
@@ -786,6 +820,24 @@ async fn add_download_internal(
     Ok(())
 }
 
+/// Read a local `.torrent` file from disk, hand it to aria2 via
+/// `add_torrent`, then synthesize the same events the URL-based
+/// `AddDownload` path emits.
+///
+/// Three steps, each with its own failure handling:
+///
+/// 1. Read the file (`tokio::fs::read`); a read failure aborts with an
+///    error string (file missing or unreadable).
+/// 2. Call aria2's `add_torrent` with the base save_dir/split options
+///    plus any per-task advanced overrides, and any `select-file` CSV
+///    the caller wants pre-checked.
+/// 3. Immediately `tell_status` the new gid and emit `EngineEvent::Added`
+///    and `Progress` so the GUI sees the new task within the same tick.
+///    If `tell_status` itself fails (transient RPC issue), we still
+///    surface an `Added` event synthesised from the file path and
+///    save_dir, rather than losing the gid entirely.
+///
+/// Returns the aria2 gid on success.
 async fn add_torrent_and_emit(
     client: &Client,
     path: &Path,
@@ -837,6 +889,18 @@ async fn add_torrent_and_emit(
     Ok(gid)
 }
 
+/// Resume paused aria2 tasks in a host-keyed staggered burst, never
+/// hitting the same remote server with a tight burst of simultaneous
+/// connections.
+///
+/// When `gids` is `Some`, only paused tasks whose gid appears in the set
+/// are resumed (used for "Resume all" after settings changes that touch
+/// a subset). The remaining paused tasks are grouped by lower-cased URI
+/// host (`None` for tasks without a parseable URL — they all share one
+/// group), then dispatched as one `tokio::spawn` per group; inside the
+/// group each `unpause` is delayed by 500 ms (`RESUME_GROUP_INTERVAL`)
+/// relative to the previous one. The same operation also refreshes the
+/// progress event for every resumed task.
 async fn resume_staggered(client: &Client, gids: Option<HashSet<String>>, event_tx: &EventTx) {
     let tasks = fetch_all_tasks(client).await;
     let mut groups: Vec<(Option<String>, Vec<aria2_ws::response::Status>)> = Vec::new();

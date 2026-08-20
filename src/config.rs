@@ -422,6 +422,11 @@ impl Aria2Options {
         )
     }
 
+    /// Build the `--ed2k-*` CLI arguments passed to aria2-next at engine
+    /// startup. The three optional fields (`ed2k_server`, `ed2k_server_list`,
+    /// `ed2k_node_list`) are emitted only when non-empty after `.trim()`,
+    /// while the listen ports and upload slots are always emitted (these
+    /// have non-zero defaults and aria2 accepts them unconditionally).
     pub fn ed2k_startup_args(&self) -> Vec<String> {
         let mut args = Vec::new();
         if !self.ed2k_server.trim().is_empty() {
@@ -445,6 +450,11 @@ impl Aria2Options {
         args
     }
 
+    /// Compare two `Aria2Options` values for ed2k-related equality,
+    /// ignoring leading/trailing whitespace in the three string fields so
+    /// that purely cosmetic edits (e.g. a trailing newline pasted into the
+    /// server-list box) do not trigger an engine restart. The numeric
+    /// fields (ports, slots) are compared exactly.
     pub fn ed2k_equal(&self, other: &Aria2Options) -> bool {
         self.ed2k_server.trim() == other.ed2k_server.trim()
             && self.ed2k_server_list.trim() == other.ed2k_server_list.trim()
@@ -455,7 +465,12 @@ impl Aria2Options {
     }
 
     /// True when any engine spawn-time setting changed such that a restart is
-    /// required (ed2k ports/servers or the RPC listen port).
+    /// required (ed2k ports/servers/nodes or the RPC listen port).
+    ///
+    /// In-process task options (`bt_tracker`, proxy, speed limits, ...) are
+    /// pushed live via `change_global_option` and never need a restart, so
+    /// only settings that aria2 reads from its startup command line are
+    /// included here.
     pub fn engine_restart_needed(&self, other: &Aria2Options) -> bool {
         !self.ed2k_equal(other) || self.rpc_listen_port != other.rpc_listen_port
     }
@@ -1150,5 +1165,196 @@ mod tests {
         let builder = reqwest::ClientBuilder::new();
         let result = apply_proxy(builder, Some("not a url"));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn ed2k_startup_args_empty() {
+        let opts = Aria2Options::default();
+        let args = opts.ed2k_startup_args();
+        assert_eq!(
+            args,
+            vec![
+                "--ed2k-listen-port".to_string(),
+                opts.ed2k_listen_port.to_string(),
+                "--ed2k-udp-listen-port".to_string(),
+                opts.ed2k_udp_listen_port.to_string(),
+                "--ed2k-upload-slots".to_string(),
+                opts.ed2k_upload_slots.to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn ed2k_startup_args_server_only() {
+        let opts = Aria2Options {
+            ed2k_server: "ed2k://|server|1.2.3.4|4661|/".into(),
+            ..Aria2Options::default()
+        };
+        let args = opts.ed2k_startup_args();
+        assert_eq!(
+            args,
+            vec![
+                "--ed2k-server".to_string(),
+                "ed2k://|server|1.2.3.4|4661|/".to_string(),
+                "--ed2k-listen-port".to_string(),
+                opts.ed2k_listen_port.to_string(),
+                "--ed2k-udp-listen-port".to_string(),
+                opts.ed2k_udp_listen_port.to_string(),
+                "--ed2k-upload-slots".to_string(),
+                opts.ed2k_upload_slots.to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn ed2k_startup_args_all() {
+        let opts = Aria2Options {
+            ed2k_server: "srv".into(),
+            ed2k_server_list: "servers.dat".into(),
+            ed2k_node_list: "nodes.dat".into(),
+            ed2k_listen_port: 4661,
+            ed2k_udp_listen_port: 4671,
+            ed2k_upload_slots: 5,
+            ..Aria2Options::default()
+        };
+        let args = opts.ed2k_startup_args();
+        assert_eq!(
+            args,
+            vec![
+                "--ed2k-server".to_string(),
+                "srv".to_string(),
+                "--ed2k-server-list".to_string(),
+                "servers.dat".to_string(),
+                "--ed2k-node-list".to_string(),
+                "nodes.dat".to_string(),
+                "--ed2k-listen-port".to_string(),
+                "4661".to_string(),
+                "--ed2k-udp-listen-port".to_string(),
+                "4671".to_string(),
+                "--ed2k-upload-slots".to_string(),
+                "5".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn ed2k_startup_args_trims_whitespace() {
+        let opts = Aria2Options {
+            ed2k_server: "  srv  ".into(),
+            ed2k_server_list: "\tservers.dat\n".into(),
+            ed2k_node_list: "".into(),
+            ..Aria2Options::default()
+        };
+        let args = opts.ed2k_startup_args();
+        assert_eq!(
+            args,
+            vec![
+                "--ed2k-server".to_string(),
+                "srv".to_string(),
+                "--ed2k-server-list".to_string(),
+                "servers.dat".to_string(),
+                "--ed2k-listen-port".to_string(),
+                opts.ed2k_listen_port.to_string(),
+                "--ed2k-udp-listen-port".to_string(),
+                opts.ed2k_udp_listen_port.to_string(),
+                "--ed2k-upload-slots".to_string(),
+                opts.ed2k_upload_slots.to_string(),
+            ]
+        );
+        let node_list_idx = args
+            .iter()
+            .position(|a| a == "--ed2k-node-list")
+            .unwrap_or(usize::MAX);
+        assert_eq!(
+            node_list_idx,
+            usize::MAX,
+            "empty node_list should be omitted"
+        );
+    }
+
+    #[test]
+    fn ed2k_equal_same() {
+        let a = Aria2Options::default();
+        let b = Aria2Options::default();
+        assert!(a.ed2k_equal(&b));
+    }
+
+    #[test]
+    fn ed2k_equal_trims_diff() {
+        let a = Aria2Options {
+            ed2k_server: "srv".into(),
+            ..Aria2Options::default()
+        };
+        let b = Aria2Options {
+            ed2k_server: "  srv\n".into(),
+            ..Aria2Options::default()
+        };
+        assert!(a.ed2k_equal(&b));
+    }
+
+    #[test]
+    fn ed2k_equal_listen_port_diff() {
+        let a = Aria2Options::default();
+        let b = Aria2Options {
+            ed2k_listen_port: 5000,
+            ..Aria2Options::default()
+        };
+        assert!(!a.ed2k_equal(&b));
+    }
+
+    #[test]
+    fn ed2k_equal_node_list_diff() {
+        let a = Aria2Options {
+            ed2k_node_list: "a".into(),
+            ..Aria2Options::default()
+        };
+        let b = Aria2Options {
+            ed2k_node_list: "b".into(),
+            ..Aria2Options::default()
+        };
+        assert!(!a.ed2k_equal(&b));
+    }
+
+    #[test]
+    fn restart_needed_no_change() {
+        let a = Aria2Options::default();
+        let b = Aria2Options::default();
+        assert!(!a.engine_restart_needed(&b));
+    }
+
+    #[test]
+    fn restart_needed_rpc_port() {
+        let a = Aria2Options::default();
+        let b = Aria2Options {
+            rpc_listen_port: a.rpc_listen_port + 1,
+            ..Aria2Options::default()
+        };
+        assert!(a.engine_restart_needed(&b));
+    }
+
+    #[test]
+    fn restart_needed_ed2k_server() {
+        let a = Aria2Options {
+            ed2k_server: "old".into(),
+            ..Aria2Options::default()
+        };
+        let b = Aria2Options {
+            ed2k_server: "new".into(),
+            ..Aria2Options::default()
+        };
+        assert!(a.engine_restart_needed(&b));
+    }
+
+    #[test]
+    fn restart_needed_list_files_only() {
+        let a = Aria2Options {
+            ed2k_server_list: "old.dat".into(),
+            ..Aria2Options::default()
+        };
+        let b = Aria2Options {
+            ed2k_server_list: "new.dat".into(),
+            ..Aria2Options::default()
+        };
+        assert!(a.engine_restart_needed(&b));
     }
 }

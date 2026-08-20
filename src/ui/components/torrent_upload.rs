@@ -1,3 +1,9 @@
+//! Drop zone + file-picker widget for selecting a single `.torrent` file in
+//! the Add dialog. Tracks its own `dragging` / `hovered` mouse state and
+//! forwards user intents through the [`TorrentUploadEvent`] →
+//! [`TorrentUploadAction`] pipeline so the parent can drive the file picker
+//! and clear the selection.
+
 use std::path::Path;
 
 use iced::mouse;
@@ -10,38 +16,70 @@ use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
+/// Maximum `.torrent` file size, in bytes, that [`is_valid_torrent_file`]
+/// will accept. The 50 MiB ceiling is a defensive guard against malicious
+/// or accidentally gigantic files being loaded into memory during
+/// validation; legitimate torrents are well under this bound.
 pub const MAX_TORRENT_SIZE: u64 = 50 * 1024 * 1024;
 
 const DROP_ZONE_HEIGHT: f32 = 120.0;
 const BORDER_WIDTH: f32 = 1.0;
 const DASH_SEGMENTS: [f32; 2] = [4.0, 4.0];
 
+/// User-initiated signals the drop zone forwards to its parent via
+/// the message mapper closure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TorrentUploadEvent {
+    /// The user asked to pick a file (clicked the drop zone in its empty
+    /// state, or clicked the file-name label in its loaded state).
     Browse,
+    /// The user pressed the inline "×" button to clear the loaded path.
     Clear,
+    /// The pointer entered the drop zone.
     Entered,
+    /// The pointer left the drop zone.
     Exited,
 }
 
+/// Actions the widget asks its parent to perform in response to an event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TorrentUploadAction {
+    /// Open the platform file picker; the parent owns the dialog and
+    /// will call [`TorrentUpload::set_path`] with the chosen file.
     Browse,
 }
 
 #[derive(Debug, Clone)]
 pub struct TorrentUpload {
+    /// Absolute path of the currently selected torrent file, or empty when
+    /// no file is loaded. Consumed by the parent to feed `add_torrent` /
+    /// bencode parsing.
     path: String,
+    /// True while an OS drag operation with file payloads is hovering over
+    /// the drop zone; toggled by the parent in response to drag events.
     dragging: bool,
+    /// True when the pointer is inside the drop zone; drives the accent
+    /// border color in the view.
     hovered: bool,
 }
 
+/// Return `true` when `p` ends with a `.torrent` extension (ASCII-case
+/// insensitive). Matches on the last extension component only, so paths
+/// like `dir/.torrent/foo` are rejected.
+///
+/// Does not touch the filesystem; the parent decides whether to also call
+/// [`is_valid_torrent_file`] before accepting the file.
 pub fn is_torrent_file(p: &Path) -> bool {
     p.extension()
         .map(|e| e.to_string_lossy().to_ascii_lowercase() == "torrent")
         .unwrap_or(false)
 }
 
+/// Validate that `p` is a reasonable torrent file before parsing it:
+/// extension is `.torrent`, the file is non-empty, at most
+/// [`MAX_TORRENT_SIZE`] bytes long, readable, and starts with the bencode
+/// dictionary marker (`b'd'`). Any filesystem or read error causes the
+/// function to return `false` rather than propagating the error.
 pub fn is_valid_torrent_file(p: &Path) -> bool {
     if !is_torrent_file(p) {
         return false;
@@ -257,5 +295,39 @@ impl TorrentUpload {
             .on_exit(map(TorrentUploadEvent::Exited))
             .into()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn is_torrent_file_basic() {
+        assert!(is_torrent_file(&PathBuf::from("foo.torrent")));
+    }
+
+    #[test]
+    fn is_torrent_file_uppercase() {
+        assert!(is_torrent_file(&PathBuf::from("FOO.TORRENT")));
+        assert!(is_torrent_file(&PathBuf::from("Foo.Torrent")));
+    }
+
+    #[test]
+    fn is_torrent_file_no_extension() {
+        assert!(!is_torrent_file(&PathBuf::from("foo")));
+    }
+
+    #[test]
+    fn is_torrent_file_other_ext() {
+        assert!(!is_torrent_file(&PathBuf::from("foo.txt")));
+        assert!(!is_torrent_file(&PathBuf::from("foo.metalink")));
+        assert!(!is_torrent_file(&PathBuf::from("foo.meta4")));
+    }
+
+    #[test]
+    fn is_torrent_file_in_path() {
+        assert!(!is_torrent_file(&PathBuf::from("dir/.torrent/foo")));
     }
 }

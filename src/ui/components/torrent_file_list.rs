@@ -1,3 +1,9 @@
+//! Frame around the BitTorrent file-selection tree: header (tri-state master
+//! checkbox + title + optional subtitle + collapse toggle) on top of a
+//! [`file_tree::view`] body. Used both inside the Add dialog (previewing a
+//! freshly loaded `.torrent`) and in the task-detail panel (selecting files
+//! of an in-progress torrent).
+
 use std::collections::HashSet;
 
 use iced::widget::{button, column, container, row, rule, text};
@@ -11,6 +17,20 @@ use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
+/// Render the file-list panel.
+///
+/// Inputs:
+/// - `nodes` is the tree produced from aria2 / the bencode parser.
+/// - `expanded` keys are the tree paths currently unfolded by the user.
+/// - `is_selected(idx)` is the per-file checked state driver.
+/// - `progress(idx)` is an optional lookup yielding `(downloaded, total)`
+///   per file, used to overlay per-row progress bars.
+/// - `enabled` disables every interaction (used while the torrent is
+///   still being added to aria2).
+/// - `collapsed` hides the tree body and shows only the header.
+/// - The closures `on_toggle` / `on_expand` / `on_scroll` and the messages
+///   `on_select_all` / `on_select_none` / `on_toggle_collapse` are forwarded
+///   verbatim to the underlying widgets.
 #[allow(clippy::too_many_arguments)]
 pub fn view<'a, M>(
     fluent: &'a Fluent,
