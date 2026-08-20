@@ -33,6 +33,12 @@ pub(crate) fn handle(state: &mut Remotrix, msg: AddMsg) -> Task<Message> {
             }
             Task::none()
         }
+        AddMsg::MetalinkUpload(event) => {
+            if state.add_dialog.handle_torrent_event(event).is_some() {
+                return pick_path(PathPickerId::Metalink);
+            }
+            Task::none()
+        }
         AddMsg::TorrentTreeExpand(path) => {
             state.add_dialog.toggle_torrent_expand(&path);
             Task::none()
@@ -59,8 +65,12 @@ pub(crate) fn handle(state: &mut Remotrix, msg: AddMsg) -> Task<Message> {
         }
         AddMsg::FileHovered => {
             state.drop_hover = true;
-            if state.add_dialog.is_visible() && state.add_dialog.active_tab == AddTab::Torrent {
-                state.add_dialog.torrent_upload.set_dragging(true);
+            if state.add_dialog.is_visible() {
+                if state.add_dialog.active_tab == AddTab::Torrent {
+                    state.add_dialog.torrent_upload.set_dragging(true);
+                } else if state.add_dialog.active_tab == AddTab::Metalink {
+                    state.add_dialog.metalink_upload.set_dragging(true);
+                }
             }
             Task::none()
         }
@@ -68,6 +78,7 @@ pub(crate) fn handle(state: &mut Remotrix, msg: AddMsg) -> Task<Message> {
             state.drop_hover = false;
             if state.add_dialog.is_visible() {
                 state.add_dialog.torrent_upload.set_dragging(false);
+                state.add_dialog.metalink_upload.set_dragging(false);
             }
             Task::none()
         }
@@ -196,6 +207,33 @@ pub(crate) fn handle(state: &mut Remotrix, msg: AddMsg) -> Task<Message> {
                         tracing::warn!("ui: add torrent cmd send failed");
                     }
                     tracing::info!("ui: torrent submitted");
+                    state.add_dialog_anim.begin_exit();
+                    if nav {
+                        set_page(state, crate::message::Page::Tasks);
+                    }
+                    return Task::none();
+                }
+
+                let mpath_str = state.add_dialog.metalink_upload.path().to_string();
+                if !mpath_str.is_empty() && state.add_dialog.active_tab == AddTab::Metalink {
+                    let mpath = PathBuf::from(&mpath_str);
+                    let save_dir = PathBuf::from(state.add_dialog.save_picker.value());
+                    let mut metalink_advanced = advanced.clone();
+                    metalink_advanced.out.clear();
+                    if state
+                        .handle
+                        .cmd_tx
+                        .send(EngineCmd::AddMetalink {
+                            path: mpath,
+                            save_dir,
+                            split: state.add_dialog.split,
+                            advanced: metalink_advanced,
+                        })
+                        .is_err()
+                    {
+                        tracing::warn!("ui: add metalink cmd send failed");
+                    }
+                    tracing::info!("ui: metalink submitted");
                     state.add_dialog_anim.begin_exit();
                     if nav {
                         set_page(state, crate::message::Page::Tasks);

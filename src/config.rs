@@ -121,6 +121,16 @@ pub struct Aria2Options {
     pub ed2k_upload_slots: u16,
     #[serde(default = "default_rpc_listen_port")]
     pub rpc_listen_port: u16,
+    #[serde(default = "default_true")]
+    pub follow_metalink: bool,
+    #[serde(default = "default_ed2k_server_met_url")]
+    pub ed2k_server_met_url: String,
+    #[serde(default = "default_ed2k_nodes_dat_url")]
+    pub ed2k_nodes_dat_url: String,
+    #[serde(default)]
+    pub ed2k_bootstrap_auto_sync: bool,
+    #[serde(default = "default_ed2k_bootstrap_sync_interval_hours")]
+    pub ed2k_bootstrap_sync_interval_hours: u32,
 }
 
 fn default_max_connection_per_server() -> u32 {
@@ -159,6 +169,15 @@ fn default_ed2k_udp_listen_port() -> u16 {
 }
 fn default_ed2k_upload_slots() -> u16 {
     3
+}
+fn default_ed2k_server_met_url() -> String {
+    "http://www.gruk.org/server.met".to_string()
+}
+fn default_ed2k_nodes_dat_url() -> String {
+    "http://www.gruk.org/nodes.dat".to_string()
+}
+fn default_ed2k_bootstrap_sync_interval_hours() -> u32 {
+    24
 }
 fn default_tracker_sources() -> Vec<String> {
     TRACKER_SOURCE_OPTIONS
@@ -219,6 +238,11 @@ impl Default for Aria2Options {
             ed2k_udp_listen_port: default_ed2k_udp_listen_port(),
             ed2k_upload_slots: default_ed2k_upload_slots(),
             rpc_listen_port: default_rpc_listen_port(),
+            follow_metalink: true,
+            ed2k_server_met_url: default_ed2k_server_met_url(),
+            ed2k_nodes_dat_url: default_ed2k_nodes_dat_url(),
+            ed2k_bootstrap_auto_sync: false,
+            ed2k_bootstrap_sync_interval_hours: default_ed2k_bootstrap_sync_interval_hours(),
         }
     }
 }
@@ -614,6 +638,18 @@ impl Settings {
         extra.insert(
             "disk-cache".into(),
             Value::String(format!("{}M", self.aria2.disk_cache_mb)),
+        );
+
+        extra.insert(
+            "follow-metalink".into(),
+            Value::String(
+                if self.aria2.follow_metalink {
+                    "true"
+                } else {
+                    "false"
+                }
+                .into(),
+            ),
         );
 
         TaskOptions {

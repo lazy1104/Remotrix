@@ -17,6 +17,7 @@ use iced::widget::{
 use iced::{Alignment, Element, Length};
 
 use crate::config::Settings;
+use crate::engine::EngineCmd;
 use crate::i18n::{Fluent, Locale, Tr};
 use crate::message::{
     AddMsg, CtxTarget, EngineMsg, Message, PathPickerId, SettingKey, SettingValue,
@@ -53,6 +54,100 @@ pub struct SettingsUiState {
     pub syncing_trackers: bool,
     pub tracker_sync_toast_id: Option<u64>,
     pub readonly_hovered: HashSet<String>,
+    pub ed2k_search_state: Ed2kSearchUiState,
+    pub ed2k_bootstrap_status: (Option<i64>, Option<i64>),
+}
+
+#[derive(Debug, Clone)]
+pub struct Ed2kSearchUiState {
+    pub keyword: String,
+    pub file_type: String,
+    pub min_sources: u32,
+    pub timeout_secs: u32,
+    pub sessions: HashMap<String, Ed2kSearchSession>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Ed2kSearchSession {
+    #[allow(dead_code)]
+    pub keyword: String,
+    pub results: serde_json::Value,
+    #[allow(dead_code)]
+    pub started_at_ms: i64,
+}
+
+impl Ed2kSearchUiState {
+    fn new() -> Self {
+        Self {
+            keyword: String::new(),
+            file_type: "any".to_string(),
+            min_sources: 10,
+            timeout_secs: 20,
+            sessions: HashMap::new(),
+        }
+    }
+
+    pub fn update(&mut self, key: SettingKey, value: SettingValue) {
+        match key {
+            SettingKey::Ed2kSearchKeyword => {
+                if let SettingValue::Text(s) = value {
+                    self.keyword = s;
+                }
+            }
+            SettingKey::Ed2kSearchFileType => {
+                if let SettingValue::Text(s) = value {
+                    self.file_type = s;
+                }
+            }
+            SettingKey::Ed2kSearchMinSources => {
+                if let SettingValue::Num(n) = value {
+                    self.min_sources = n.clamp(1, 1000) as u32;
+                }
+            }
+            SettingKey::Ed2kSearchTimeout => {
+                if let SettingValue::Num(n) = value {
+                    self.timeout_secs = n.clamp(10, 600) as u32;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub fn build_cmd(&self) -> Option<EngineCmd> {
+        let keyword = self.keyword.trim();
+        if keyword.is_empty() {
+            return None;
+        }
+        let mut opts = serde_json::Map::new();
+        opts.insert(
+            "method".to_string(),
+            serde_json::Value::String("overlap".to_string()),
+        );
+        let ft = self.file_type.trim();
+        if !ft.is_empty() && ft != "any" {
+            opts.insert(
+                "type".to_string(),
+                serde_json::Value::String(ft.to_string()),
+            );
+        }
+        opts.insert(
+            "min-num-sources".to_string(),
+            serde_json::Value::Number(self.min_sources.into()),
+        );
+        opts.insert(
+            "timeout".to_string(),
+            serde_json::Value::Number(self.timeout_secs.into()),
+        );
+        Some(EngineCmd::Ed2kSearchStart {
+            keyword: keyword.to_string(),
+            options: opts,
+        })
+    }
+
+    pub fn cancel(&mut self) -> Vec<String> {
+        self.sessions.clear();
+        Vec::new()
+    }
 }
 
 impl SettingsUiState {
@@ -80,6 +175,8 @@ impl SettingsUiState {
             syncing_trackers: false,
             tracker_sync_toast_id: None,
             readonly_hovered: HashSet::new(),
+            ed2k_search_state: Ed2kSearchUiState::new(),
+            ed2k_bootstrap_status: crate::ed2k_bootstrap::bootstrap_status(),
         }
     }
 }
@@ -1426,6 +1523,29 @@ fn ed2k_view<'a>(
     >,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
+    let text_secondary = theme::text_secondary(theme);
+    let bootstrap_auto = settings.aria2.ed2k_bootstrap_auto_sync;
+    let server_met_placeholder = fluent.get_args(
+        Tr::Ed2kBootstrapServerMetUrlPlaceholder,
+        &Default::default(),
+    );
+    let nodes_dat_placeholder =
+        fluent.get_args(Tr::Ed2kBootstrapNodesDatUrlPlaceholder, &Default::default());
+    let (server_met_path_str, nodes_dat_path_str) = settings_ui
+        .ed2k_bootstrap_status
+        .0
+        .map(|_| ())
+        .map(|_| {
+            (
+                crate::ed2k_bootstrap::server_met_path()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default(),
+                crate::ed2k_bootstrap::nodes_dat_path()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default(),
+            )
+        })
+        .unwrap_or_default();
     column![]
         .spacing(SPACE_SM)
         .push(group_title(fluent, Tr::Ed2kSettings, accent))
@@ -1446,13 +1566,18 @@ fn ed2k_view<'a>(
                         .size(FONT_MEDIUM)
                         .width(Length::Fixed(200.0)),
                 )
-                .push(
+                .push(if bootstrap_auto {
+                    text(server_met_path_str)
+                        .size(FONT_SMALL)
+                        .style(theme::style::text::secondary)
+                        .into()
+                } else {
                     settings_ui
                         .ed2k_server_list_picker
                         .view(fluent, theme, &[], |e| {
                             Message::Add(AddMsg::PathPicker(PathPickerId::Ed2kServerList, e))
-                        }),
-                )
+                        })
+                })
                 .height(Length::Fixed(36.0))
                 .align_y(Alignment::Center),
         )
@@ -1463,13 +1588,18 @@ fn ed2k_view<'a>(
                         .size(FONT_MEDIUM)
                         .width(Length::Fixed(200.0)),
                 )
-                .push(
+                .push(if bootstrap_auto {
+                    text(nodes_dat_path_str)
+                        .size(FONT_SMALL)
+                        .style(theme::style::text::secondary)
+                        .into()
+                } else {
                     settings_ui
                         .ed2k_node_list_picker
                         .view(fluent, theme, &[], |e| {
                             Message::Add(AddMsg::PathPicker(PathPickerId::Ed2kNodeList, e))
-                        }),
-                )
+                        })
+                })
                 .height(Length::Fixed(36.0))
                 .align_y(Alignment::Center),
         )
@@ -1508,7 +1638,189 @@ fn ed2k_view<'a>(
                 .size(FONT_SMALL)
                 .style(theme::style::text::secondary),
         )
+        .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
+        .push(group_title(fluent, Tr::Ed2kBootstrapSync, accent))
+        .push(labeled_toggle(
+            fluent.get(Tr::Ed2kBootstrapAutoSync),
+            settings.aria2.ed2k_bootstrap_auto_sync,
+            SettingKey::Ed2kBootstrapAutoSync,
+        ))
+        .push(labeled_number(
+            fluent.get(Tr::Ed2kBootstrapSyncInterval),
+            settings.aria2.ed2k_bootstrap_sync_interval_hours,
+            1..=u32::MAX,
+            1,
+            SettingKey::Ed2kBootstrapSyncInterval,
+        ))
+        .push(labeled_text_input(
+            fluent.get(Tr::Ed2kBootstrapServerMetUrl),
+            &settings.aria2.ed2k_server_met_url,
+            SettingKey::Ed2kServerMetUrl,
+            false,
+            &server_met_placeholder,
+        ))
+        .push(labeled_text_input(
+            fluent.get(Tr::Ed2kBootstrapNodesDatUrl),
+            &settings.aria2.ed2k_nodes_dat_url,
+            SettingKey::Ed2kNodesDatUrl,
+            false,
+            &nodes_dat_placeholder,
+        ))
+        .push(
+            row![]
+                .push(
+                    button(text(fluent.get(Tr::Ed2kBootstrapSyncNow)).size(FONT_BODY))
+                        .on_press(Message::Settings(SettingsMsg::Ed2kBootstrapSyncNow))
+                        .padding(PADDING_BUTTON_SM)
+                        .style(theme::style::button::secondary()),
+                )
+                .push(iced::widget::Space::new().width(Length::Fill))
+                .align_y(Alignment::Center),
+        )
+        .push(bootstrap_status_line(fluent, settings_ui, text_secondary))
+        .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
+        .push(group_title(fluent, Tr::Ed2kSearch, accent))
+        .push(ed2k_search_view(fluent, theme, settings_ui))
+        .push(follow_metalink_row(fluent, theme, settings, accent))
         .into()
+}
+
+fn bootstrap_status_line<'a>(
+    fluent: &'a Fluent,
+    settings_ui: &'a SettingsUiState,
+    _text_secondary: iced::Color,
+) -> Element<'a, Message> {
+    let (sm_modified, nd_modified) = settings_ui.ed2k_bootstrap_status;
+    let fmt = |ms: Option<i64>| {
+        ms.and_then(chrono::DateTime::from_timestamp_millis)
+            .map(|dt| {
+                let local: chrono::DateTime<chrono::Local> = dt.with_timezone(&chrono::Local);
+                local.format("%Y-%m-%d %H:%M:%S").to_string()
+            })
+            .unwrap_or_else(|| fluent.get(Tr::Never))
+    };
+    column![]
+        .spacing(SPACE_XS)
+        .push(
+            text(format!(
+                "{}: {}",
+                fluent.get(Tr::Ed2kBootstrapServerMetModified),
+                fmt(sm_modified)
+            ))
+            .size(FONT_SMALL)
+            .style(theme::style::text::secondary),
+        )
+        .push(
+            text(format!(
+                "{}: {}",
+                fluent.get(Tr::Ed2kBootstrapNodesDatModified),
+                fmt(nd_modified)
+            ))
+            .size(FONT_SMALL)
+            .style(theme::style::text::secondary),
+        )
+        .into()
+}
+
+fn follow_metalink_row<'a>(
+    fluent: &'a Fluent,
+    _theme: &'a iced::Theme,
+    settings: &'a Settings,
+    accent: iced::Color,
+) -> Element<'a, Message> {
+    column![]
+        .spacing(SPACE_SM)
+        .push(group_title(fluent, Tr::Metalink, accent))
+        .push(labeled_toggle(
+            fluent.get(Tr::FollowMetalink),
+            settings.aria2.follow_metalink,
+            SettingKey::FollowMetalink,
+        ))
+        .push(
+            text(fluent.get(Tr::FollowMetalinkHint))
+                .size(FONT_SMALL)
+                .style(theme::style::text::secondary),
+        )
+        .into()
+}
+
+fn ed2k_search_view<'a>(
+    fluent: &'a Fluent,
+    _theme: &'a iced::Theme,
+    settings_ui: &'a SettingsUiState,
+) -> Element<'a, Message> {
+    let state = &settings_ui.ed2k_search_state;
+    let file_types = ["any", "audio", "video", "doc", "image", "arc"];
+    let file_type_options: Vec<Labeled<String>> = file_types
+        .iter()
+        .map(|s| Labeled {
+            value: s.to_string(),
+            label: s.to_string(),
+        })
+        .collect();
+    let btn_label = if state.sessions.is_empty() {
+        Tr::Ed2kSearchSubmit
+    } else {
+        Tr::Ed2kSearchCancel
+    };
+    let btn_msg = if state.sessions.is_empty() {
+        Message::Settings(SettingsMsg::Ed2kSearchSubmit)
+    } else {
+        Message::Settings(SettingsMsg::Ed2kSearchCancel)
+    };
+    let mut col = column![]
+        .spacing(SPACE_SM)
+        .push(labeled_text_input(
+            fluent.get(Tr::Ed2kSearchKeyword),
+            &state.keyword,
+            SettingKey::Ed2kSearchKeyword,
+            false,
+            "",
+        ))
+        .push(labeled_pick(
+            fluent,
+            fluent.get(Tr::Ed2kSearchFileType),
+            file_type_options,
+            Some(state.file_type.clone()),
+            |opt| {
+                Message::Settings(SettingsMsg::SettingChanged(
+                    SettingKey::Ed2kSearchFileType,
+                    SettingValue::Text(opt.value),
+                ))
+            },
+        ))
+        .push(labeled_number(
+            fluent.get(Tr::Ed2kSearchMinSources),
+            state.min_sources,
+            1..=1000u32,
+            1,
+            SettingKey::Ed2kSearchMinSources,
+        ))
+        .push(labeled_number(
+            fluent.get(Tr::Ed2kSearchTimeout),
+            state.timeout_secs,
+            10..=600u32,
+            1,
+            SettingKey::Ed2kSearchTimeout,
+        ))
+        .push(
+            button(text(fluent.get(btn_label)).size(FONT_BODY))
+                .on_press(btn_msg)
+                .padding(PADDING_BUTTON_SM)
+                .style(theme::style::button::secondary()),
+        );
+    if !state.sessions.is_empty() {
+        col = col.push(
+            text(format!(
+                "{}: {}",
+                fluent.get(Tr::Ed2kSearchProgress),
+                state.sessions.len()
+            ))
+            .size(FONT_SMALL)
+            .style(theme::style::text::secondary),
+        );
+    }
+    col.into()
 }
 
 fn network_view<'a>(

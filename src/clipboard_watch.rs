@@ -41,6 +41,11 @@ pub struct ClipboardLinkTypes {
     /// detected and lifted into `magnet:?xt=urn:btih:<hash>` links.
     #[serde(default = "default_true")]
     pub bt_infohash: bool,
+    /// Whether `metalink://` / `meta4://` links are extracted (rare; most
+    /// metalink clipboard payloads are HTTPS URLs ending in `.metalink` /
+    /// `.meta4` and are already caught by the generic URL extractor).
+    #[serde(default = "default_true")]
+    pub metalink: bool,
 }
 
 fn default_true() -> bool {
@@ -56,6 +61,7 @@ impl Default for ClipboardLinkTypes {
             ed2k: true,
             thunder: true,
             bt_infohash: true,
+            metalink: true,
         }
     }
 }
@@ -75,6 +81,9 @@ pub enum ClipboardPayload {
     /// A single local `.torrent` file path that the user appears to have
     /// pasted on the clipboard.
     Torrent(PathBuf),
+    /// A single local `.metalink` / `.meta4` file path that the user appears
+    /// to have pasted on the clipboard.
+    Metalink(PathBuf),
 }
 
 /// Parse clipboard text into a [`ClipboardPayload`] if it contains anything
@@ -98,6 +107,9 @@ pub fn parse_clipboard(text: &str, prefs: ClipboardLinkTypes) -> Option<Clipboar
         if let Some((path, len)) = file_path_from_line(lines[0]) {
             if is_torrent_path(&path) {
                 return Some(ClipboardPayload::Torrent(path));
+            }
+            if is_metalink_path(&path) {
+                return Some(ClipboardPayload::Metalink(path));
             }
             return file_content_links(&path, len, prefs);
         }
@@ -124,6 +136,9 @@ pub fn payload_hash(payload: &Option<ClipboardPayload>) -> String {
         )),
         Some(ClipboardPayload::Torrent(path)) => hex::encode(Sha256::digest(
             format!("torrent|{}", path.display()).as_bytes(),
+        )),
+        Some(ClipboardPayload::Metalink(path)) => hex::encode(Sha256::digest(
+            format!("metalink|{}", path.display()).as_bytes(),
         )),
         None => String::new(),
     }
@@ -165,6 +180,14 @@ fn extract_links(text: &str, prefs: ClipboardLinkTypes) -> Vec<String> {
     }
     if prefs.bt_infohash {
         matches.extend(extract_infohashes(text));
+    }
+    if prefs.metalink {
+        scan_prefixes(
+            text,
+            &["metalink://", "meta4://"],
+            |s| s.to_string(),
+            &mut matches,
+        );
     }
 
     matches.sort_by(|a, b| a.start.cmp(&b.start).then(b.end.cmp(&a.end)));
@@ -395,6 +418,15 @@ fn is_torrent_path(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+fn is_metalink_path(path: &Path) -> bool {
+    path.extension()
+        .map(|e| {
+            let l = e.to_string_lossy().to_ascii_lowercase();
+            l == "metalink" || l == "meta4"
+        })
+        .unwrap_or(false)
+}
+
 fn file_content_links(
     path: &Path,
     len: u64,
@@ -569,6 +601,7 @@ mod tests {
             ed2k: false,
             thunder: false,
             bt_infohash: false,
+            metalink: false,
         };
         assert_eq!(
             parse_clipboard("http://example.com/a.iso magnet:?xt=urn:btih:abc", p),

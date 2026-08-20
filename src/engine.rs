@@ -116,6 +116,20 @@ pub enum EngineCmd {
     ResumeGids(Vec<String>),
     CheckMissingFiles,
     ReloadSchedules,
+    AddMetalink {
+        path: PathBuf,
+        save_dir: PathBuf,
+        split: u16,
+        advanced: TaskAdvancedOptions,
+    },
+    Ed2kSearchStart {
+        keyword: String,
+        options: serde_json::Map<String, serde_json::Value>,
+    },
+    Ed2kSearchCleanup {
+        gid: String,
+    },
+    Ed2kBootstrapSyncNow,
 }
 
 #[derive(Debug, Clone)]
@@ -214,6 +228,24 @@ pub enum EngineEvent {
     },
     FilesMissing {
         gids: Vec<String>,
+    },
+    Ed2kSearchStarted {
+        gid: String,
+    },
+    Ed2kSearchResults {
+        gid: String,
+        results: serde_json::Value,
+    },
+    Ed2kSearchFailed {
+        gid: String,
+        error: String,
+    },
+    Ed2kBootstrapSynced {
+        server_met_modified: Option<i64>,
+        nodes_dat_modified: Option<i64>,
+    },
+    Ed2kBootstrapSyncFailed {
+        error: String,
     },
 }
 
@@ -430,6 +462,17 @@ pub(crate) fn is_torrent_url(url: &str) -> bool {
 /// leading whitespace tolerated).
 pub(crate) fn is_magnet_url(url: &str) -> bool {
     url.trim_start().to_ascii_lowercase().starts_with("magnet:")
+}
+
+/// Returns `true` when `p` ends with a `.metalink` / `.meta4` extension
+/// (ASCII-case insensitive). Matches on the last extension component only.
+pub fn is_metalink_file(p: &Path) -> bool {
+    p.extension()
+        .map(|e| {
+            let l = e.to_string_lossy().to_ascii_lowercase();
+            l == "metalink" || l == "meta4"
+        })
+        .unwrap_or(false)
 }
 
 /// Apply aria2 task-option tweaks that depend on the URL kind.
@@ -889,7 +932,58 @@ async fn add_torrent_and_emit(
     Ok(gid)
 }
 
-/// Resume paused aria2 tasks in a host-keyed staggered burst, never
+/// Read a local `.metalink` / `.meta4` file from disk, hand it to aria2
+/// via `add_metalink`, then synthesize the same events the URL-based
+/// `AddDownload` path emits.
+///
+/// Mirrors `add_torrent_and_emit` so the GUI sees the new task within the
+/// same tick. If `tell_status` itself fails (transient RPC issue), we
+/// still surface an `Added` event synthesised from the file path and
+/// save_dir rather than losing the gid entirely.
+async fn add_metalink_and_emit(
+    client: &Client,
+    path: &Path,
+    save_dir: &Path,
+    split: u16,
+    advanced: &TaskAdvancedOptions,
+    event_tx: &EventTx,
+) -> Result<String, String> {
+    tracing::info!(?path, ?save_dir, split, "add metalink");
+    let bytes = tokio::fs::read(path)
+        .await
+        .map_err(|e| format!("read metalink: {e}"))?;
+    let mut options = base_task_options(save_dir, split);
+    advanced.apply(&mut options);
+    let gid = client
+        .add_metalink(bytes, Some(options), None, None)
+        .await
+        .map_err(|e| format!("add_metalink: {e}"))?;
+    match client.tell_status(&gid).await {
+        Ok(status) => {
+            emit_added(event_tx, &status, advanced.clone()).await;
+            emit_progress(event_tx, &status).await;
+        }
+        Err(e) => {
+            tracing::warn!(?gid, error = ?e, "tell_status after add_metalink failed");
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(&gid)
+                .to_string();
+            let dir = save_dir.to_string_lossy().to_string();
+            let _ = event_tx.send(EngineEvent::Added {
+                gid: gid.clone(),
+                name,
+                url: String::new(),
+                dir,
+                info_hash: None,
+                advanced: advanced.clone(),
+                from_browser: false,
+            });
+        }
+    }
+    Ok(gid)
+}
 /// hitting the same remote server with a tight burst of simultaneous
 /// connections.
 ///
@@ -1378,6 +1472,27 @@ async fn handle_client_cmd(
         | EngineCmd::RestartEngine => {
             tracing::debug!("cmd handled by supervisor, not dispatched here");
         }
+        EngineCmd::AddMetalink {
+            path,
+            save_dir,
+            split,
+            advanced,
+        } => {
+            if let Err(e) =
+                add_metalink_and_emit(client, &path, &save_dir, split, &advanced, event_tx).await
+            {
+                tracing::warn!(?path, error = ?e, "add metalink failed");
+            }
+        }
+        EngineCmd::Ed2kSearchStart { keyword, options } => {
+            ed2k_search_start(client, &keyword, options, event_tx).await;
+        }
+        EngineCmd::Ed2kSearchCleanup { gid } => {
+            ed2k_search_cleanup(client, &gid, event_tx).await;
+        }
+        EngineCmd::Ed2kBootstrapSyncNow => {
+            tokio::spawn(crate::ed2k_bootstrap::sync_once(event_tx.clone()));
+        }
     }
     Ok(())
 }
@@ -1644,6 +1759,13 @@ fn sanitize_component(input: &str, what: &str) -> Result<String, String> {
     Ok(base.to_string())
 }
 
+/// Return `true` when `gid` is non-empty and contains only ASCII hex
+/// digits. Used to validate aria2-supplied gids before joining them into
+/// a filesystem path (e.g. an ED2K search temp dir).
+fn is_safe_gid(gid: &str) -> bool {
+    !gid.is_empty() && gid.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
 /// Resolve the platform slug for an aria2-next update asset, stripping any
 /// path components from the externally-supplied `asset_name` so it cannot
 /// escape the aria2 data directory. Falls back to the platform slug.
@@ -1843,6 +1965,201 @@ async fn cleanup_stale_aria2(bin_path: &Path, pid_path: &Path) {
         }
     }
     let _ = std::fs::remove_file(pid_path);
+}
+
+/// Root directory for per-search ED2K temp directories.
+fn ed2k_search_root() -> Option<PathBuf> {
+    crate::config::db_path().and_then(|p| p.parent().map(|d| d.join("ed2k-search")))
+}
+
+/// Per-search temp directory used by an aria2 `ed2kSearch` group.
+fn ed2k_search_temp_dir() -> Result<PathBuf, String> {
+    let root = ed2k_search_root().ok_or_else(|| "no data dir".to_string())?;
+    std::fs::create_dir_all(&root).map_err(|e| format!("create ed2k-search root: {e}"))?;
+    let pid = std::process::id();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let dir = root.join(format!("remotrix-ed2k-{pid}-{nanos:x}"));
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create ed2k temp dir: {e}"))?;
+    Ok(dir)
+}
+
+/// Remove every stale `remotrix-ed2k-*` directory left in the root by
+/// earlier crashed runs. Called at boot so a hard exit doesn't leak temp
+/// directories across sessions.
+fn cleanup_stale_ed2k_search_dirs() {
+    let Some(root) = ed2k_search_root() else {
+        return;
+    };
+    let Ok(entries) = std::fs::read_dir(&root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if name.starts_with("remotrix-ed2k-") {
+            if let Err(e) = std::fs::remove_dir_all(&path) {
+                tracing::debug!(?path, error = %e, "ed2k stale dir cleanup skipped");
+            }
+        }
+    }
+}
+
+/// Best-effort cleanup of an ED2K search temp directory.
+fn cleanup_ed2k_search_dir(path: &Path) {
+    match std::fs::remove_dir_all(path) {
+        Ok(()) => tracing::debug!(?path, "ed2k search temp dir removed"),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => tracing::debug!(?path, error = %e, "ed2k search temp dir cleanup skipped"),
+    }
+}
+
+async fn ed2k_search_start(
+    client: &Client,
+    keyword: &str,
+    options: serde_json::Map<String, serde_json::Value>,
+    event_tx: &EventTx,
+) {
+    let keyword_trim = keyword.trim();
+    if keyword_trim.is_empty() {
+        let _ = event_tx.send(EngineEvent::Ed2kSearchFailed {
+            gid: String::new(),
+            error: "empty keyword".to_string(),
+        });
+        return;
+    }
+    let search_dir = match ed2k_search_temp_dir() {
+        Ok(d) => d,
+        Err(e) => {
+            let _ = event_tx.send(EngineEvent::Ed2kSearchFailed {
+                gid: String::new(),
+                error: e,
+            });
+            return;
+        }
+    };
+    let mut options = options;
+    options.insert(
+        "dir".to_string(),
+        serde_json::Value::String(search_dir.to_string_lossy().to_string()),
+    );
+    let aria2 = crate::config::load();
+    if aria2.aria2.ed2k_server.trim().is_empty() {
+        options
+            .entry("ed2k-server".to_string())
+            .or_insert(serde_json::Value::String(
+                aria2.aria2.ed2k_server.trim().to_string(),
+            ));
+    }
+    if !aria2.aria2.ed2k_server_list.trim().is_empty() {
+        options
+            .entry("ed2k-server-list".to_string())
+            .or_insert(serde_json::Value::String(
+                aria2.aria2.ed2k_server_list.trim().to_string(),
+            ));
+    }
+    if !aria2.aria2.ed2k_node_list.trim().is_empty() {
+        options
+            .entry("ed2k-node-list".to_string())
+            .or_insert(serde_json::Value::String(
+                aria2.aria2.ed2k_node_list.trim().to_string(),
+            ));
+    }
+    let params = vec![
+        serde_json::Value::String(keyword_trim.to_string()),
+        serde_json::Value::Object(options),
+    ];
+    match timeout(
+        RPC_TIMEOUT,
+        client.call_and_wait::<String>("ed2kSearch", params),
+    )
+    .await
+    {
+        Ok(Ok(gid)) => {
+            if !is_safe_gid(&gid) {
+                cleanup_ed2k_search_dir(&search_dir);
+                let _ = event_tx.send(EngineEvent::Ed2kSearchFailed {
+                    gid: String::new(),
+                    error: format!("unsafe gid from ed2kSearch: {gid:?}"),
+                });
+                return;
+            }
+            crate::ed2k_bootstrap::record_search_dir(&gid, search_dir);
+            let _ = event_tx.send(EngineEvent::Ed2kSearchStarted { gid: gid.clone() });
+            let poll_client = client.clone();
+            let poll_event_tx = event_tx.clone();
+            let poll_gid = gid.clone();
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    if !is_safe_gid(&poll_gid) {
+                        break;
+                    }
+                    match timeout(
+                        RPC_TIMEOUT,
+                        poll_client.call_and_wait::<serde_json::Value>(
+                            "getEd2kSearchResults",
+                            vec![serde_json::Value::String(poll_gid.clone())],
+                        ),
+                    )
+                    .await
+                    {
+                        Ok(Ok(results)) => {
+                            let is_complete = results
+                                .get("status")
+                                .and_then(|s| s.as_str())
+                                .map(|s| s == "complete" || s == "removed")
+                                .unwrap_or(false);
+                            let _ = poll_event_tx.send(EngineEvent::Ed2kSearchResults {
+                                gid: poll_gid.clone(),
+                                results,
+                            });
+                            if is_complete {
+                                break;
+                            }
+                        }
+                        Ok(Err(e)) => {
+                            tracing::warn!(?poll_gid, error = ?e, "getEd2kSearchResults failed");
+                            break;
+                        }
+                        Err(_) => {
+                            tracing::warn!(?poll_gid, "getEd2kSearchResults timed out");
+                        }
+                    }
+                }
+            });
+        }
+        Ok(Err(e)) => {
+            cleanup_ed2k_search_dir(&search_dir);
+            let _ = event_tx.send(EngineEvent::Ed2kSearchFailed {
+                gid: String::new(),
+                error: format!("ed2kSearch: {e}"),
+            });
+        }
+        Err(_) => {
+            cleanup_ed2k_search_dir(&search_dir);
+            let _ = event_tx.send(EngineEvent::Ed2kSearchFailed {
+                gid: String::new(),
+                error: "ed2kSearch timed out".to_string(),
+            });
+        }
+    }
+}
+
+async fn ed2k_search_cleanup(client: &Client, gid: &str, event_tx: &EventTx) {
+    if !is_safe_gid(gid) {
+        return;
+    }
+    let _ = client.force_remove(gid).await;
+    let _ = client.remove_download_result(gid).await;
+    if let Some(dir) = crate::ed2k_bootstrap::take_search_dir(gid) {
+        cleanup_ed2k_search_dir(&dir);
+    }
+    let _ = event_tx;
 }
 
 async fn boot(
@@ -2136,6 +2453,7 @@ async fn install_sidecar(
 }
 
 async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
+    cleanup_stale_ed2k_search_dirs();
     let session_path = crate::config::session_dir().unwrap_or_else(|| PathBuf::from("."));
     let download_dir = crate::config::load().download_dir;
     let config = SidecarConfig {
@@ -2575,5 +2893,46 @@ mod tests {
             Some("127.0.0.1".to_string())
         );
         assert_eq!(url_host("not a url"), None);
+    }
+
+    #[test]
+    fn is_metalink_file_matches_both_extensions() {
+        assert!(is_metalink_file(&std::path::PathBuf::from("foo.metalink")));
+        assert!(is_metalink_file(&std::path::PathBuf::from("FOO.METALINK")));
+        assert!(is_metalink_file(&std::path::PathBuf::from("foo.meta4")));
+        assert!(!is_metalink_file(&std::path::PathBuf::from("foo.torrent")));
+        assert!(!is_metalink_file(&std::path::PathBuf::from("foo.txt")));
+        assert!(!is_metalink_file(&std::path::PathBuf::from("foo")));
+    }
+
+    #[test]
+    fn is_safe_gid_rejects_path_traversal() {
+        assert!(is_safe_gid("0123abc"));
+        assert!(is_safe_gid("DEADBEEF"));
+        assert!(!is_safe_gid(""));
+        assert!(!is_safe_gid("../etc"));
+        assert!(!is_safe_gid("0123 xyz"));
+        assert!(!is_safe_gid("0123_gid"));
+    }
+
+    #[test]
+    fn follow_metalink_serializes_into_change_global_option_payload() {
+        let opts = aria2_ws::TaskOptions {
+            extra_options: {
+                let mut m = serde_json::Map::new();
+                m.insert(
+                    "follow-metalink".to_string(),
+                    serde_json::Value::String("true".to_string()),
+                );
+                m
+            },
+            ..Default::default()
+        };
+        let v = serde_json::to_value(&opts).unwrap();
+        let obj = v.as_object().expect("TaskOptions serializes to object");
+        let key = obj
+            .get("follow-metalink")
+            .expect("follow-metalink key present");
+        assert_eq!(key, &serde_json::Value::String("true".to_string()));
     }
 }

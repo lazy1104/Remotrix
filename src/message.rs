@@ -11,6 +11,7 @@ pub enum PathPickerId {
     DownloadDir,
     SaveDir,
     Torrent,
+    Metalink,
     Ed2kServerList,
     Ed2kNodeList,
 }
@@ -19,6 +20,7 @@ pub enum PathPickerId {
 pub enum AddTab {
     Url,
     Torrent,
+    Metalink,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -52,6 +54,7 @@ impl PathPickerId {
             Self::DownloadDir => "download_dir",
             Self::SaveDir => "save_dir",
             Self::Torrent => "torrent",
+            Self::Metalink => "metalink",
             Self::Ed2kServerList => "ed2k_server_list",
             Self::Ed2kNodeList => "ed2k_node_list",
         }
@@ -153,6 +156,7 @@ pub enum AddMsg {
     PathPicked(PathPickerId, Option<PathBuf>),
     SelectAddTab(AddTab),
     TorrentUpload(crate::ui::components::torrent_upload::TorrentUploadEvent),
+    MetalinkUpload(crate::ui::components::torrent_upload::TorrentUploadEvent),
     TorrentTreeExpand(String),
     TorrentTreeToggle(String),
     TorrentFilesSelectAll,
@@ -259,6 +263,9 @@ pub enum SettingsMsg {
         releases: Result<Vec<crate::updater::ReleaseInfo>, String>,
     },
     SpeedUnitChanged(SettingKey, SpeedUnit),
+    Ed2kSearchSubmit,
+    Ed2kSearchCancel,
+    Ed2kBootstrapSyncNow,
     ToggleScheduleDaysMenu,
     ScheduleDayToggled {
         day: u8,
@@ -479,6 +486,15 @@ pub enum SettingKey {
     SpeedLimitScheduleEnabled,
     ScheduleStart,
     ScheduleEnd,
+    FollowMetalink,
+    Ed2kServerMetUrl,
+    Ed2kNodesDatUrl,
+    Ed2kBootstrapAutoSync,
+    Ed2kBootstrapSyncInterval,
+    Ed2kSearchKeyword,
+    Ed2kSearchFileType,
+    Ed2kSearchMinSources,
+    Ed2kSearchTimeout,
     AutoUpdateEnabled,
     UpdateCheckInterval,
     UpdateScope,

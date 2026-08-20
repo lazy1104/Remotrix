@@ -371,6 +371,37 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                         state.settings.aria2.ed2k_upload_slots = n.max(1) as u16;
                     }
                 }
+                SettingKey::FollowMetalink => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.aria2.follow_metalink = b;
+                    }
+                }
+                SettingKey::Ed2kServerMetUrl => {
+                    if let SettingValue::Text(s) = value {
+                        state.settings.aria2.ed2k_server_met_url = s;
+                    }
+                }
+                SettingKey::Ed2kNodesDatUrl => {
+                    if let SettingValue::Text(s) = value {
+                        state.settings.aria2.ed2k_nodes_dat_url = s;
+                    }
+                }
+                SettingKey::Ed2kBootstrapAutoSync => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.aria2.ed2k_bootstrap_auto_sync = b;
+                    }
+                }
+                SettingKey::Ed2kBootstrapSyncInterval => {
+                    if let SettingValue::Num(n) = value {
+                        state.settings.aria2.ed2k_bootstrap_sync_interval_hours = n as u32;
+                    }
+                }
+                SettingKey::Ed2kSearchKeyword
+                | SettingKey::Ed2kSearchFileType
+                | SettingKey::Ed2kSearchMinSources
+                | SettingKey::Ed2kSearchTimeout => {
+                    state.settings_ui.ed2k_search_state.update(key, value);
+                }
                 SettingKey::SpeedLimitScheduleEnabled => {
                     if let SettingValue::Bool(b) = value {
                         state.settings.speed_limit_schedule.enabled = b;
@@ -465,6 +496,39 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
         }
         SettingsMsg::SpeedUnitChanged(key, unit) => {
             state.settings_ui.speed_units.insert(key, unit);
+            Task::none()
+        }
+        SettingsMsg::Ed2kSearchSubmit => {
+            let Some(cmd) = state.settings_ui.ed2k_search_state.build_cmd() else {
+                return Task::none();
+            };
+            if state.handle.cmd_tx.send(cmd).is_err() {
+                tracing::warn!("ui: ed2k search submit send failed");
+            }
+            Task::none()
+        }
+        SettingsMsg::Ed2kSearchCancel => {
+            for gid in state.settings_ui.ed2k_search_state.cancel() {
+                if state
+                    .handle
+                    .cmd_tx
+                    .send(EngineCmd::Ed2kSearchCleanup { gid })
+                    .is_err()
+                {
+                    tracing::warn!("ui: ed2k search cleanup send failed");
+                }
+            }
+            Task::none()
+        }
+        SettingsMsg::Ed2kBootstrapSyncNow => {
+            if state
+                .handle
+                .cmd_tx
+                .send(EngineCmd::Ed2kBootstrapSyncNow)
+                .is_err()
+            {
+                tracing::warn!("ui: ed2k bootstrap sync now send failed");
+            }
             Task::none()
         }
         SettingsMsg::UaEditor(action) => {

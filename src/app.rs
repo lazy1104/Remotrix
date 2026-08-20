@@ -1852,6 +1852,7 @@ pub(crate) fn picker_mut(
         PathPickerId::DownloadDir => &mut state.settings_ui.download_picker,
         PathPickerId::SaveDir => &mut state.add_dialog.save_picker,
         PathPickerId::Torrent => unreachable!("torrent upload is not a PathPicker"),
+        PathPickerId::Metalink => unreachable!("metalink upload is not a PathPicker"),
         PathPickerId::Ed2kServerList => &mut state.settings_ui.ed2k_server_list_picker,
         PathPickerId::Ed2kNodeList => &mut state.settings_ui.ed2k_node_list_picker,
     }
@@ -1884,6 +1885,18 @@ pub(crate) fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
                     .add_dialog
                     .set_torrent_path(p.to_string_lossy().to_string());
                 config::save(&state.settings);
+            } else {
+                let toast = Toast::new(ToastKind::Warning, state.fluent.get(Tr::InvalidTorrent))
+                    .group(ToastGroup::Task)
+                    .close_after(Some(Duration::from_secs(4)));
+                state.toasts.push(toast);
+            }
+        }
+        PathPickerId::Metalink => {
+            if crate::engine::is_metalink_file(&p) {
+                state
+                    .add_dialog
+                    .set_metalink_path(p.to_string_lossy().to_string());
             } else {
                 let toast = Toast::new(ToastKind::Warning, state.fluent.get(Tr::InvalidTorrent))
                     .group(ToastGroup::Task)
@@ -2412,6 +2425,13 @@ pub(crate) fn pick_path(id: PathPickerId) -> Task<Message> {
                 dialog
                     .set_title("Select torrent file")
                     .add_filter("Torrent", &["torrent"])
+                    .pick_file()
+                    .await
+            }
+            PathPickerId::Metalink => {
+                dialog
+                    .set_title("Select metalink file")
+                    .add_filter("Metalink", &["metalink", "meta4"])
                     .pick_file()
                     .await
             }

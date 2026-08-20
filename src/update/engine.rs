@@ -912,5 +912,63 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
             }
             Task::none()
         }
+        EngineEvent::Ed2kSearchStarted { gid } => {
+            state.settings_ui.ed2k_search_state.sessions.insert(
+                gid.clone(),
+                crate::ui::settings_page::Ed2kSearchSession {
+                    keyword: state.settings_ui.ed2k_search_state.keyword.clone(),
+                    results: serde_json::Value::Null,
+                    started_at_ms: chrono::Local::now().timestamp_millis(),
+                },
+            );
+            Task::none()
+        }
+        EngineEvent::Ed2kSearchResults { gid, results } => {
+            if let Some(session) = state.settings_ui.ed2k_search_state.sessions.get_mut(&gid) {
+                session.results = results;
+            }
+            Task::none()
+        }
+        EngineEvent::Ed2kSearchFailed { gid, error } => {
+            tracing::warn!(?gid, %error, "ed2k search failed");
+            if !gid.is_empty() {
+                state.settings_ui.ed2k_search_state.sessions.remove(&gid);
+            }
+            spawn_toast(
+                state,
+                ToastGroup::General,
+                ToastKind::Error,
+                format!("{}: {error}", state.fluent.get(Tr::Ed2kSearchFailed)),
+                Some(Duration::from_secs(5)),
+                true,
+            );
+            Task::none()
+        }
+        EngineEvent::Ed2kBootstrapSynced {
+            server_met_modified,
+            nodes_dat_modified,
+        } => {
+            state.settings_ui.ed2k_bootstrap_status = (server_met_modified, nodes_dat_modified);
+            spawn_toast(
+                state,
+                ToastGroup::General,
+                ToastKind::Success,
+                state.fluent.get(Tr::Ed2kBootstrapSynced),
+                Some(Duration::from_secs(3)),
+                false,
+            );
+            Task::none()
+        }
+        EngineEvent::Ed2kBootstrapSyncFailed { error } => {
+            spawn_toast(
+                state,
+                ToastGroup::General,
+                ToastKind::Error,
+                format!("{}: {error}", state.fluent.get(Tr::Ed2kBootstrapSyncFailed)),
+                Some(Duration::from_secs(5)),
+                true,
+            );
+            Task::none()
+        }
     }
 }

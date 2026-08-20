@@ -226,6 +226,53 @@ impl TaskStatus {
     }
 }
 
+/// High-level classification of a download's source protocol.
+///
+/// Used by the task details view to pick a representative icon/badage and
+/// the relevant aria2 status fields. Derived from an aria2 [`Status`] by
+/// [`Self::from_status`]; the wire-format Status has no explicit
+/// `kind` field, so the classification is best-effort:
+///
+/// - `Bt` — `status.bittorrent` is set or `status.info_hash` is present.
+/// - `Ed2k` — the task's first file URI uses the `ed2k://` scheme (or the
+///   task is the parent of an ed2k-derived download).
+/// - `Metalink` — the task's first file URI uses the `metalink://` /
+///   `meta4://` scheme, or the path ends in `.metalink` / `.meta4`.
+/// - `Uri` — fallback for ordinary HTTP(S)/FTP/whatever downloads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum TaskKind {
+    Uri,
+    Bt,
+    Ed2k,
+    Metalink,
+}
+
+impl TaskKind {
+    #[allow(dead_code)]
+    pub fn from_status(status: &aria2_ws::response::Status) -> Self {
+        if status.bittorrent.is_some() || status.info_hash.is_some() {
+            return Self::Bt;
+        }
+        if let Some(file) = status.files.first() {
+            if let Some(uri) = file.uris.first() {
+                let lower = uri.uri.to_ascii_lowercase();
+                if lower.starts_with("ed2k://") {
+                    return Self::Ed2k;
+                }
+                if lower.starts_with("metalink://") || lower.starts_with("meta4://") {
+                    return Self::Metalink;
+                }
+            }
+            let lower_path = file.path.to_ascii_lowercase();
+            if lower_path.ends_with(".metalink") || lower_path.ends_with(".meta4") {
+                return Self::Metalink;
+            }
+        }
+        Self::Uri
+    }
+}
+
 /// Single file within a multi-file task (BitTorrent / metalink).
 #[derive(Debug, Clone)]
 pub struct TaskFile {
@@ -495,6 +542,60 @@ mod tests {
         ] {
             assert_eq!(TaskStatus::from_engine(s.to_str()), s);
         }
+    }
+
+    fn dummy_status(uri: &str, path: &str) -> aria2_ws::response::Status {
+        aria2_ws::response::Status {
+            gid: "1".to_string(),
+            status: aria2_ws::response::TaskStatus::Active,
+            total_length: 0,
+            completed_length: 0,
+            upload_length: 0,
+            bitfield: None,
+            download_speed: 0,
+            upload_speed: 0,
+            info_hash: None,
+            num_seeders: None,
+            seeder: None,
+            piece_length: 0,
+            num_pieces: 0,
+            connections: 0,
+            error_code: None,
+            error_message: None,
+            followed_by: None,
+            following: None,
+            belongs_to: None,
+            dir: String::new(),
+            files: vec![aria2_ws::response::File {
+                index: 0,
+                path: path.to_string(),
+                length: 0,
+                completed_length: 0,
+                selected: true,
+                uris: vec![aria2_ws::response::Uri {
+                    status: aria2_ws::response::UriStatus::Used,
+                    uri: uri.to_string(),
+                }],
+            }],
+            bittorrent: None,
+            verified_length: None,
+            verify_integrity_pending: None,
+        }
+    }
+
+    #[test]
+    fn task_kind_classifies_bt_ed2k_metalink_uri() {
+        let s = dummy_status("https://example.com/a.zip", "/tmp/a.zip");
+        assert_eq!(TaskKind::from_status(&s), TaskKind::Uri);
+
+        let s = dummy_status("ed2k://|file|a|1|hash|/", "/tmp/a");
+        assert_eq!(TaskKind::from_status(&s), TaskKind::Ed2k);
+
+        let s = dummy_status("metalink://example.com/x.metalink", "/tmp/x.metalink");
+        assert_eq!(TaskKind::from_status(&s), TaskKind::Metalink);
+
+        let s = dummy_status("https://example.com/x.meta4", "/tmp/x.meta4");
+        assert_eq!(TaskKind::from_status(&s), TaskKind::Metalink);
     }
 
     fn blank_task(status: TaskStatus) -> DownloadTask {

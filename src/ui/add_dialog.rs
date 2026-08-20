@@ -39,6 +39,8 @@ pub struct AddDialogState {
     pub save_picker: PathPicker,
     pub split: u16,
     pub torrent_upload: TorrentUpload,
+    pub metalink_upload: TorrentUpload,
+    pub metalink_parse_failed: bool,
     pub torrent_files: Vec<TorrentFileEntry>,
     pub torrent_tree: Vec<FileTreeNode>,
     pub torrent_expanded: std::collections::HashSet<String>,
@@ -66,6 +68,8 @@ impl AddDialogState {
             save_picker: PathPicker::folder(default_dir.to_string_lossy(), true),
             split: 16,
             torrent_upload: TorrentUpload::new(),
+            metalink_upload: TorrentUpload::new(),
+            metalink_parse_failed: false,
             torrent_files: Vec::new(),
             torrent_tree: Vec::new(),
             torrent_expanded: std::collections::HashSet::new(),
@@ -92,6 +96,8 @@ impl AddDialogState {
         self.save_picker.set_value(default_dir.to_string_lossy());
         self.split = default_split;
         self.torrent_upload.clear();
+        self.metalink_upload.clear();
+        self.metalink_parse_failed = false;
         self.torrent_files.clear();
         self.torrent_tree.clear();
         self.torrent_expanded.clear();
@@ -166,6 +172,10 @@ impl AddDialogState {
                 self.set_torrent_path(path.to_string_lossy().to_string());
                 self.active_tab = AddTab::Torrent;
             }
+            crate::clipboard_watch::ClipboardPayload::Metalink(path) => {
+                self.set_metalink_path(path.to_string_lossy().to_string());
+                self.active_tab = AddTab::Metalink;
+            }
         }
     }
 
@@ -183,6 +193,7 @@ impl AddDialogState {
                     && (self.torrent_files.is_empty()
                         || self.torrent_files.iter().any(|f| f.selected))
             }
+            AddTab::Metalink => !self.metalink_upload.is_empty() && save_dir_ok,
         }
     }
 
@@ -233,6 +244,11 @@ impl AddDialogState {
     pub fn set_torrent_path(&mut self, path: String) {
         self.torrent_upload.set_path(path);
         self.load_torrent_files();
+    }
+
+    pub fn set_metalink_path(&mut self, path: String) {
+        self.metalink_upload.set_path(path);
+        self.metalink_parse_failed = false;
     }
 
     pub fn handle_torrent_event(
@@ -410,7 +426,11 @@ pub fn view<'a>(
         .on_toggle(|v| Message::Add(AddMsg::ToggleAdvanced(v)));
 
     let tab_bar = {
-        let tabs = [(AddTab::Url, Tr::TabUrl), (AddTab::Torrent, Tr::TabTorrent)];
+        let tabs = [
+            (AddTab::Url, Tr::TabUrl),
+            (AddTab::Torrent, Tr::TabTorrent),
+            (AddTab::Metalink, Tr::TabMetalink),
+        ];
         let mut bar = row![].spacing(SPACE_SM);
         for (tab, tr) in tabs {
             let active = state.active_tab == tab;
@@ -491,6 +511,21 @@ pub fn view<'a>(
                     &torrent_files_scroll,
                 ));
                 body_items.push(selected_line.into());
+            }
+        }
+        AddTab::Metalink => {
+            body_items.push(
+                state
+                    .metalink_upload
+                    .view(fluent, theme, |ev| Message::Add(AddMsg::MetalinkUpload(ev))),
+            );
+            if state.metalink_parse_failed {
+                body_items.push(
+                    text(fluent.get(Tr::InvalidTorrent))
+                        .size(FONT_SMALL)
+                        .style(theme::style::text::secondary)
+                        .into(),
+                );
             }
         }
     }

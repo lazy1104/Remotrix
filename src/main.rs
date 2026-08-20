@@ -7,6 +7,7 @@ mod autostart;
 mod clipboard_watch;
 mod config;
 mod db;
+mod ed2k_bootstrap;
 mod engine;
 mod extension_api;
 mod i18n;
