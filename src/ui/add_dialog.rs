@@ -14,11 +14,12 @@ use crate::ui::components::ctx_input;
 use crate::ui::components::ctx_menu::CtxMirrors;
 use crate::ui::components::dialog::Dialog;
 use crate::ui::components::expand::expand_pinned;
+use crate::ui::components::file_drop_zone::{FileDropEvent, FileDropZone};
 use crate::ui::components::file_tree::{self, FileTreeNode};
 use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::path_picker::PathPicker;
 use crate::ui::components::slim_scrollable::slim_scrollable;
-use crate::ui::components::torrent_upload::{TorrentUpload, TorrentUploadEvent};
+use crate::ui::components::torrent_upload::TorrentUpload;
 use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
@@ -39,7 +40,7 @@ pub struct AddDialogState {
     pub save_picker: PathPicker,
     pub split: u16,
     pub torrent_upload: TorrentUpload,
-    pub metalink_upload: TorrentUpload,
+    pub metalink_upload: FileDropZone,
     pub metalink_parse_failed: bool,
     pub torrent_files: Vec<TorrentFileEntry>,
     pub torrent_tree: Vec<FileTreeNode>,
@@ -68,7 +69,7 @@ impl AddDialogState {
             save_picker: PathPicker::folder(default_dir.to_string_lossy(), true),
             split: 16,
             torrent_upload: TorrentUpload::new(),
-            metalink_upload: TorrentUpload::new(),
+            metalink_upload: FileDropZone::new(),
             metalink_parse_failed: false,
             torrent_files: Vec::new(),
             torrent_tree: Vec::new(),
@@ -253,10 +254,10 @@ impl AddDialogState {
 
     pub fn handle_torrent_event(
         &mut self,
-        event: TorrentUploadEvent,
-    ) -> Option<crate::ui::components::torrent_upload::TorrentUploadAction> {
+        event: FileDropEvent,
+    ) -> Option<crate::ui::components::file_drop_zone::FileDropAction> {
         let action = self.torrent_upload.update(event);
-        if event == TorrentUploadEvent::Clear {
+        if event == FileDropEvent::Clear {
             self.torrent_files.clear();
             self.torrent_tree.clear();
             self.torrent_expanded.clear();
@@ -514,14 +515,16 @@ pub fn view<'a>(
             }
         }
         AddTab::Metalink => {
-            body_items.push(
-                state
-                    .metalink_upload
-                    .view(fluent, theme, |ev| Message::Add(AddMsg::MetalinkUpload(ev))),
-            );
+            body_items.push(state.metalink_upload.view(
+                fluent,
+                theme,
+                Tr::DropMetalinkHint,
+                Tr::DropMetalinkActive,
+                |ev| Message::Add(AddMsg::MetalinkUpload(ev)),
+            ));
             if state.metalink_parse_failed {
                 body_items.push(
-                    text(fluent.get(Tr::InvalidTorrent))
+                    text(fluent.get(Tr::InvalidMetalink))
                         .size(FONT_SMALL)
                         .style(theme::style::text::secondary)
                         .into(),

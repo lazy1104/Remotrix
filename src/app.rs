@@ -1898,7 +1898,7 @@ pub(crate) fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
                     .add_dialog
                     .set_metalink_path(p.to_string_lossy().to_string());
             } else {
-                let toast = Toast::new(ToastKind::Warning, state.fluent.get(Tr::InvalidTorrent))
+                let toast = Toast::new(ToastKind::Warning, state.fluent.get(Tr::InvalidMetalink))
                     .group(ToastGroup::Task)
                     .close_after(Some(Duration::from_secs(4)));
                 state.toasts.push(toast);

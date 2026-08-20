@@ -27,6 +27,7 @@ drop-metalink-hint = Drag a .metalink / .meta4 file here, or click to select
 drop-metalink-active = Release to add the Metalink file
 remove = Remove
 invalid-torrent = Only .torrent files are supported
+invalid-metalink = Only .metalink / .meta4 files are supported
 browse = Browse
 save-to = Save to
 split-connections = Split / max connections

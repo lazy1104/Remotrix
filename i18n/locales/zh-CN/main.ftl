@@ -27,6 +27,7 @@ drop-metalink-hint = 拖入 .metalink / .meta4 文件，或点击选择文件
 drop-metalink-active = 松开以添加 Metalink 文件
 remove = 移除
 invalid-torrent = 仅支持 .torrent 文件
+invalid-metalink = 仅支持 .metalink / .meta4 文件
 browse = 浏览
 save-to = 保存到
 split-connections = 分片 / 最大连接数
