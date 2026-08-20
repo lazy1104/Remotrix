@@ -1,9 +1,17 @@
+//! Eight-edge invisible resize frame drawn around the window content so
+//! the user can drag to resize from any side or corner.
+//!
+//! Each edge posts a [`WindowMsg::ResizeWindow`] with the corresponding
+//! `Direction`, which `iced` translates to the native resize cursor and
+//! gesture.
+
 use iced::widget::{column, container, mouse_area, row, text};
 use iced::{mouse, Element, Length};
 
 use crate::message::{Message, WindowMsg};
 use crate::ui::dims::*;
 
+/// Width of the resize hit-target on every edge.
 pub const BORDER: f32 = 6.0;
 
 fn strip(
@@ -22,6 +30,8 @@ fn strip(
     .into()
 }
 
+/// Build the invisible resize frame. The element fills the window; the
+/// actual visible chrome is drawn by the parent.
 pub fn view<'a>() -> Element<'a, Message> {
     let top = row![
         strip(

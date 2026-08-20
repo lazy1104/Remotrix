@@ -1,3 +1,8 @@
+//! Centralised UI dimension constants — font sizes, spacing, padding,
+//! and a handful of fixed heights/widths. Constants here are the single
+//! source of truth used by every page so visual rhythm stays consistent
+//! across the app.
+
 use iced::Padding;
 
 // 尺寸常量：按像素值一一对应，常量名反映主要用途。所有值与原字面量完全一致。

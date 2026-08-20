@@ -1,3 +1,10 @@
+//! Settings page: category tabs, live edit of [`Settings`], with a
+//! pending/dirty buffer that requires an explicit Apply.
+//!
+//! `app.rs` owns the persisted [`Settings`] and the working copy in
+//! [`SettingsUiState`]; this module just renders the editors and posts
+//! [`SettingsMsg`]s.
+
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -32,6 +39,9 @@ use crate::ui::theme;
 
 pub const SETTINGS_SCROLL_ID: &str = "settings-scroll";
 
+/// Per-screen UI state for the settings page: path pickers, transient
+/// edit fields, and popover open flags. Persisted settings live in
+/// [`crate::config::Settings`]; this struct is rebuilt on demand.
 #[derive(Debug, Clone)]
 pub struct SettingsUiState {
     pub download_picker: PathPicker,
@@ -95,6 +105,9 @@ where
     }
 }
 
+/// All inputs the settings page needs to render a frame: the current
+/// settings (live and pending), the UI state, the active category, and
+/// a few engine callbacks.
 pub struct SettingsPageContext<'a> {
     pub fluent: &'a Fluent,
     pub theme: &'a iced::Theme,
@@ -122,6 +135,7 @@ pub struct SettingsPageContext<'a> {
     >,
 }
 
+/// Render the settings page for the active category.
 pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
     let SettingsPageContext {
         fluent,

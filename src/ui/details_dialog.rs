@@ -1,3 +1,11 @@
+//! Per-task details dialog: status bar, file tree, and the BitTorrent
+//! piece map.
+//!
+//! The dialog hosts three tabs (general / files / pieces) and pins to the
+//! right edge of the parent window. State is owned by
+//! [`DetailsDialogState`] and the app passes the active task in via
+//! `view`.
+
 use std::collections::{HashMap, HashSet};
 
 use iced::widget::{button, column, container, mouse_area, progress_bar, row, rule, text};
@@ -22,6 +30,9 @@ use crate::ui::theme;
 
 const DETAILS_WIDTH: f32 = 640.0;
 
+/// Owned state for the details dialog: which tab is visible, whether the
+/// file metadata is still being fetched, and the last fetched
+/// [`TaskDetails`].
 pub struct DetailsDialogState {
     pub visible: bool,
     pub gid: Option<String>,
@@ -149,6 +160,8 @@ impl DetailsDialogState {
     }
 }
 
+/// Build the details dialog for `task` (or an empty shell if `None`).
+/// `progress` drives the pin enter/exit animation.
 pub fn view<'a>(
     fluent: &'a Fluent,
     theme: &'a iced::Theme,

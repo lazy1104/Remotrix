@@ -1,3 +1,6 @@
+//! Dialog shown when the user accepts an available update: version diff,
+//! release notes, download progress, and the apply/restart actions.
+
 use iced::widget::{button, column, container, markdown, rich_text, row, span, text};
 use iced::{Alignment, Element, Font, Length};
 
@@ -10,12 +13,15 @@ use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
+/// Which subsystem the update dialog is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpdateComponent {
     App,
     Aria2,
 }
 
+/// Snapshot of an available update: from/to versions, markdown notes,
+/// asset download URL and (if known) sha256.
 #[derive(Debug, Clone)]
 pub struct UpdateOffer {
     pub component: UpdateComponent,
@@ -52,6 +58,8 @@ fn tab_button<'a>(label: String, active: bool, on_press: Message) -> Element<'a,
     }
 }
 
+/// Build the update dialog for the supplied `offers` and per-offer
+/// changelog state. `progress` drives the pin enter/exit animation.
 pub fn view<'a>(
     fluent: &'a Fluent,
     theme: &iced::Theme,

@@ -1,3 +1,9 @@
+//! Main task list view: toolbar, sort header, scrollable list of task
+//! rows, and the empty-state placeholder when the list is empty.
+//!
+//! All interactive state (sort key/order, selected row, etc.) lives in
+//! the app; this module only renders.
+
 use std::collections::HashMap;
 
 use crate::ui::components::drop_down;
@@ -20,6 +26,7 @@ use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
+/// Build the main task list element.
 #[allow(clippy::too_many_arguments)]
 pub fn view<'a>(
     fluent: &'a Fluent,

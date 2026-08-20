@@ -390,7 +390,7 @@ impl Sidecar {
     }
 }
 
-/// Map an aria2-ws [`TaskStatus`] enum to the lowercase string used on
+/// Map an aria2-ws task-status enum to the lowercase string used on
 /// the wire and persisted in our database.
 fn status_to_string(status: &aria2_ws::response::TaskStatus) -> &'static str {
     match status {

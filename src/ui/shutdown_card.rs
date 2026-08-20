@@ -1,3 +1,9 @@
+//! Settings card controlling the post-task-completion shutdown behaviour.
+//!
+//! Two toggles: shut down after all tasks complete, or shut down after a
+//! user-configured number of minutes. Used by the Download settings
+//! category.
+
 use iced::widget::{column, container, row, text, toggler};
 use iced::{Alignment, Element, Length};
 
@@ -8,6 +14,7 @@ use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::dims::*;
 use crate::ui::theme;
 
+/// Build the shutdown-card element for the settings page.
 pub fn view<'a>(
     fluent: &'a Fluent,
     _theme: &'a iced::Theme,

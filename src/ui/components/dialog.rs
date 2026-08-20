@@ -169,6 +169,8 @@ where
     }
 }
 
+/// Wrap `content` in a full-screen translucent overlay that blocks input
+/// to widgets behind it. Used as the modal backdrop for every dialog.
 pub fn overlay<'a, Message: Clone + 'a>(
     content: impl Into<Element<'a, Message>>,
 ) -> Element<'a, Message> {
@@ -182,6 +184,11 @@ pub fn overlay<'a, Message: Clone + 'a>(
     ))
 }
 
+/// Modal dialog builder: title bar, body, optional footer. Constructed
+/// via `Dialog::new()`; render with [`build`] to get an
+/// [`iced::Element`].
+///
+/// [`build`]: Dialog::build
 pub struct Dialog<'a, Message> {
     width: f32,
     spacing: f32,
@@ -192,6 +199,8 @@ pub struct Dialog<'a, Message> {
 }
 
 impl<'a, Message: Clone + 'a> Dialog<'a, Message> {
+    /// Build a default [`Dialog`]. Call `.title(…)`, `.body(…)`,
+    /// `.footer(…)` and finally `.build()` to render.
     pub fn new() -> Self {
         Self {
             width: 420.0,
@@ -233,6 +242,7 @@ impl<'a, Message: Clone + 'a> Dialog<'a, Message> {
         self
     }
 
+    /// Consume the builder and produce the dialog element.
     pub fn build(self) -> Element<'a, Message> {
         let mut inner = column![].spacing(self.spacing);
 

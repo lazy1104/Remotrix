@@ -1,3 +1,11 @@
+//! Theme system: colour tokens, accent-based palette generation, and the
+//! `iced::Theme` factory used by every page.
+//!
+//! All colours flow from a single accent string in `Settings.theme_color`;
+//! [`build_iced`] derives a light and dark palette from it via
+//! [`crate::ui::hct`]. Component styling rules live in the [`style`]
+//! submodule.
+
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex, OnceLock};
 
@@ -8,6 +16,7 @@ use iced::{Color, Font, Theme};
 
 use crate::ui::dims;
 
+/// User-facing choice for the colour scheme.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum ThemeMode {
     Dark,
@@ -16,6 +25,8 @@ pub enum ThemeMode {
     System,
 }
 
+/// Best-effort detection of the OS-level dark-mode preference. Falls back
+/// to `false` (light) when the platform or `dark-light` cannot answer.
 pub fn detect_dark() -> bool {
     matches!(
         dark_light::detect().unwrap_or(dark_light::Mode::Light),
@@ -23,6 +34,9 @@ pub fn detect_dark() -> bool {
     )
 }
 
+/// Resolve a [`ThemeMode`] to a concrete `is_dark` boolean. When `mode`
+/// is [`ThemeMode::System`], `system_dark` is consulted first so the
+/// caller can pin the value for tests.
 pub fn resolve_mode(mode: ThemeMode, system_dark: Option<bool>) -> bool {
     match mode {
         ThemeMode::Dark => true,
@@ -31,11 +45,15 @@ pub fn resolve_mode(mode: ThemeMode, system_dark: Option<bool>) -> bool {
     }
 }
 
+/// Name of the bundled CJK fallback font (HarmonyOS Sans SC).
 pub const BUNDLED_FONT_NAME: &str = "HarmonyOS Sans SC";
 
 static FONT_CACHE: LazyLock<Mutex<HashMap<String, Font>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// Resolve a font family string into an [`iced::Font`], with a process-wide
+/// cache so the `&'static str` lifetime requirement doesn't leak every
+/// distinct call site.
 pub fn font_from_family(family: &str) -> Font {
     let trimmed = family.trim();
     if trimmed.is_empty() {
@@ -54,6 +72,8 @@ pub fn font_from_family(family: &str) -> Font {
 
 static FONT_FAMILIES: OnceLock<Vec<String>> = OnceLock::new();
 
+/// Sorted, de-duplicated list of font families available on the system,
+/// used by the settings dialog font picker.
 pub fn system_font_families() -> &'static [String] {
     FONT_FAMILIES
         .get_or_init(|| {
@@ -70,6 +90,7 @@ pub fn system_font_families() -> &'static [String] {
         .as_slice()
 }
 
+/// Translucent black used as a scrim behind dialogs and dropdowns.
 pub const OVERLAY: Color = Color {
     r: 0.0,
     g: 0.0,
@@ -77,13 +98,20 @@ pub const OVERLAY: Color = Color {
     a: 0.55,
 };
 
+/// Corner radius used by task cards and large surfaces.
 pub const RADIUS_CARD: f32 = 8.0;
+/// Corner radius for primary buttons.
 pub const RADIUS_BUTTON: f32 = 6.0;
+/// Corner radius for pill-shaped indicators (filter, tags, toast close).
 pub const RADIUS_PILL: f32 = 40.0;
+/// Corner radius for progress bars and toast progress.
 pub const RADIUS_PROGRESS: f32 = 4.0;
+/// Corner radius for the sidebar/active-pill nav highlight.
 pub const RADIUS_NAV: f32 = 20.0;
 
+/// Padding applied by [`input_layout`] to standalone text inputs.
 pub const INPUT_PADDING: iced::Padding = iced::Padding::new(8.0);
+/// Padding applied by [`grouped_input_layout`] to grouped inputs.
 pub const INPUT_PADDING_GROUPED: iced::Padding = iced::Padding {
     top: 0.0,
     right: 10.0,
@@ -91,18 +119,24 @@ pub const INPUT_PADDING_GROUPED: iced::Padding = iced::Padding {
     left: 10.0,
 };
 
+/// Apply the app-standard padding and font size to a standalone
+/// `TextInput`.
 pub fn input_layout<'a, Message: Clone>(
     input: iced::widget::TextInput<'a, Message>,
 ) -> iced::widget::TextInput<'a, Message> {
     input.padding(INPUT_PADDING).size(dims::FONT_MEDIUM)
 }
 
+/// Apply the app-standard padding and font size to a grouped
+/// `TextInput` (a row inside a path picker / number stepper).
 pub fn grouped_input_layout<'a, Message: Clone>(
     input: iced::widget::TextInput<'a, Message>,
 ) -> iced::widget::TextInput<'a, Message> {
     input.padding(INPUT_PADDING_GROUPED).size(dims::FONT_MEDIUM)
 }
 
+/// Apply the app-standard padding and font size to a `TextEditor`
+/// (multi-line URL box).
 pub fn editor_layout<'a, H, Message>(
     editor: iced::widget::TextEditor<'a, H, Message>,
 ) -> iced::widget::TextEditor<'a, H, Message>
@@ -112,10 +146,14 @@ where
     editor.padding(INPUT_PADDING).size(dims::FONT_MEDIUM)
 }
 
+/// Default accent colour (`#5865F2`) used for first-launch themes.
 pub const DEFAULT_THEME_COLOR: Color = Color::from_rgb8(0x58, 0x65, 0xF2);
 
 const MIN_SEP: f64 = 25.0;
 
+/// Build an [`iced::Theme`] from an accent colour and a dark/light flag,
+/// deriving background, text, primary, danger, success and warning tones
+/// via the HCT ramps in [`crate::ui::hct`].
 pub fn build_iced(color: Color, dark: bool) -> iced::Theme {
     let seed = crate::ui::hct::Hct::from_rgb(color);
     let h = seed.hue;
@@ -142,11 +180,15 @@ pub fn build_iced(color: Color, dark: bool) -> iced::Theme {
     iced::Theme::custom("remotrix", palette)
 }
 
+/// Format an [`iced::Color`] as `"#RRGGBB"`. Out-of-range components are
+/// clamped before rounding.
 pub fn color_to_hex(c: Color) -> String {
     let to = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
     format!("#{:02X}{:02X}{:02X}", to(c.r), to(c.g), to(c.b))
 }
 
+/// Parse a `"#RRGGBB"` (case-insensitive) string into an [`iced::Color`],
+/// or `None` for any other shape.
 pub fn color_from_hex(s: &str) -> Option<Color> {
     let h = s.trim().strip_prefix('#')?;
     if h.len() != 6 || !h.is_ascii() || !h.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -158,10 +200,15 @@ pub fn color_from_hex(s: &str) -> Option<Color> {
     Some(Color::from_rgb8(r, g, b))
 }
 
+/// Parse `hex` as an accent color, falling back to
+/// [`DEFAULT_THEME_COLOR`] on any parse error so a typo in settings can
+/// never crash the UI.
 pub fn accent_color(hex: &str) -> Color {
     color_from_hex(hex).unwrap_or(DEFAULT_THEME_COLOR)
 }
 
+/// Curated accent swatches exposed in the theme picker, paired with
+/// their display name.
 pub static CANDIDATE_COLORS: &[(Color, &str)] = &[
     (DEFAULT_THEME_COLOR, "Blue"),
     (Color::from_rgb8(0x63, 0x66, 0xF1), "Indigo"),
@@ -176,34 +223,45 @@ pub static CANDIDATE_COLORS: &[(Color, &str)] = &[
     (Color::from_rgb8(0x0E, 0xA5, 0xE9), "Cyan"),
 ];
 
+/// Borrow the [`CANDIDATE_COLORS`] table as `(Color, &str)` pairs for
+/// widgets that want stable `'static` names.
 pub fn candidate_colors() -> &'static [(Color, &'static str)] {
     CANDIDATE_COLORS
 }
 
+/// Primary accent colour of `t` (the active primary tone).
 pub fn accent(t: &Theme) -> Color {
     t.extended_palette().primary.base.color
 }
 
+/// Success-tone colour of `t` (derived from green hue).
 pub fn success(t: &Theme) -> Color {
     t.extended_palette().success.base.color
 }
 
+/// Warning-tone colour of `t` (amber/yellow hue).
 pub fn warning(t: &Theme) -> Color {
     t.extended_palette().warning.base.color
 }
 
+/// Danger-tone colour of `t` (red hue, hue-pushed away from accent).
 pub fn danger(t: &Theme) -> Color {
     t.extended_palette().danger.base.color
 }
 
+/// Alias for [`accent`] — the primary tone of the theme.
 pub fn primary(t: &Theme) -> Color {
     t.extended_palette().primary.base.color
 }
 
+/// Weak (lower contrast) variant of the primary tone; used by progress
+/// bars and chip backgrounds.
 pub fn primary_weak(t: &Theme) -> Color {
     t.extended_palette().primary.weak.color
 }
 
+/// Colour for the per-task status bar: error/red, success/green,
+/// primary-weak for paused and seeding, primary otherwise.
 pub fn task_bar_color(t: &Theme, status: crate::task::TaskStatus, is_seeding: bool) -> Color {
     if is_seeding {
         return primary_weak(t);
@@ -216,10 +274,13 @@ pub fn task_bar_color(t: &Theme, status: crate::task::TaskStatus, is_seeding: bo
     }
 }
 
+/// Text colour appropriate for rendering on the background base.
 pub fn text_secondary(t: &Theme) -> Color {
     t.extended_palette().background.base.text
 }
 
+/// Lighter, lower-contrast variant of [`text_secondary`] used for
+/// timestamps, metadata, and disabled labels.
 pub fn text_weak(t: &Theme) -> Color {
     let bg = t.extended_palette().background.base.color;
     let txt = t.extended_palette().background.base.text;
@@ -231,13 +292,19 @@ pub fn text_weak(t: &Theme) -> Color {
     )
 }
 
+/// Hairline border colour derived from the background tones.
 pub fn border_color(t: &Theme) -> Color {
     t.extended_palette().background.strong.color
 }
 
+/// Component-specific styling rules. Each function returns an
+/// `iced::widget::*::Style` keyed off the active theme so callers can
+/// just hand it to `.style(...)` on the widget.
 pub mod style {
     use iced::{Color, Shadow, Vector};
 
+    /// Container style that paints the background base colour; used as
+    /// the root container of every page.
     pub fn base_background(t: &iced::Theme) -> iced::widget::container::Style {
         iced::widget::container::Style {
             background: Some(t.extended_palette().background.base.color.into()),
@@ -245,6 +312,8 @@ pub mod style {
         }
     }
 
+    /// Transparent container with a 1px hairline border — for the outer
+    /// window frame.
     pub fn window_border(t: &iced::Theme) -> iced::widget::container::Style {
         iced::widget::container::Style {
             background: None,

@@ -1,3 +1,6 @@
+//! "Add download" dialog: URLs, headers / options, file selection, and
+//! save-dir pickers for HTTP(S), magnet and `.torrent` inputs.
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -20,6 +23,7 @@ use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
+/// One file inside a torrent, as displayed in the file picker.
 #[derive(Debug, Clone)]
 pub struct TorrentFileEntry {
     pub index: u64,
@@ -307,6 +311,8 @@ impl AddDialogState {
     }
 }
 
+/// Build the "Add download" dialog. `progress` drives the pin enter/exit
+/// animation.
 pub fn view<'a>(
     fluent: &'a Fluent,
     theme: &'a iced::Theme,

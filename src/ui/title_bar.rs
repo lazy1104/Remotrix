@@ -1,3 +1,10 @@
+//! Custom window title bar.
+//!
+//! Three segments: a left drag-area covering the sidebar width, a
+//! centred drag-area with the app name, and a right cluster holding
+//! minimise / maximise / close buttons. Only used when the OS decoration
+//! is suppressed.
+
 use iced::widget::{button, container, mouse_area, row, text};
 use iced::{Alignment, Element, Length};
 
@@ -7,8 +14,12 @@ use crate::ui::icon;
 use crate::ui::icons::{CATEGORY_W, SIDEBAR_W};
 use crate::ui::theme;
 
+/// Logical height of the title bar in pixels; consumed by the outer page
+/// container to leave room for the bar at the top.
 pub const BAR_HEIGHT: f32 = 38.0;
 
+/// Build the title-bar element. `maximized` controls which icon the
+/// maximise/restore button shows.
 pub fn view<'a>(_theme: &iced::Theme, maximized: bool) -> Element<'a, Message> {
     let left_seg = container(
         mouse_area(

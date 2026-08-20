@@ -1,3 +1,6 @@
+//! "About" dialog: app logo, version, runtime engine version, an aria2
+//! update progress bar, and external links to the upstream projects.
+
 use iced::alignment::Alignment;
 use iced::widget::{button, column, container, row, text};
 use iced::{Element, Length};
@@ -24,6 +27,8 @@ fn repo_link<'a>(url: String) -> Element<'a, Message, iced::Theme, iced::Rendere
         .into()
 }
 
+/// Build the about dialog element. `progress` is the aria2 download
+/// progress (0..=1); pass `0.0` when no update is in flight.
 pub fn view<'a>(
     fluent: &'a Fluent,
     theme: &'a iced::Theme,

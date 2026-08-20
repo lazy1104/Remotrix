@@ -1,3 +1,8 @@
+//! Generic "are you sure?" dialog.
+//!
+//! Renders one of several confirm actions (delete task, remove missing
+//! files, clear completed, …) selected via the [`ConfirmAction`] enum.
+
 use iced::widget::{button, row, text};
 use iced::{Alignment, Element};
 
@@ -8,6 +13,8 @@ use crate::ui::components::expand::expand_pinned;
 use crate::ui::dims::*;
 use crate::ui::theme;
 
+/// Build the confirm dialog for `action`. `progress` drives the pin
+/// enter/exit animation.
 pub fn view<'a>(
     fluent: &'a Fluent,
     _theme: &iced::Theme,

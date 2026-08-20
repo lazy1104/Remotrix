@@ -1,3 +1,8 @@
+//! Reusable UI widgets shared across multiple pages: dialogs, popovers,
+//! editors, progress indicators, etc. Each module owns a single
+//! self-contained widget so they can be swapped or refactored
+//! independently.
+
 pub mod copyable_text;
 pub mod ctx_input;
 pub mod ctx_menu;
@@ -24,4 +29,6 @@ pub mod translate;
 pub mod tri_checkbox;
 pub mod truncated_text;
 
+/// Standard control height used by inputs, pickers and steppers so they
+/// line up vertically inside a settings row.
 pub const CONTROL_HEIGHT: f32 = 33.0;

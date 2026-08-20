@@ -1,3 +1,10 @@
+//! All `iced` view code for the Remotrix app.
+//!
+//! Each submodule owns a single self-contained piece of UI — a page, a
+//! dialog, or a reusable component. `app.rs` composes them; the
+//! `components` submodule bundles small widgets reused across multiple
+//! pages.
+
 pub mod about_dialog;
 pub mod add_dialog;
 pub mod animation;

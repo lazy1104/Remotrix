@@ -85,8 +85,8 @@ impl DialogAnim {
         self.dismissing = false;
     }
 
-    /// Start the exit transition. Sets `dismissing` so [`completed_dismiss`]
-    /// can later report completion.
+    /// Start the exit transition. Sets `dismissing` so
+    /// [`Self::completed_dismiss`] can later report completion.
     pub fn begin_exit(&mut self) {
         self.anim.set_target(0.0);
         self.dismissing = true;
@@ -104,7 +104,8 @@ impl DialogAnim {
         &self.anim
     }
 
-    /// Returns `true` between [`begin_exit`] and [`completed_dismiss`].
+    /// Returns `true` between [`Self::begin_exit`] and
+    /// [`Self::completed_dismiss`].
     pub fn is_dismissing(&self) -> bool {
         self.dismissing
     }

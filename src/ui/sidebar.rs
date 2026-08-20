@@ -1,3 +1,7 @@
+//! Slim left-hand sidebar: logo, top-level navigation (Tasks/Settings),
+//! and the "Add download" quick action. `_page` is accepted so the caller
+//! can decide which icon to mark active.
+
 use iced::widget::{button, column, container, text, Text};
 use iced::{Alignment, Element, Length};
 
@@ -9,6 +13,9 @@ use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
+/// Build the sidebar element. The current `_page` is reserved for the
+/// future "highlight active item" feature; the active highlight is
+/// currently applied via the top bar instead.
 pub fn view<'a>(fluent: &'a Fluent, theme: &'a iced::Theme, _page: Page) -> Element<'a, Message> {
     let logo = container(logo::view(theme, SIDEBAR_LOGO_W, SIDEBAR_LOGO_H))
         .center_x(Length::Fill)
