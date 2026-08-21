@@ -16,6 +16,7 @@ use crate::i18n::{Fluent, Tr};
 use crate::message::{ConfirmAction, Message, SettingKey, SettingValue, SettingsMsg};
 use crate::port_guard::{check_port, port_value, PortKind};
 use crate::ui::components::toast::{Toast, ToastGroup, ToastKind};
+use crate::ui::theme;
 
 fn refresh_port_status(state: &mut Remotrix, edited: PortKind) {
     let mut kinds = vec![edited];
@@ -476,6 +477,54 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
             rebuild_theme(state);
             config::save(&state.settings);
             state.applied_settings.theme_color = state.settings.theme_color.clone();
+            Task::none()
+        }
+        SettingsMsg::CustomColorPickerToggle => {
+            let picker = &mut state.settings_ui.custom_color_picker;
+            if picker.open {
+                picker.open = false;
+            } else {
+                *picker = crate::ui::components::color_picker::CustomColorPickerUi::seed_from(
+                    &state.settings.theme_color,
+                );
+            }
+            Task::none()
+        }
+        SettingsMsg::CustomColorHsvChanged(hsv) => {
+            let picker = &mut state.settings_ui.custom_color_picker;
+            picker.hsv = hsv;
+            picker.hex_input = theme::color_to_hex(
+                crate::ui::components::color_picker::hsv_to_color(&hsv, picker.alpha),
+            );
+            picker.hex_valid = true;
+            Task::none()
+        }
+        SettingsMsg::CustomColorAlphaChanged(alpha) => {
+            let picker = &mut state.settings_ui.custom_color_picker;
+            picker.alpha = alpha.clamp(0.0, 1.0);
+            picker.hex_input = theme::color_to_hex(
+                crate::ui::components::color_picker::hsv_to_color(&picker.hsv, picker.alpha),
+            );
+            picker.hex_valid = true;
+            Task::none()
+        }
+        SettingsMsg::CustomColorHexChanged(raw) => {
+            let picker = &mut state.settings_ui.custom_color_picker;
+            picker.hex_input = raw;
+            picker.hex_valid = theme::color_from_hex(&picker.hex_input).is_some();
+            Task::none()
+        }
+        SettingsMsg::CustomColorApply => {
+            let picker = &mut state.settings_ui.custom_color_picker;
+            let Some(color) = theme::color_from_hex(&picker.hex_input) else {
+                return Task::none();
+            };
+            picker.open = false;
+            let msg = SettingsMsg::ThemeColorChanged(color);
+            handle(state, msg)
+        }
+        SettingsMsg::CustomColorCancel => {
+            state.settings_ui.custom_color_picker.open = false;
             Task::none()
         }
         SettingsMsg::LocaleChanged(locale) => {

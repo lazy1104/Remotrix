@@ -27,6 +27,7 @@ use crate::task::format_size;
 use chrono::TimeZone;
 use iced::Color;
 
+use crate::ui::components::color_picker::CustomColorPickerUi;
 use crate::ui::components::copyable_text::copyable_text;
 use crate::ui::components::ctx_input;
 use crate::ui::components::ctx_menu::CtxMirrors;
@@ -57,6 +58,7 @@ pub struct SettingsUiState {
     pub readonly_hovered: HashSet<String>,
     pub ed2k_search_state: Ed2kSearchUiState,
     pub ed2k_bootstrap_status: (Option<i64>, Option<i64>),
+    pub custom_color_picker: CustomColorPickerUi,
 }
 
 #[derive(Debug, Clone)]
@@ -177,6 +179,7 @@ impl SettingsUiState {
             readonly_hovered: HashSet::new(),
             ed2k_search_state: Ed2kSearchUiState::new(),
             ed2k_bootstrap_status: crate::ed2k_bootstrap::bootstrap_status(),
+            custom_color_picker: CustomColorPickerUi::default(),
         }
     }
 }
@@ -274,6 +277,7 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
             theme,
             settings,
             applied_settings,
+            settings_ui,
             *font_restart_required,
             *aria2_version,
             *update_check_in_flight,
@@ -396,9 +400,10 @@ fn settings_title(fluent: &Fluent, category: SettingsCategory) -> String {
 #[allow(clippy::too_many_arguments)]
 fn general_view<'a>(
     fluent: &'a Fluent,
-    theme: &iced::Theme,
+    theme: &'a iced::Theme,
     settings: &'a Settings,
     applied_settings: &'a Settings,
+    settings_ui: &'a SettingsUiState,
     font_restart_required: bool,
     aria2_version: Option<&'a str>,
     update_check_in_flight: bool,
@@ -451,7 +456,7 @@ fn general_view<'a>(
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::Appearance, accent))
-        .push(theme_color_swatches(fluent, settings))
+        .push(theme_color_swatches(fluent, theme, settings, settings_ui))
         .push(labeled_pick(
             fluent,
             fluent.get(Tr::ColorMode),
@@ -705,7 +710,12 @@ fn aria2_download_progress_row<'a>(
     )
 }
 
-fn theme_color_swatches<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, Message> {
+fn theme_color_swatches<'a>(
+    fluent: &'a Fluent,
+    theme: &'a iced::Theme,
+    settings: &'a Settings,
+    settings_ui: &'a SettingsUiState,
+) -> Element<'a, Message> {
     let current = theme::accent_color(&settings.theme_color);
     let mut swatch_row = row![].spacing(SPACE_XL).align_y(Alignment::Center);
     for (color, name) in theme::candidate_colors() {
@@ -732,14 +742,79 @@ fn theme_color_swatches<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Eleme
             iced::widget::tooltip::Position::Bottom,
         ));
     }
-    setting_row_auto(
-        fluent.get(Tr::ThemeColor),
-        swatch_row
-            .width(Length::Fill)
-            .wrap()
-            .vertical_spacing(SPACE_LG)
-            .into(),
+    let add_swatch = button(
+        container(
+            text("+")
+                .size(FONT_HERO)
+                .style(theme::style::text::secondary),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .center_x(Length::Fill)
+        .center_y(Length::Fill),
     )
+    .on_press(Message::Settings(SettingsMsg::CustomColorPickerToggle))
+    .width(Length::Fixed(SWATCH_SIZE))
+    .height(Length::Fixed(SWATCH_SIZE))
+    .padding(0)
+    .style(theme::style::button::swatch(theme::accent(theme), false));
+    let add_swatch = tooltip::standard(
+        add_swatch,
+        text(fluent.get(Tr::CustomColor)),
+        iced::widget::tooltip::Position::Bottom,
+    );
+    swatch_row = swatch_row.push(add_swatch);
+
+    let picker = if settings_ui.custom_color_picker.open {
+        theme_color_picker_panel(fluent, theme, settings_ui)
+    } else {
+        iced::widget::Space::new()
+            .width(Length::Fill)
+            .height(Length::Fixed(0.0))
+            .into()
+    };
+
+    column![
+        setting_row_auto(
+            fluent.get(Tr::ThemeColor),
+            swatch_row
+                .width(Length::Fill)
+                .wrap()
+                .vertical_spacing(SPACE_LG)
+                .into(),
+        ),
+        picker,
+    ]
+    .spacing(SPACE_SM)
+    .width(Length::Fill)
+    .into()
+}
+
+fn theme_color_picker_panel<'a>(
+    fluent: &'a Fluent,
+    theme: &'a iced::Theme,
+    settings_ui: &'a SettingsUiState,
+) -> Element<'a, Message> {
+    let ui = &settings_ui.custom_color_picker;
+    let current_color = hsv_to_panel_color(ui.hsv, ui.alpha);
+    let on_alpha = |a: f32| SettingsMsg::CustomColorAlphaChanged(a);
+    let on_hex = |s: String| SettingsMsg::CustomColorHexChanged(s);
+    let on_apply = || SettingsMsg::CustomColorApply;
+    let on_cancel = || SettingsMsg::CustomColorCancel;
+    crate::ui::components::color_picker::view(
+        fluent,
+        theme,
+        ui,
+        current_color,
+        on_alpha,
+        on_hex,
+        on_apply,
+        on_cancel,
+    )
+}
+
+fn hsv_to_panel_color(h: crate::ui::components::color_picker::HsvColor, alpha: f32) -> Color {
+    crate::ui::components::color_picker::hsv_to_color(&h, alpha)
 }
 
 fn font_family_row<'a>(

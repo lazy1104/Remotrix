@@ -180,24 +180,43 @@ pub fn build_iced(color: Color, dark: bool) -> iced::Theme {
     iced::Theme::custom("remotrix", palette)
 }
 
-/// Format an [`iced::Color`] as `"#RRGGBB"`. Out-of-range components are
+/// Format an [`iced::Color`] as `"#RRGGBBAA"`. Out-of-range components are
 /// clamped before rounding.
 pub fn color_to_hex(c: Color) -> String {
     let to = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
-    format!("#{:02X}{:02X}{:02X}", to(c.r), to(c.g), to(c.b))
+    format!(
+        "#{:02X}{:02X}{:02X}{:02X}",
+        to(c.r),
+        to(c.g),
+        to(c.b),
+        to(c.a)
+    )
 }
 
-/// Parse a `"#RRGGBB"` (case-insensitive) string into an [`iced::Color`],
-/// or `None` for any other shape.
+/// Parse a `"#RRGGBB"` (6 hex digits) or `"#RRGGBBAA"` (8 hex digits)
+/// case-insensitive string into an [`iced::Color`]. Returns `None` for
+/// any other shape; a 6-digit value gets `alpha = 1.0`.
 pub fn color_from_hex(s: &str) -> Option<Color> {
     let h = s.trim().strip_prefix('#')?;
-    if h.len() != 6 || !h.is_ascii() || !h.bytes().all(|b| b.is_ascii_hexdigit()) {
+    if !h.is_ascii() || !h.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }
-    let r = u8::from_str_radix(&h[0..2], 16).ok()?;
-    let g = u8::from_str_radix(&h[2..4], 16).ok()?;
-    let b = u8::from_str_radix(&h[4..6], 16).ok()?;
-    Some(Color::from_rgb8(r, g, b))
+    let (r, g, b, a) = match h.len() {
+        6 => (
+            u8::from_str_radix(&h[0..2], 16).ok()?,
+            u8::from_str_radix(&h[2..4], 16).ok()?,
+            u8::from_str_radix(&h[4..6], 16).ok()?,
+            0xFF,
+        ),
+        8 => (
+            u8::from_str_radix(&h[0..2], 16).ok()?,
+            u8::from_str_radix(&h[2..4], 16).ok()?,
+            u8::from_str_radix(&h[4..6], 16).ok()?,
+            u8::from_str_radix(&h[6..8], 16).ok()?,
+        ),
+        _ => return None,
+    };
+    Some(Color::from_rgba8(r, g, b, a as f32 / 255.0))
 }
 
 /// Parse `hex` as an accent color, falling back to
@@ -1070,5 +1089,73 @@ pub mod style {
                 color: Some(super::super::text_weak(t)),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn color_from_hex_rgb_6_digits() {
+        let c = color_from_hex("#5865F2").unwrap();
+        assert_eq!(c.r, 0x58 as f32 / 255.0);
+        assert_eq!(c.g, 0x65 as f32 / 255.0);
+        assert_eq!(c.b, 0xF2 as f32 / 255.0);
+        assert_eq!(c.a, 1.0);
+    }
+
+    #[test]
+    fn color_from_hex_rgba_8_digits() {
+        let c = color_from_hex("#FF00AA80").unwrap();
+        assert_eq!(c.r, 1.0);
+        assert_eq!(c.g, 0.0);
+        assert_eq!(c.b, 0xAA as f32 / 255.0);
+        assert!((c.a - 0x80 as f32 / 255.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn color_from_hex_case_insensitive() {
+        let a = color_from_hex("#ff00aa").unwrap();
+        let b = color_from_hex("#FF00AA").unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn color_from_hex_trims_whitespace() {
+        let c = color_from_hex("  #ABCDEF  ").unwrap();
+        assert_eq!(c.r, 0xAB as f32 / 255.0);
+    }
+
+    #[test]
+    fn color_from_hex_rejects_invalid() {
+        assert!(color_from_hex("5865F2").is_none());
+        assert!(color_from_hex("#12345").is_none());
+        assert!(color_from_hex("#1234567").is_none());
+        assert!(color_from_hex("#GG0000").is_none());
+    }
+
+    #[test]
+    fn color_to_hex_outputs_nine_chars() {
+        let s = color_to_hex(Color::from_rgb8(0x58, 0x65, 0xF2));
+        assert_eq!(s, "#5865F2FF");
+    }
+
+    #[test]
+    fn color_round_trip_rgb() {
+        let c = Color::from_rgb8(0x12, 0x34, 0x56);
+        let s = color_to_hex(c);
+        assert_eq!(color_from_hex(&s).unwrap(), c);
+    }
+
+    #[test]
+    fn color_round_trip_rgba() {
+        let c = Color::from_rgba8(0x12, 0x34, 0x56, 0.5);
+        let s = color_to_hex(c);
+        let parsed = color_from_hex(&s).unwrap();
+        assert_eq!(parsed.r, c.r);
+        assert_eq!(parsed.g, c.g);
+        assert_eq!(parsed.b, c.b);
+        assert!((parsed.a - c.a).abs() < 0.005);
     }
 }

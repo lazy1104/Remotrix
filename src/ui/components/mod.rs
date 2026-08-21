@@ -3,6 +3,7 @@
 //! self-contained widget so they can be swapped or refactored
 //! independently.
 
+pub mod color_picker;
 pub mod copyable_text;
 pub mod ctx_input;
 pub mod ctx_menu;

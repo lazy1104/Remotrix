@@ -165,6 +165,7 @@ apply = 应用
 reset = 重置
 appearance = 外观
 theme-color = 主题颜色
+custom-color = 自定义颜色
 color-mode = 明暗
 theme-dark = 深色
 theme-light = 浅色

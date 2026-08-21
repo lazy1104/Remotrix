@@ -165,6 +165,7 @@ apply = Apply
 reset = Reset
 appearance = Appearance
 theme-color = Theme Color
+custom-color = Custom Color
 color-mode = Mode
 theme-dark = Dark
 theme-light = Light

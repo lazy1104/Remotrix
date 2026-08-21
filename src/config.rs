@@ -922,14 +922,26 @@ fn settings_file_path() -> Option<PathBuf> {
 /// when no file exists, the path cannot be resolved, or the JSON is
 /// malformed. The latter two are treated as "no settings" rather than as
 /// errors so a partial first launch never crashes the UI.
+///
+/// Migrates a legacy 7-character `#RRGGBB` `theme_color` to the 9-character
+/// `#RRGGBBAA` form in-place on disk so subsequent reads see the new shape.
 pub fn load() -> Settings {
     let Some(path) = settings_file_path() else {
         return Settings::default();
     };
-    match std::fs::read_to_string(&path) {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
-        Err(_) => Settings::default(),
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(_) => return Settings::default(),
+    };
+    let mut settings: Settings = serde_json::from_str(&raw).unwrap_or_default();
+    let trimmed = settings.theme_color.trim().to_string();
+    if trimmed.starts_with('#') && trimmed.len() == 7 {
+        let mut upper: String = trimmed.to_ascii_uppercase();
+        upper.push_str("FF");
+        settings.theme_color = upper;
+        save(&settings);
     }
+    settings
 }
 
 /// Atomically persist `settings` to disk.
