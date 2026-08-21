@@ -91,8 +91,8 @@ pub fn view<'a>(
                     };
                     button(
                         row![]
-                            .push(icon.size(FONT_ICON))
-                            .push(text(label_text).size(FONT_BODY))
+                            .push(icon.size(FONT_ICON).line_height(1.0))
+                            .push(text(label_text).size(FONT_BODY).line_height(1.0))
                             .push(iced::widget::Space::new().width(Length::Fill))
                             .spacing(SPACE_LG)
                             .align_y(Alignment::Center)
@@ -138,8 +138,8 @@ pub fn view<'a>(
                 };
                 button(
                     row![]
-                        .push(icon.size(FONT_ICON))
-                        .push(text(label).size(FONT_BODY))
+                        .push(icon.size(FONT_ICON).line_height(1.0))
+                        .push(text(label).size(FONT_BODY).line_height(1.0))
                         .spacing(SPACE_LG)
                         .width(Length::Fill)
                         .align_y(Alignment::Center),
