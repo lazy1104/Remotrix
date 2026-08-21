@@ -255,18 +255,27 @@ pub fn view<'a>(
                 .width(Length::Fill)
                 .padding(PADDING_EMPTY_STATE);
 
-            return container(column![].push(toolbar).push(empty))
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .padding(PADDING_PAGE)
-                .into();
-        }
-
-        return container(column![].push(toolbar))
+            return container(
+                column![]
+                    .push(toolbar)
+                    .push(iced::widget::rule::horizontal(1))
+                    .push(empty),
+            )
             .width(Length::Fill)
             .height(Length::Fill)
             .padding(PADDING_PAGE)
             .into();
+        }
+
+        return container(
+            column![]
+                .push(toolbar)
+                .push(iced::widget::rule::horizontal(1)),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .padding(PADDING_PAGE)
+        .into();
     }
 
     let mut list = column![].spacing(0.0);
@@ -291,17 +300,22 @@ pub fn view<'a>(
 
     let body = slim_scrollable(
         column![]
-            .spacing(SPACE_XL)
+            .push(iced::widget::Space::new().height(Length::Fixed(SPACE_LG)))
             .push(list)
             .push(iced::widget::Space::new().height(Length::Fixed(36.0))),
     )
     .height(Length::Fill);
 
-    container(column![].push(toolbar).push(body))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .padding(PADDING_PAGE)
-        .into()
+    container(
+        column![]
+            .push(toolbar)
+            .push(iced::widget::rule::horizontal(1))
+            .push(body),
+    )
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .padding(PADDING_PAGE)
+    .into()
 }
 
 fn task_card<'a>(

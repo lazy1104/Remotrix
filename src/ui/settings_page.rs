@@ -315,7 +315,8 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
 
     let mut body = column![]
         .push(text(settings_title(fluent, *category)).size(FONT_PAGE_TITLE))
-        .push(iced::widget::Space::new().height(Length::Fixed(20.0)))
+        .push(iced::widget::Space::new().height(Length::Fixed(SPACE_LG)))
+        .push(iced::widget::rule::horizontal(1))
         .push(
             iced::widget::keyed::Column::new()
                 .push(
