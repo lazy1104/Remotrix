@@ -140,6 +140,8 @@ pub enum TrayMsg {
     ToggleWindow,
     OpenAddDialog,
     OpenSettings,
+    #[allow(dead_code)]
+    WatchdogReaddRequested,
 }
 
 #[derive(Debug, Clone)]

@@ -872,6 +872,7 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                 send_download_aria2_update(state, silent, true);
             }
             if !offers.is_empty() {
+                let offer_count = offers.len();
                 let changelogs = offers
                     .iter()
                     .map(|_| crate::ui::update_dialog::ChangelogState {
@@ -886,6 +887,16 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                     active_tab: 0,
                 });
                 state.update_dialog_anim.open();
+                if state.window.hidden_to_tray {
+                    send_system_notification(
+                        state,
+                        state.fluent.get(Tr::UpdateTrayNotifyTitle),
+                        state.fluent.get(Tr::UpdateTrayNotifyBody),
+                        vec![],
+                        crate::notify::NotifyAction::ActivateWindow,
+                    );
+                    tracing::info!(offers = offer_count, "tray update notification sent");
+                }
                 let mut tasks = Vec::new();
                 for tab in 0..state.update_dialog.as_ref().unwrap().offers.len() {
                     tasks.push(changelog_fetch_task(state, tab));

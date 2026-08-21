@@ -55,6 +55,7 @@ iced_lucide = "0.1"
 winres = "0.1"
 
 [target.'cfg(windows)'.dependencies]
+libloading = "0.8"
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_System_Com",

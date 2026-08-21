@@ -3,9 +3,9 @@ use std::time::Duration;
 use iced::Task;
 
 use crate::app::{
-    dismiss_toast, hide_to_tray, mark_settings_dirty, open_add_dialog, reset_shutdown_card,
-    restore_window_from_tray, restore_window_from_tray_wayland, send_system_notification, set_page,
-    spawn_toast, Remotrix,
+    dismiss_toast, hide_to_tray, mark_settings_dirty, open_add_dialog, refresh_tray,
+    reset_shutdown_card, restore_window_from_tray, restore_window_from_tray_wayland,
+    send_system_notification, set_page, spawn_toast, Remotrix,
 };
 use crate::i18n::Tr;
 use crate::message::{
@@ -138,6 +138,12 @@ pub(crate) fn handle_tray(state: &mut Remotrix, msg: TrayMsg) -> Task<Message> {
                 })
                 .unwrap_or_else(Task::none);
             restore_window_from_tray_wayland(state).chain(attention)
+        }
+        TrayMsg::WatchdogReaddRequested => {
+            tracing::info!("tray watchdog: re-adding tray icon");
+            state.tray.recreate(state.tray_tx.clone());
+            refresh_tray(state);
+            Task::none()
         }
     }
 }

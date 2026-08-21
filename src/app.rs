@@ -290,6 +290,7 @@ pub struct Remotrix {
         Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<crate::notify::NotifyEvent>>>>,
     pub(crate) tray: crate::tray::TrayManager,
     pub(crate) tray_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>>,
+    pub(crate) tray_tx: tokio::sync::mpsc::UnboundedSender<Message>,
     pub(crate) ext_msg_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>>,
     pub(crate) extension_msg_tx: tokio::sync::mpsc::UnboundedSender<Message>,
     pub(crate) stat_cache: Arc<std::sync::Mutex<crate::extension_api::GlobalStatCache>>,
@@ -377,7 +378,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
     let (tray_tx, tray_rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
     let tray_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>> =
         Arc::new(Mutex::new(Some(tray_rx)));
-    let tray = crate::tray::TrayManager::new(tray_tx, true);
+    let tray = crate::tray::TrayManager::new(tray_tx.clone(), true);
 
     let (ext_msg_tx, ext_msg_rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
     let ext_msg_rx_slot: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Message>>>> =
@@ -435,6 +436,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         notify_rx_slot,
         tray,
         tray_rx_slot,
+        tray_tx,
         ext_msg_rx_slot,
         extension_msg_tx: ext_msg_tx.clone(),
         stat_cache,

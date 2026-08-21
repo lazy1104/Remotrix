@@ -4274,6 +4274,7 @@ dependencies = [
  "image",
  "ldtray",
  "libc",
+ "libloading",
  "notify-rust",
  "num-traits",
  "open",

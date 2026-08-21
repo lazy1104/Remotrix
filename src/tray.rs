@@ -87,19 +87,39 @@ pub struct TrayManager {
     inner: Option<TrayInner>,
     last: Option<SummaryState>,
     last_tooltip: Option<Instant>,
+    #[cfg(target_os = "windows")]
+    watchdog: Option<crate::tray_watchdog::TrayWatchdog>,
 }
 
 impl TrayManager {
     pub fn new(tx: tokio::sync::mpsc::UnboundedSender<Message>, enabled: bool) -> Self {
+        let inner = if enabled { init_tray(tx.clone()) } else { None };
+        #[cfg(target_os = "windows")]
+        let watchdog = if inner.is_some() {
+            crate::tray_watchdog::TrayWatchdog::start(tx)
+        } else {
+            None
+        };
         Self {
-            inner: if enabled { init_tray(tx) } else { None },
+            inner,
             last: None,
             last_tooltip: None,
+            #[cfg(target_os = "windows")]
+            watchdog,
         }
     }
 
     pub fn enabled(&self) -> bool {
         self.inner.is_some()
+    }
+
+    pub fn recreate(&mut self, tx: tokio::sync::mpsc::UnboundedSender<Message>) {
+        if let Some(old) = self.inner.take() {
+            let _ = old.handle.quit();
+        }
+        self.inner = init_tray(tx);
+        self.last = None;
+        self.last_tooltip = None;
     }
 
     pub fn refresh(&mut self, s: &TraySummary) {
@@ -141,6 +161,11 @@ impl TrayManager {
     }
 
     pub fn quit(&mut self) {
+        #[cfg(target_os = "windows")]
+        if let Some(watchdog) = self.watchdog.take() {
+            let mut watchdog = watchdog;
+            watchdog.stop();
+        }
         if let Some(inner) = &self.inner {
             if let Err(e) = inner.handle.quit() {
                 tracing::debug!(error = %e, "tray: quit failed");

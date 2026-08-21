@@ -22,6 +22,8 @@ mod task;
 mod torrent_meta;
 mod trackers;
 mod tray;
+#[cfg(target_os = "windows")]
+mod tray_watchdog;
 mod ui;
 mod update;
 mod updater;
