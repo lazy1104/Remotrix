@@ -187,6 +187,57 @@ Run `/check-docs` (Kilo command) to audit README.md and this file against the co
   packaged `.deb` provides its own desktop entry, so the runtime one may overlap — handle if this becomes
   an issue.
 
+## Versioning Policy
+
+Remotrix follows SemVer 2.0.0 in spirit, but is currently in the `0.x` phase (SemVer §4: any `MINOR` bump
+may include breaking changes until `1.0.0`).
+
+**Segment semantics**
+- `MAJOR` — currently `0`; the first API/UX-stable release will be `1.0.0`. Until then, the project is
+  "initial development" regardless of PATCH tag.
+- `MINOR` — **new user-visible functionality** since the last release (features, panels, settings pages,
+  new download sources, reworked flows). Also the right place when scope grew beyond what a `-beta.N`
+  cycle was meant to cover.
+- `PATCH` — **user-invisible or near-invisible fixes** only: bug fixes, regression repairs, copy/string
+  corrections, dependency bumps that do not change behavior. Not for new features.
+- `-prerelease` (`-alpha.N`, `-beta.N`, `-rc.N`) — the **same target version** at a later maturity
+  stage. `0.2.0-beta.2` is NOT a new version on top of `0.2.0-beta.1`; both are the same `0.2.0`, just
+  later snapshots. Always compare against the base (`0.2.0`), never against the previous prerelease.
+
+**When to use a `-beta.N` prerelease tag**
+- The release is feature-complete for its target `MINOR.PATCH` but not yet considered stable enough for
+  the default auto-update channel.
+- Use `beta.1` for the first public test; `beta.2`/`beta.3` for follow-up fixes that stay on the same
+  target. Drop the prerelease tag when cutting the final release (e.g., `0.2.0-beta.3` → `0.2.0`).
+- Prerelease tags are the **only** mechanism (besides the `beta_channel` setting) to opt a release out
+  of GitHub's "Latest" badge and out of the default in-app auto-update channel
+  (`src/config.rs` → `UpdateSettings::beta_channel`, default `false`; consumed in `src/app.rs:2215`).
+  `release.yml` auto-sets `prerelease: ${{ contains(github.ref_name, '-') }}` — no `-` means Latest.
+
+**Decision rules for the next version (apply in order)**
+1. **New user-visible feature** (or a reworked/expanded scope that users will notice)?
+   → bump **MINOR**: `0.2.x` → `0.3.0`.
+   - Want the cycle gated by the beta channel first? Land it as `0.3.0-beta.1`, iterate `-beta.2`/…,
+     then promote to `0.3.0` when ready.
+2. **Only bug fixes / tightening / dep bumps that do not change UX**?
+   → bump **PATCH**: `0.2.0` → `0.2.1`.
+   - Same-cycle fix while still in a beta cycle? Bump the **prerelease number**
+     (`0.2.0-beta.1` → `0.2.0-beta.2`), **not** the PATCH.
+3. **Promoting a beta cycle to stable**?
+   → drop the prerelease tag: `0.2.0-beta.N` → `0.2.0`. Do **not** introduce a new `-rc.1` in between
+     unless the project explicitly adopts an RC gate.
+
+**Anti-patterns (do not do)**
+- Adding a new feature and bumping only PATCH (`0.2.0` → `0.2.1`). PATCH is for user-invisible fixes.
+- Treating `0.2.0-beta.2` as "a new version on top of `0.2.0-beta.1`". Same base, same target.
+- Mixing a new feature and a bugfix into one PATCH bump. Split into MINOR + PATCH or land in separate
+  releases.
+- Tagging `v0.2.0` while still iterating and wanting it gated: without `-` in the tag, GH marks it
+  Latest and the in-app updater (with `beta_channel = false`) will offer it to all users.
+- Skipping directly from a `-beta` to the next `MINOR` (e.g., landing new features on
+  `0.2.0-beta.3` and tagging `v0.3.0`): cut a fresh `0.3.0-beta.1` so the beta channel still gates the
+  new feature work.
+
 ## Version Upgrade (releasing a new version)
 - **Keep `Cargo.lock` in sync with `Cargo.toml`.** Bumping `[package] version` in `Cargo.toml` does NOT
   auto-update the root package's own `version` field inside `Cargo.lock` (a non-registry path dep). If you
