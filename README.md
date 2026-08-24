@@ -32,6 +32,16 @@ Remotrix 最初是一个学习项目。我喜欢 Motrix / Motrix-next 的设计�
 - **剪贴板监听** —— 自动检测复制到剪贴板的 http/ftp/magnet/ed2k/bt 链接
 - **浏览器接管** —— 本地扩展 API（Salvo HTTP 服务，默认 `127.0.0.1:29110`），配合上游 [motrix-next-extension](https://github.com/AnInsomniacy/motrix-next-extension)（MIT，零改动复用）在浏览器中一键接管下载
 - **文件日志** —— 数据目录下按天滚动的日志文件
+- **更多协议** —— ED2K（含 server.met / nodes.dat 自动同步 + 内置搜索）、Metalink（`.metalink` / `.meta4`）、BT tracker 自动同步
+- **代理** —— HTTP / SOCKS5 全局代理 + 单任务覆盖，支持 Basic Auth
+- **限速时段调度** —— 按时间窗 + 星期自动切换限速
+- **阻止系统休眠** —— 下载时跨平台阻止系统休眠
+- **定时关机** —— 倒计时定时关机或全部任务完成后自动关机
+- **开机自启动** —— 登录后自动启动，可设置自启时隐藏到托盘
+- **自定义主题** —— HSV + Alpha 取色器 + HCT 感知色彩空间派生浅 / 深色主题
+- **应用自更新** —— AppImage / deb / NSIS 多平台自更新，Beta 频道；应用更新复用 aria2 引擎通道
+- **应用文件拖放** —— 拖入 `.torrent` / `.metalink` / URL 自动添加任务
+- **应用动画** —— 卡片 / 对话框 / 进度条 / 速度 HUD / 分类胶囊过渡动画
 
 ## 截图
 
@@ -204,8 +214,10 @@ Remotrix 在本地暴露一个 HTTP 服务（默认端口 `29110`，仅监听回
 | 通知 | `notify-rust 4.17`（tokio） | 原生桌面通知 |
 | 单实例 | `app-single-instance 0.1` | 单实例运行并聚焦已有窗口 |
 | HTTP 客户端 | `reqwest 0.13`（rustls、json） | GitHub Releases 获取 / 更新器 |
+| HTTP 服务 | `salvo 0.95`（cors + http1 + server-handle） | 浏览器扩展本地回环 API |
 | 哈希 | `sha2 0.11` | aria2-next 二进制校验和验证 |
 | 图标 | `iced_lucide 0.1`、`iced_aw 0.14` | 图标字体 + 时间选择器 |
+| 动画 | `iced_anim 0.3` | 卡片 / 对话框 / 进度条过渡动画 |
 | 图像 | `image 0.25`（png） | 应用图标加载 |
 | 日志 | `tracing` + `tracing-appender 0.2` | 滚动文件日志 |
 | 配置目录 | `directories 6` | XDG / 用户数据路径 |
@@ -228,18 +240,40 @@ Remotrix 在本地暴露一个 HTTP 服务（默认端口 `29110`，仅监听回
 - [x] 系统托盘集成（X11 下支持最小化到托盘 / 关闭到托盘；Wayland 下不完全，界面只能最小化不能隐藏）
 - [x] 系统通知（下载完成等）
 - [x] 单实例运行
+- [x] 应用动画效果 —— 卡片 / 对话框 / 进度条 / 速度 HUD / 分类胶囊全套过渡动画（`iced_anim`）
+- [x] 开机自启动 —— Linux `.desktop` / Windows `Run`，可设置自启时隐藏到托盘（AppImage 路径处理）
+- [x] 浏览器接管 —— Salvo 本地扩展 API + 复用 motrix-next-extension 一键接管浏览器下载
+- [x] 定时关机 / 下载完成关机 —— 倒计时卡片 + 跨平台 shutdown 命令
+- [x] 阻止系统休眠 —— 下载进行时跨平台抑制系统休眠（`systemd-inhibit` / `caffeinate` / `SetThreadExecutionState`）
+- [x] ED2K 协议 —— server.met / nodes.dat 自动 bootstrap + 内置搜索面板
+- [x] Metalink 协议 —— `.metalink` / `.meta4` 独立添加 tab，支持「follow Metalink」
+- [x] BT tracker 自动同步 —— 预设源 + 自定义 URL + 定时同步
+- [x] BT 仅元数据下载 —— `bt-metadata-only=true`，metadata 持久化到 SQLite
+- [x] HTTP / SOCKS5 代理 —— 全局 + 单任务覆盖，支持 Basic Auth
+- [x] 限速时段调度 —— 时间窗 + 星期自动切换下载 / 上传限速
+- [x] 自定义强调色 + HCT 主题 —— HSV + Alpha + HEX 取色器，感知色彩空间派生浅 / 深色主题
+- [x] 应用自更新 —— AppImage / deb / NSIS 多平台自更新，Beta 频道，应用更新复用 aria2 引擎通道（统一代理 / 进度 / 校验）
+- [x] aria2 静默更新 —— 后台暂存 + 系统通知重启动作 + 下载进度可视化
+- [x] RPC 端口配置 —— 自定义 aria2 RPC 监听端口，端口冲突时自动回退到空闲端口
+- [x] 应用文件拖放 —— 全局窗口拖入 `.torrent` / `.metalink` / URL 自动添加任务，含 overlay 提示
+- [x] 路径选择历史 —— 路径选择器持久化历史下拉
+- [x] 右键上下文菜单 —— 输入框 cut / copy / paste / select-all
+- [x] Windows 原生 Toast —— `win_toast` + AUMID 快捷方式 + 多动作（Locate / Reveal）
+- [x] Windows 托盘看门狗 —— 监听 `TaskbarCreated`，Explorer 重启后自动恢复托盘图标
+- [x] 托盘增强 —— tooltip 显示 ⬇ / ⬆ 速度与活动任务数，菜单暴露 Pause All / Resume All / Open Folder
+- [x] 任务详情「Advanced」tab —— UA / cookie / referer / proxy / headers 可编辑
+- [x] 单任务文件选择 —— `EngineCmd::SelectFiles` + 三态复选框文件树（含虚拟化）
+- [x] 设置项扩展 —— 自动清理已完成任务、文件丢失重下、`close_to_tray`、并发下载上限、`prevent_sleep`、每任务限速、文件分配 / 磁盘缓存、aria2 RPC 端口配置、应用 + 引擎日志级别、变更日志 markdown 渲染
+- [x] 优雅关闭 —— 关闭时清理残留 aria2 进程
+- [x] 「关于」对话框 —— 应用 logo + 依赖致谢
 
 **待办**
 - [ ] 下载功能完善与全面测试 —— HTTP/HTTPS 与 BT 目前可用，但尚未覆盖足够多的场景（断点续传、完整性校验、限速、失败重试等），需要完整回归测试
-- [ ] 系统级单元测试 —— 为引擎、任务解析、配置、调度等核心模块补充单元测试
-- [ ] 应用动画效果 —— 为页面切换、列表更新、进度条等添加流畅的过渡与动效
+- [ ] 系统级单元测试 —— 补齐 `db.rs` / `app.rs` / 各 dialog 视图 / `tray.rs` / `extension_api.rs` Salvo 处理器等尚未覆盖模块的单元与集成测试（引擎 / 任务 / 调度等核心模块已有测试）
 - [ ] 各类路径的自定义 —— 支持自定义应用缓存、日志、aria2-next 二进制等路径
 - [ ] 文件关联 —— 设置各类文件（如 `.torrent`）的默认打开程序
 - [ ] `motrixnext://` 深链协议 —— 应用未启动时被扩展唤醒 / 网站下载按钮（当前核心 HTTP 拦截不依赖它）
-- [x] 开机自启动 —— 支持登录后自动启动，可设置自启时隐藏到托盘
-- [x] 浏览器接管 —— 本地扩展 API + 复用 motrix-next-extension 一键接管浏览器下载
-- [ ] 定时关机 / 下载完成关机 —— 支持定时关机与全部任务完成后自动关机
-- [ ] Wayland 托盘兼容性完善 —— 目前在 Wayland 下窗口只能最小化无法完全隐藏，待完善窗口隐藏 / 托盘 / 通知兼容性
+- [ ] Wayland 托盘兼容性完善 —— 目前在 Wayland 下窗口只能最小化无法完全隐藏到托盘；目前通过系统通知唤醒，待完善窗口隐藏 / 托盘 / 通知兼容性
 - [ ] UI/UX 优化 —— 持续打磨界面细节与交互体验
 
 ## 致谢

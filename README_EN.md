@@ -38,6 +38,16 @@ with AI assistance.
 - **Clipboard watching** — auto-detects http/ftp/magnet/ed2k/bt links copied to the clipboard
 - **Browser takeover** — a local extension API (Salvo HTTP server, default `127.0.0.1:29110`) that works out of the box with the upstream [motrix-next-extension](https://github.com/AnInsomniacy/motrix-next-extension) (MIT, reused unmodified)
 - **File logging** — daily rolling logs written under the data directory
+- **More protocols** — ED2K (with automatic `server.met` / `nodes.dat` sync + built-in search), Metalink (`.metalink` / `.meta4`), BT tracker auto-sync
+- **Proxy** — HTTP / SOCKS5 global proxy with per-task override and Basic Auth
+- **Scheduled speed limits** — automatically switch caps by time window and weekday
+- **System sleep inhibition** — cross-platform prevention of system sleep while downloads are active
+- **Scheduled shutdown** — countdown shutdown or auto-shutdown when all tasks finish
+- **Launch at login** — auto-start after sign-in, optionally hidden to tray
+- **Custom theme** — HSV + Alpha color picker with HCT-based light / dark palette generation
+- **App self-update** — AppImage / deb / NSIS self-update across platforms, with a Beta channel; app updates reuse the aria2 engine channel
+- **App-wide file drop** — drop `.torrent` / `.metalink` / URL onto the window to auto-add a task
+- **App animations** — transitions on cards, dialogs, progress bars, speed HUD, and category capsules
 
 ## Screenshots
 
@@ -231,8 +241,10 @@ After changing **Enabled / port / secret / auto-submit**, clicking **Apply** **h
 | Notifications | `notify-rust 4.17` (tokio) | Native desktop notifications |
 | Single instance | `app-single-instance 0.1` | Single-instance run, focuses existing window |
 | HTTP client | `reqwest 0.12` (rustls, json) | GitHub Releases fetch / updater |
+| HTTP server | `salvo 0.95` (cors + http1 + server-handle) | Browser extension loopback API |
 | Hashing | `sha2 0.10` | aria2-next binary checksum verification |
 | Icons | `iced_lucide 0.1`, `iced_aw 0.14` | Icon font + time picker |
+| Animations | `iced_anim 0.3` | Card / dialog / progress-bar transitions |
 | Image | `image 0.24` (png) | App icon loading |
 | Logging | `tracing` + `tracing-appender 0.2` | Rolling file logs |
 | Config dirs | `directories 5` | XDG / user data paths |
@@ -255,18 +267,40 @@ After changing **Enabled / port / secret / auto-submit**, clicking **Apply** **h
 - [x] System tray integration (minimize-to-tray / close-to-tray on X11; incomplete on Wayland — the window can only be minimized, not hidden)
 - [x] System notifications (download completion, etc.)
 - [x] Single-instance run
-- [x] Launch at login — start automatically after sign-in, optionally hidden to tray
+- [x] Launch at login — Linux `.desktop` / Windows `Run`, optionally hidden to tray on auto-start (with AppImage path handling)
 - [x] Browser takeover — local extension API + reuses motrix-next-extension to intercept browser downloads
+- [x] Scheduled / download-complete shutdown — countdown card + cross-platform shutdown command
+- [x] System sleep inhibition — cross-platform suppression of system sleep while downloads are active (`systemd-inhibit` / `caffeinate` / `SetThreadExecutionState`)
+- [x] App animations — full transition animations on cards / dialogs / progress bars / speed HUD / category capsules (`iced_anim`)
+- [x] ED2K protocol — automatic `server.met` / `nodes.dat` bootstrap + built-in search panel
+- [x] Metalink protocol — `.metalink` / `.meta4` as a dedicated add tab, with optional "follow Metalink"
+- [x] BT tracker auto-sync — preset sources + custom URLs + periodic sync
+- [x] BT metadata-only download — `bt-metadata-only=true`, metadata persisted to SQLite
+- [x] HTTP / SOCKS5 proxy — global + per-task override, with Basic Auth
+- [x] Scheduled speed limits — automatic download / upload cap switching by time window + weekday
+- [x] Custom accent color + HCT theme — HSV + Alpha + HEX picker, perceptually-derived light / dark palettes
+- [x] App self-update — AppImage / deb / NSIS self-update across platforms, with a Beta channel; app updates reuse the aria2 engine channel for unified proxy / progress / checksum
+- [x] Silent aria2 updates — staged in the background + system-notification restart prompt + visible download progress
+- [x] RPC port configuration — customizable aria2 RPC listen port with automatic fallback to a free port on conflict
+- [x] App-wide file drop — drop `.torrent` / `.metalink` / URL onto the window to auto-add a task, with an overlay hint
+- [x] Path picker history — persistent dropdown history
+- [x] Right-click context menu — cut / copy / paste / select-all on text inputs
+- [x] Windows native toasts — `win_toast` + AUMID shortcut + multi-action buttons (Locate / Reveal)
+- [x] Windows tray watchdog — listens for `TaskbarCreated`, restores the tray icon after Explorer restarts
+- [x] Tray enhancements — tooltip shows ⬇ / ⬆ speed and active task count; menu exposes Pause All / Resume All / Open Folder
+- [x] Task details "Advanced" tab — editable UA / cookie / referer / proxy / headers
+- [x] Per-task file selection — `EngineCmd::SelectFiles` + tri-state checkbox file tree (virtualized)
+- [x] Settings expansion — auto-clean completed tasks, re-download missing files, `close_to_tray`, max concurrent downloads, `prevent_sleep`, per-task speed limit, file-allocation / disk cache, aria2 RPC port, app + engine log levels, changelog markdown rendering
+- [x] Graceful shutdown — clean up stale aria2 processes on exit
+- [x] "About" dialog — app logo + dependency credits
 
 **Planned**
 - [ ] Download hardening & full testing — HTTP/HTTPS and BT work today, but haven't covered enough scenarios (resume, integrity check, speed limits, retry on failure, etc.); needs a full regression pass
-- [ ] System-level unit tests — add unit tests for core modules (engine, task parsing, config, scheduler, ...)
-- [ ] App animations — smooth transitions and motion for page switches, list updates, progress bars, etc.
+- [ ] System-level unit tests — fill in unit / integration tests for modules not yet covered, such as `db.rs`, `app.rs`, the dialog views, `tray.rs`, and the Salvo handlers in `extension_api.rs` (engine / task / scheduler and similar core modules already have tests)
 - [ ] Customizable paths — let users override app cache, log, and aria2-next binary paths
 - [ ] File associations — set the default program for opening file types (e.g. `.torrent`)
 - [ ] `motrixnext://` deep-link protocol — wake the app when not running / website download buttons (the core HTTP interception does not depend on it)
-- [ ] Scheduled / download-complete shutdown — scheduled shutdown and auto-shutdown when all tasks finish
-- [ ] Wayland tray compatibility polish — under Wayland the window can only be minimized and not fully hidden; improve window-hiding / tray / notification behavior
+- [ ] Wayland tray compatibility polish — under Wayland the window can only be minimized and not fully hidden to the tray; currently wakes via system notification; improve window-hiding / tray / notification behavior
 - [ ] UI/UX polish — continuously refine visuals and interactions
 
 ## Acknowledgements
