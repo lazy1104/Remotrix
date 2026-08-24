@@ -444,10 +444,49 @@ pub(crate) fn basename(uri: &str) -> Option<String> {
     let trimmed = trimmed.trim_end_matches('/');
     let seg = trimmed.rsplit(['/', '\\']).next()?;
     if seg.is_empty() {
-        None
-    } else {
-        Some(seg.to_string())
+        return None;
     }
+    Some(percent_decode_path_segment(seg))
+}
+
+fn percent_decode_path_segment(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'%'
+            && i + 2 < bytes.len()
+            && bytes[i + 1].is_ascii_hexdigit()
+            && bytes[i + 2].is_ascii_hexdigit()
+        {
+            let hi = hex_val(bytes[i + 1]);
+            let lo = hex_val(bytes[i + 2]);
+            out.push((hi << 4) | lo);
+            i += 3;
+        } else {
+            out.push(b);
+            i += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn hex_val(b: u8) -> u8 {
+    match b {
+        b'0'..=b'9' => b - b'0',
+        b'a'..=b'f' => b - b'a' + 10,
+        b'A'..=b'F' => b - b'A' + 10,
+        _ => 0,
+    }
+}
+
+fn is_safe_out(s: &str) -> bool {
+    !s.is_empty()
+        && s != "."
+        && s != ".."
+        && !s.contains(['/', '\\', '\0'])
+        && !s.bytes().any(|b| b.is_ascii_control())
 }
 
 /// Returns `true` when `url` points to a `.torrent` file (case-insensitive,
@@ -834,6 +873,13 @@ async fn add_download_internal(
     let mut added = 0;
     for url in urls {
         let mut opts = options.clone();
+        if opts.out.is_none() {
+            if let Some(name) = basename(url) {
+                if is_safe_out(&name) {
+                    opts.out = Some(name);
+                }
+            }
+        }
         apply_bt_url_options(&mut opts, url, bt_metadata_only);
         match client
             .add_uri(vec![url.clone()], Some(opts), None, None)
@@ -1367,6 +1413,13 @@ async fn handle_client_cmd(
             options.r#continue = Some(true);
             options.auto_file_renaming = Some(true);
             apply_bt_url_options(&mut options, &url, bt_metadata_only);
+            if options.out.is_none() {
+                if let Some(name) = basename(&url) {
+                    if is_safe_out(&name) {
+                        options.out = Some(name);
+                    }
+                }
+            }
             match client
                 .add_uri(vec![url.clone()], Some(options), None, None)
                 .await
@@ -2732,8 +2785,35 @@ mod tests {
     fn basename_percent_encoded() {
         assert_eq!(
             basename("https://example.com/my%20file.bin"),
-            Some("my%20file.bin".to_string()),
+            Some("my file.bin".to_string()),
         );
+        assert_eq!(
+            basename("https://example.com/%E4%B8%AD%E6%96%87.zip"),
+            Some("中文.zip".to_string()),
+        );
+        assert_eq!(
+            basename("https://example.com/%E4%A-%E4%B8%AD.bin"),
+            Some("\u{fffd}\u{fffd}.bin".to_string()),
+        );
+        assert_eq!(
+            basename("https://example.com/a+b.bin"),
+            Some("a+b.bin".to_string()),
+        );
+    }
+
+    #[test]
+    fn is_safe_out_blocks_unsafe() {
+        assert!(!is_safe_out(""));
+        assert!(!is_safe_out("."));
+        assert!(!is_safe_out(".."));
+        assert!(!is_safe_out("a/b"));
+        assert!(!is_safe_out("a\\b"));
+        assert!(!is_safe_out("a\0b"));
+        assert!(!is_safe_out("a\nb"));
+        assert!(!is_safe_out("a\tb"));
+        assert!(is_safe_out("中文.zip"));
+        assert!(is_safe_out("my file.bin"));
+        assert!(is_safe_out("a+b.bin"));
     }
 
     #[test]
