@@ -14,6 +14,9 @@ pub enum PathPickerId {
     Metalink,
     Ed2kServerList,
     Ed2kNodeList,
+    CustomAria2Dir,
+    CustomAppDataDir,
+    CustomLogDir,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +60,9 @@ impl PathPickerId {
             Self::Metalink => "metalink",
             Self::Ed2kServerList => "ed2k_server_list",
             Self::Ed2kNodeList => "ed2k_node_list",
+            Self::CustomAria2Dir => "custom_aria2_dir",
+            Self::CustomAppDataDir => "custom_app_data_dir",
+            Self::CustomLogDir => "custom_log_dir",
         }
     }
 }
@@ -211,7 +217,6 @@ pub enum TaskMsg {
         size: Option<u64>,
         name: Option<String>,
     },
-    CopyPath(String),
     OpenFolder(PathBuf),
 }
 
@@ -281,10 +286,7 @@ pub enum SettingsMsg {
         enabled: bool,
     },
     ClearLogs,
-    ReadOnlyHover {
-        path: String,
-        hovered: bool,
-    },
+    RestoreDefaultPath(PathPickerId),
 }
 
 #[derive(Debug, Clone)]

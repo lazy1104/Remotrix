@@ -14,7 +14,6 @@ use crate::ui::components::toast::{ToastGroup, ToastKind};
 
 pub(crate) fn handle(state: &mut Remotrix, msg: TaskMsg) -> Task<Message> {
     match msg {
-        TaskMsg::CopyPath(s) => copy_to_clipboard(state, s),
         TaskMsg::OpenFolder(p) => open_path_in_manager(p),
         TaskMsg::PauseTask(gid) => {
             state.tracking.paused_gids.insert(gid.clone());

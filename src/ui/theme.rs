@@ -967,18 +967,6 @@ pub mod style {
             }
         }
 
-        pub fn grouped_readonly(t: &iced::Theme, _status: text_input::Status) -> text_input::Style {
-            let p = t.extended_palette();
-            text_input::Style {
-                background: iced::Background::Color(iced::Color::TRANSPARENT),
-                border: iced::Border::default(),
-                icon: p.background.weak.text,
-                placeholder: p.secondary.base.color,
-                value: p.background.weak.text,
-                selection: p.primary.weak.color,
-            }
-        }
-
         pub fn standard(t: &iced::Theme, status: text_input::Status) -> text_input::Style {
             let mut s = text_input::default(t, status);
             s.border.radius = super::super::RADIUS_BUTTON.into();

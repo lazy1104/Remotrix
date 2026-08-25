@@ -140,6 +140,7 @@ iced_lucide = "0.1"
 - **Error handling**: Use `String` errors in engine layer, map to `EngineEvent::EngineStopped` for fatal
 - **No comments** in source code unless explaining a non-obvious design decision
 - **Imports**: Group as `std` → external crates → `crate::` (blank-line separated)
+- **Path resolution**: All on-disk paths must go through the resolver functions in `src/config.rs` (`aria2_bin_dir()`, `session_dir()`, `db_path()`, `log_dir()`, `config_file_path()`). Modules must not call `directories::*` directly — the resolvers honour user path overrides from `Settings::paths` and the migration step in `main()`.
 
 ## Commit Messages (bilingual, simple)
 - **Format**: `type(scope): 中文描述 (English summary)` — one concise line, both in the subject.

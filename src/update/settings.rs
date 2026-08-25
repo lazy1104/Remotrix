@@ -13,7 +13,7 @@ use crate::app::{
 use crate::config;
 use crate::engine::EngineCmd;
 use crate::i18n::{Fluent, Tr};
-use crate::message::{ConfirmAction, Message, SettingKey, SettingValue, SettingsMsg};
+use crate::message::{ConfirmAction, Message, PathPickerId, SettingKey, SettingValue, SettingsMsg};
 use crate::port_guard::{check_port, port_value, PortKind};
 use crate::ui::components::toast::{Toast, ToastGroup, ToastKind};
 use crate::ui::theme;
@@ -1020,12 +1020,24 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
             state.settings_ui.schedule_days_menu_open = !state.settings_ui.schedule_days_menu_open;
             Task::none()
         }
-        SettingsMsg::ReadOnlyHover { path, hovered } => {
-            if hovered {
-                state.settings_ui.readonly_hovered.insert(path);
-            } else {
-                state.settings_ui.readonly_hovered.remove(&path);
+        SettingsMsg::RestoreDefaultPath(id) => {
+            match id {
+                PathPickerId::CustomAria2Dir => {
+                    state.settings.paths.aria2_bin_dir = None;
+                    state.applied_settings.paths.aria2_bin_dir = None;
+                }
+                PathPickerId::CustomAppDataDir => {
+                    state.settings.paths.app_data_dir = None;
+                    state.applied_settings.paths.app_data_dir = None;
+                }
+                PathPickerId::CustomLogDir => {
+                    state.settings.paths.log_dir = None;
+                    state.applied_settings.paths.log_dir = None;
+                }
+                _ => {}
             }
+            state.restart_pending = true;
+            mark_settings_dirty(state);
             Task::none()
         }
         SettingsMsg::ScheduleDayToggled { day, enabled } => {

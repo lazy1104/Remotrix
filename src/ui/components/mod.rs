@@ -22,6 +22,7 @@ pub mod secret_input;
 pub mod slim_scrollable;
 pub mod speed_hud;
 pub mod spinner;
+pub mod status_dot;
 pub mod tag_picker;
 pub mod toast;
 pub mod tooltip;

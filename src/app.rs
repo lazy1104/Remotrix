@@ -1870,6 +1870,9 @@ pub(crate) fn picker_mut(
         PathPickerId::Metalink => unreachable!("metalink upload is not a PathPicker"),
         PathPickerId::Ed2kServerList => &mut state.settings_ui.ed2k_server_list_picker,
         PathPickerId::Ed2kNodeList => &mut state.settings_ui.ed2k_node_list_picker,
+        PathPickerId::CustomAria2Dir => &mut state.settings_ui.aria2_dir_picker,
+        PathPickerId::CustomAppDataDir => &mut state.settings_ui.app_data_dir_picker,
+        PathPickerId::CustomLogDir => &mut state.settings_ui.log_dir_picker,
     }
 }
 
@@ -1935,6 +1938,45 @@ pub(crate) fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
                 .ed2k_node_list_picker
                 .set_value(p.to_string_lossy());
             state.settings_ui.ed2k_node_list_picker.close_history();
+            mark_settings_dirty(state);
+        }
+        PathPickerId::CustomAria2Dir => {
+            state.settings.record_path(id.history_key(), &s);
+            state.applied_settings.record_path(id.history_key(), &s);
+            state.settings.paths.aria2_bin_dir = Some(p.clone());
+            state.applied_settings.paths.aria2_bin_dir = Some(p.clone());
+            state
+                .settings_ui
+                .aria2_dir_picker
+                .set_value(p.to_string_lossy());
+            state.settings_ui.aria2_dir_picker.close_history();
+            state.restart_pending = true;
+            mark_settings_dirty(state);
+        }
+        PathPickerId::CustomAppDataDir => {
+            state.settings.record_path(id.history_key(), &s);
+            state.applied_settings.record_path(id.history_key(), &s);
+            state.settings.paths.app_data_dir = Some(p.clone());
+            state.applied_settings.paths.app_data_dir = Some(p.clone());
+            state
+                .settings_ui
+                .app_data_dir_picker
+                .set_value(p.to_string_lossy());
+            state.settings_ui.app_data_dir_picker.close_history();
+            state.restart_pending = true;
+            mark_settings_dirty(state);
+        }
+        PathPickerId::CustomLogDir => {
+            state.settings.record_path(id.history_key(), &s);
+            state.applied_settings.record_path(id.history_key(), &s);
+            state.settings.paths.log_dir = Some(p.clone());
+            state.applied_settings.paths.log_dir = Some(p.clone());
+            state
+                .settings_ui
+                .log_dir_picker
+                .set_value(p.to_string_lossy());
+            state.settings_ui.log_dir_picker.close_history();
+            state.restart_pending = true;
             mark_settings_dirty(state);
         }
     }
@@ -2466,6 +2508,9 @@ pub(crate) fn pick_path(id: PathPickerId) -> Task<Message> {
                     .pick_file()
                     .await
             }
+            PathPickerId::CustomAria2Dir
+            | PathPickerId::CustomAppDataDir
+            | PathPickerId::CustomLogDir => dialog.set_title("Select folder").pick_folder().await,
         };
         picked.map(|h| h.path().to_path_buf())
     };

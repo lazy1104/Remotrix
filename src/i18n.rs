@@ -347,9 +347,6 @@ pub enum Tr {
     LinkTypeBtInfohash,
     LinkTypeMetalink,
     ClipboardDetected,
-    EngineDataDir,
-    EngineSessionFile,
-    ConfigFile,
     DatabaseError,
     SelectPlaceholder,
     Details,
@@ -428,7 +425,6 @@ pub enum Tr {
     RefererPlaceholder,
     CookiePlaceholder,
     Logging,
-    LogLocation,
     LogLevelApp,
     LogLevelEngine,
     ClearLogs,
@@ -479,6 +475,12 @@ pub enum Tr {
     Ed2kBootstrapSyncFailed,
     TaskKindEd2k,
     TaskKindMetalink,
+    PathsSectionTitle,
+    PathAria2DirLabel,
+    PathAppDataDirLabel,
+    PathLogDirLabel,
+    PathRestoreDefault,
+    PathRestartHint,
 }
 
 impl Tr {
@@ -776,9 +778,6 @@ impl Tr {
             Tr::LinkTypeThunder => "link-type-thunder",
             Tr::LinkTypeBtInfohash => "link-type-bt-infohash",
             Tr::ClipboardDetected => "clipboard-detected",
-            Tr::EngineDataDir => "engine-data-dir",
-            Tr::EngineSessionFile => "engine-session-file",
-            Tr::ConfigFile => "config-file",
             Tr::DatabaseError => "database-error",
             Tr::SelectPlaceholder => "select-placeholder",
             Tr::Details => "details",
@@ -857,7 +856,6 @@ impl Tr {
             Tr::RefererPlaceholder => "referer-placeholder",
             Tr::CookiePlaceholder => "cookie-placeholder",
             Tr::Logging => "logging",
-            Tr::LogLocation => "log-location",
             Tr::LogLevelApp => "log-level-app",
             Tr::LogLevelEngine => "log-level-engine",
             Tr::ClearLogs => "clear-logs",
@@ -912,6 +910,12 @@ impl Tr {
             Tr::DropMetalinkHint => "drop-metalink-hint",
             Tr::DropMetalinkActive => "drop-metalink-active",
             Tr::LinkTypeMetalink => "link-type-metalink",
+            Tr::PathsSectionTitle => "paths-section-title",
+            Tr::PathAria2DirLabel => "path-aria2-dir-label",
+            Tr::PathAppDataDirLabel => "path-app-data-label",
+            Tr::PathLogDirLabel => "path-log-dir-label",
+            Tr::PathRestoreDefault => "path-restore-default",
+            Tr::PathRestartHint => "path-restart-hint",
         }
     }
 }

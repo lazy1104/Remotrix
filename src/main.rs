@@ -33,6 +33,13 @@ mod win_toast;
 const APP_ID: &str = "remotrix";
 
 fn main() -> iced::Result {
+    let mut cfg = crate::config::load();
+
+    if let Err(e) = crate::config::migrate_paths(&mut cfg) {
+        eprintln!("remotrix: path migration failed: {e}");
+    }
+    crate::config::save(&cfg);
+
     let _log_guard = crate::logging::init();
 
     crate::config::install_desktop_file();
@@ -45,8 +52,6 @@ fn main() -> iced::Result {
         tracing::info!("another instance is running; exiting");
         std::process::exit(0);
     }
-
-    let cfg = crate::config::load();
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
         app_log_level = %cfg.log.app_level,

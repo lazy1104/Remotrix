@@ -14,13 +14,6 @@ use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PickerMode {
-    Folder,
-    File,
-    ReadOnly,
-}
-
 #[derive(Debug, Clone)]
 pub enum PathPickerEvent {
     ToggleHistory,
@@ -45,7 +38,6 @@ pub enum PathPickerAction {
 #[derive(Debug, Clone)]
 pub struct PathPicker {
     value: String,
-    mode: PickerMode,
     show_history: bool,
     history_open: bool,
     focused: bool,
@@ -56,7 +48,6 @@ impl PathPicker {
     pub fn folder(value: impl Into<String>, show_history: bool) -> Self {
         Self {
             value: value.into(),
-            mode: PickerMode::Folder,
             show_history,
             history_open: false,
             focused: false,
@@ -67,18 +58,6 @@ impl PathPicker {
     pub fn file(value: impl Into<String>) -> Self {
         Self {
             value: value.into(),
-            mode: PickerMode::File,
-            show_history: false,
-            history_open: false,
-            focused: false,
-            hovered: false,
-        }
-    }
-
-    pub fn read_only(value: impl Into<String>) -> Self {
-        Self {
-            value: value.into(),
-            mode: PickerMode::ReadOnly,
             show_history: false,
             history_open: false,
             focused: false,
@@ -88,10 +67,6 @@ impl PathPicker {
 
     pub fn set_value(&mut self, v: impl Into<String>) {
         self.value = v.into();
-    }
-
-    pub fn set_hovered(&mut self, hovered: bool) {
-        self.hovered = hovered;
     }
 
     pub fn value(&self) -> &str {
@@ -104,12 +79,11 @@ impl PathPicker {
 
     pub fn update(&mut self, event: PathPickerEvent) -> Option<PathPickerAction> {
         match event {
-            PathPickerEvent::ToggleHistory if self.mode != PickerMode::ReadOnly => {
+            PathPickerEvent::ToggleHistory => {
                 self.focused = true;
                 self.history_open = !self.history_open;
                 None
             }
-            PathPickerEvent::ToggleHistory => None,
             PathPickerEvent::DismissHistory => {
                 self.history_open = false;
                 None
@@ -174,11 +148,7 @@ impl PathPicker {
         let input = theme::grouped_input_layout(
             text_input("", &self.value)
                 .on_input(move |_s| map(PathPickerEvent::Changed))
-                .style(if self.mode == PickerMode::ReadOnly {
-                    theme::style::input::grouped_readonly
-                } else {
-                    theme::style::input::grouped
-                })
+                .style(theme::style::input::grouped)
                 .width(Length::Fill),
         );
         let mut row = row![]
@@ -221,47 +191,42 @@ impl PathPicker {
             )
         };
 
-        if self.mode != PickerMode::ReadOnly {
-            row = row.push(Self::separator());
-            row = row.push(reveal_btn);
-            row = row.push(Self::separator());
+        row = row.push(Self::separator());
+        row = row.push(reveal_btn);
+        row = row.push(Self::separator());
 
-            let browse_btn: Element<'a, M> = tooltip::standard(
-                button(Self::icon_content(
-                    icon::folder().size(FONT_ICON).color(text_secondary),
+        let browse_btn: Element<'a, M> = tooltip::standard(
+            button(Self::icon_content(
+                icon::folder().size(FONT_ICON).color(text_secondary),
+            ))
+            .on_press(browse_msg)
+            .style(theme::style::button::grouped_icon(false, false))
+            .height(Length::Fill),
+            text(fluent.get(Tr::Browse)),
+            iced::widget::tooltip::Position::Bottom,
+        );
+        row = row.push(browse_btn);
+
+        if self.show_history {
+            row = row.push(Self::separator());
+            let history_btn: Element<'a, M> = {
+                let btn = button(Self::icon_content(
+                    icon::folder_clock().size(FONT_ICON).color(text_secondary),
                 ))
-                .on_press(browse_msg)
-                .style(theme::style::button::grouped_icon(false, false))
-                .height(Length::Fill),
-                text(fluent.get(Tr::Browse)),
+                .style(theme::style::button::grouped_icon(true, false))
+                .height(Length::Fill);
+                if history.is_empty() {
+                    btn.into()
+                } else {
+                    btn.on_press(toggle_msg).into()
+                }
+            };
+            let history_btn = tooltip::standard(
+                history_btn,
+                text(fluent.get(Tr::DownloadHistory)),
                 iced::widget::tooltip::Position::Bottom,
             );
-            row = row.push(browse_btn);
-
-            if self.show_history {
-                row = row.push(Self::separator());
-                let history_btn: Element<'a, M> = {
-                    let btn = button(Self::icon_content(
-                        icon::folder_clock().size(FONT_ICON).color(text_secondary),
-                    ))
-                    .style(theme::style::button::grouped_icon(true, false))
-                    .height(Length::Fill);
-                    if history.is_empty() {
-                        btn.into()
-                    } else {
-                        btn.on_press(toggle_msg).into()
-                    }
-                };
-                let history_btn = tooltip::standard(
-                    history_btn,
-                    text(fluent.get(Tr::DownloadHistory)),
-                    iced::widget::tooltip::Position::Bottom,
-                );
-                row = row.push(history_btn);
-            }
-        } else {
-            row = row.push(Self::separator());
-            row = row.push(reveal_btn);
+            row = row.push(history_btn);
         }
 
         let group = container(row)
@@ -273,38 +238,36 @@ impl PathPicker {
                 self.hovered,
             ));
 
-        let inner: Element<'a, M> =
-            if self.mode != PickerMode::ReadOnly && self.show_history && !history.is_empty() {
-                let overlay_items: Vec<Element<'a, M>> = history
-                    .iter()
-                    .zip(&select_msgs)
-                    .map(|(p, msg)| {
-                        button(text(p.as_str()).size(FONT_SMALL))
-                            .on_press(msg.clone())
-                            .width(Length::Fill)
-                            .padding(PADDING_BUTTON_XS)
-                            .style(theme::style::button::picker_item())
-                            .into()
-                    })
-                    .collect();
+        let inner: Element<'a, M> = if self.show_history && !history.is_empty() {
+            let overlay_items: Vec<Element<'a, M>> = history
+                .iter()
+                .zip(&select_msgs)
+                .map(|(p, msg)| {
+                    button(text(p.as_str()).size(FONT_SMALL))
+                        .on_press(msg.clone())
+                        .width(Length::Fill)
+                        .padding(PADDING_BUTTON_XS)
+                        .style(theme::style::button::picker_item())
+                        .into()
+                })
+                .collect();
 
-                let overlay = container(
-                    scrollable(column(overlay_items).spacing(SPACE_XS).width(Length::Fill))
-                        .direction(scrollable::Direction::Vertical(
-                            scrollable::Scrollbar::hidden(),
-                        )),
-                )
-                .padding(PADDING_DROPDOWN)
-                .style(theme::style::card);
+            let overlay = container(
+                scrollable(column(overlay_items).spacing(SPACE_XS).width(Length::Fill)).direction(
+                    scrollable::Direction::Vertical(scrollable::Scrollbar::hidden()),
+                ),
+            )
+            .padding(PADDING_DROPDOWN)
+            .style(theme::style::card);
 
-                drop_down::DropDown::new(group, overlay, self.history_open)
-                    .alignment(drop_down::Alignment::Bottom)
-                    .offset(drop_down::Offset::from(0.0))
-                    .on_dismiss(dismiss_msg)
-                    .into()
-            } else {
-                group.into()
-            };
+            drop_down::DropDown::new(group, overlay, self.history_open)
+                .alignment(drop_down::Alignment::Bottom)
+                .offset(drop_down::Offset::from(0.0))
+                .on_dismiss(dismiss_msg)
+                .into()
+        } else {
+            group.into()
+        };
 
         mouse_area(inner)
             .on_enter(enter_msg)

@@ -686,6 +686,36 @@ impl Settings {
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PathOverrides {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aria2_bin_dir: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_data_dir: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub log_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResolvedPaths {
+    pub aria2_bin_dir: PathBuf,
+    pub app_data_dir: PathBuf,
+    pub log_dir: PathBuf,
+}
+
+impl Default for ResolvedPaths {
+    fn default() -> Self {
+        let app_data = default_app_data_dir().unwrap_or_else(|| PathBuf::from("."));
+        let aria2 = app_data.join("aria2");
+        let logs = app_data.join("logs");
+        Self {
+            aria2_bin_dir: aria2,
+            app_data_dir: app_data,
+            log_dir: logs,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
     pub download_dir: PathBuf,
@@ -730,6 +760,10 @@ pub struct Settings {
     #[serde(default)]
     pub path_history: std::collections::HashMap<String, Vec<String>>,
     #[serde(default)]
+    pub paths: PathOverrides,
+    #[serde(default = "default_resolved_paths")]
+    pub last_resolved: ResolvedPaths,
+    #[serde(default)]
     pub speed_limit_schedule: SpeedLimitSchedule,
     #[serde(default)]
     pub log: LogPrefs,
@@ -745,6 +779,10 @@ pub struct Settings {
     pub start_hidden_on_autostart: bool,
     #[serde(default)]
     pub prevent_sleep: bool,
+}
+
+fn default_resolved_paths() -> ResolvedPaths {
+    ResolvedPaths::default()
 }
 
 impl Settings {
@@ -787,6 +825,8 @@ impl Default for Settings {
             window_height: default_window_height(),
             window_maximized: false,
             path_history: std::collections::HashMap::new(),
+            paths: PathOverrides::default(),
+            last_resolved: ResolvedPaths::default(),
             speed_limit_schedule: SpeedLimitSchedule::default(),
             log: LogPrefs::default(),
             tracker: TrackerPrefs::default(),
@@ -901,13 +941,6 @@ fn config_path() -> Option<PathBuf> {
     let proj = directories::ProjectDirs::from("dev", "remotrix", "Remotrix")?;
     let dir = proj.config_dir().to_path_buf();
     Some(dir.join("settings.json"))
-}
-
-/// Return the absolute path where [`save`] would persist settings, or
-/// `None` if the per-user config directory cannot be resolved on this
-/// platform. Used by tests, the settings UI, and the about dialog.
-pub fn config_file_path() -> Option<PathBuf> {
-    config_path()
 }
 
 fn settings_file_path() -> Option<PathBuf> {
@@ -1052,41 +1085,90 @@ pub(crate) fn data_home() -> Option<PathBuf> {
     directories::BaseDirs::new().map(|b| b.data_dir().to_path_buf())
 }
 
-fn aria2_dir() -> Option<PathBuf> {
+fn default_app_data_dir() -> Option<PathBuf> {
     let proj = directories::ProjectDirs::from("dev", "remotrix", "Remotrix")?;
-    let dir = proj.data_dir().join("aria2");
-    let _ = std::fs::create_dir_all(&dir);
-    Some(dir)
+    Some(proj.data_dir().to_path_buf())
+}
+
+fn default_aria2_bin_dir() -> Option<PathBuf> {
+    default_app_data_dir().map(|d| d.join("aria2"))
+}
+
+fn default_log_dir() -> Option<PathBuf> {
+    default_app_data_dir().map(|d| d.join("logs"))
+}
+
+/// Compute the currently effective paths honouring user overrides. Reads
+/// `Settings::paths` from disk on every call so UI-driven edits (which
+/// live only in the in-memory copy held by the UI state) are picked up
+/// once `config::save` has persisted them. The resolver call sites are
+/// infrequent (engine spawn, db open, log init), so a single `load()` per
+/// call is acceptable.
+fn resolved_paths() -> ResolvedPaths {
+    let s = load();
+    ResolvedPaths {
+        aria2_bin_dir: s
+            .paths
+            .aria2_bin_dir
+            .clone()
+            .or_else(default_aria2_bin_dir)
+            .unwrap_or_else(|| PathBuf::from(".")),
+        app_data_dir: s
+            .paths
+            .app_data_dir
+            .clone()
+            .or_else(default_app_data_dir)
+            .unwrap_or_else(|| PathBuf::from(".")),
+        log_dir: s
+            .paths
+            .log_dir
+            .clone()
+            .or_else(default_log_dir)
+            .unwrap_or_else(|| PathBuf::from(".")),
+    }
+}
+
+fn aria2_bin_dir_internal() -> Option<PathBuf> {
+    let p = resolved_paths().aria2_bin_dir;
+    let _ = std::fs::create_dir_all(&p);
+    Some(p)
+}
+
+fn app_data_dir_internal() -> Option<PathBuf> {
+    let p = resolved_paths().app_data_dir;
+    let _ = std::fs::create_dir_all(&p);
+    Some(p)
+}
+
+fn log_dir_internal() -> Option<PathBuf> {
+    let p = resolved_paths().log_dir;
+    let _ = std::fs::create_dir_all(&p);
+    Some(p)
 }
 
 /// Return the per-user log directory, creating it if missing. Used by the
 /// tracing-appender rotating log writer.
 pub fn log_dir() -> Option<PathBuf> {
-    let proj = directories::ProjectDirs::from("dev", "remotrix", "Remotrix")?;
-    let dir = proj.data_dir().join("logs");
-    let _ = std::fs::create_dir_all(&dir);
-    Some(dir)
+    log_dir_internal()
 }
 
 /// Return the absolute path of the SQLite database file used by
 /// [`crate::db`]. The file itself is not created here — `db::open` handles
 /// that — only the parent directory is implied by the per-user data dir.
 pub fn db_path() -> Option<PathBuf> {
-    let proj = directories::ProjectDirs::from("dev", "remotrix", "Remotrix")?;
-    let dir = proj.data_dir().to_path_buf();
-    Some(dir.join("remotrix.db"))
+    app_data_dir_internal().map(|d| d.join("remotrix.db"))
 }
 
 /// Directory used by aria2's `--save-session`/`--input-file` to persist
 /// tasks across restarts. Coincides with [`aria2_bin_dir`].
 pub fn session_dir() -> Option<PathBuf> {
-    aria2_dir()
+    aria2_bin_dir_internal()
 }
 
 /// Directory under which [`crate::aria2_fetcher`] stores the aria2-next
 /// binary and its `.installed` / `.pending-update` markers.
 pub fn aria2_bin_dir() -> Option<PathBuf> {
-    aria2_dir()
+    aria2_bin_dir_internal()
 }
 
 /// Emit `tracing::info!` lines for every on-disk path the app depends on
@@ -1102,9 +1184,178 @@ pub fn announce() {
     if let Some(p) = crate::logging::engine_log_path() {
         tracing::info!(?p, "engine log path");
     }
-    if let Some(p) = aria2_dir() {
+    if let Some(p) = aria2_bin_dir() {
         tracing::info!(?p, "aria2 dir");
     }
+}
+
+/// Migrate data from previous on-disk paths into the newly configured
+/// ones, when the user has changed a path override. Called once on
+/// startup before [`crate::logging::init`], so the log writer constructs
+/// against the already-migrated location.
+///
+/// Behaviour:
+/// - `aria2_bin_dir` and `log_dir`: full recursive copy of every file
+///   under the old directory. Skips any individual file that already
+///   exists at the destination (so a non-empty target is partially
+///   honoured rather than overwritten).
+/// - `app_data_dir`: only a fixed whitelist of files/dirs (`remotrix.db`,
+///   `remotrix.db-journal`, `ed2k-bootstrap`, `ed2k-search`) is moved.
+///   The internal `aria2/` and `logs/` directories are intentionally
+///   skipped — they have their own override switches and are migrated
+///   by the two preceding rules.
+///
+/// Errors are returned as `String` so the caller can surface them
+/// without dragging `anyhow` into the boot path; missing source paths
+/// and equal old/new paths are silent no-ops.
+pub fn migrate_paths(settings: &mut Settings) -> Result<(), String> {
+    let new = ResolvedPaths {
+        aria2_bin_dir: settings
+            .paths
+            .aria2_bin_dir
+            .clone()
+            .or_else(default_aria2_bin_dir)
+            .unwrap_or_else(|| PathBuf::from(".")),
+        app_data_dir: settings
+            .paths
+            .app_data_dir
+            .clone()
+            .or_else(default_app_data_dir)
+            .unwrap_or_else(|| PathBuf::from(".")),
+        log_dir: settings
+            .paths
+            .log_dir
+            .clone()
+            .or_else(default_log_dir)
+            .unwrap_or_else(|| PathBuf::from(".")),
+    };
+
+    for (label, old, new_path) in [
+        (
+            "aria2_bin_dir",
+            &settings.last_resolved.aria2_bin_dir,
+            &new.aria2_bin_dir,
+        ),
+        ("log_dir", &settings.last_resolved.log_dir, &new.log_dir),
+    ] {
+        if old == new_path {
+            continue;
+        }
+        if !old.exists() {
+            continue;
+        }
+        copy_dir_contents(old, new_path).map_err(|e| {
+            format!(
+                "path migration {label} {} -> {}: {e}",
+                old.display(),
+                new_path.display()
+            )
+        })?;
+        tracing::info!(
+            label,
+            old = %old.display(),
+            new = %new_path.display(),
+            "path migration complete"
+        );
+    }
+
+    if settings.last_resolved.app_data_dir != new.app_data_dir {
+        let old = &settings.last_resolved.app_data_dir;
+        if old.exists() {
+            for entry in [
+                "remotrix.db",
+                "remotrix.db-journal",
+                "ed2k-bootstrap",
+                "ed2k-search",
+            ] {
+                let src = old.join(entry);
+                if !src.exists() {
+                    continue;
+                }
+                let dst = new.app_data_dir.join(entry);
+                if dst.exists() {
+                    continue;
+                }
+                if src.is_dir() {
+                    copy_dir(&src, &dst).map_err(|e| {
+                        format!(
+                            "path migration app_data {}/{} -> {}/{}: {e}",
+                            old.display(),
+                            entry,
+                            new.app_data_dir.display(),
+                            entry
+                        )
+                    })?;
+                } else {
+                    copy_file(&src, &dst).map_err(|e| {
+                        format!(
+                            "path migration app_data {}/{} -> {}/{}: {e}",
+                            old.display(),
+                            entry,
+                            new.app_data_dir.display(),
+                            entry
+                        )
+                    })?;
+                }
+            }
+            tracing::info!(
+                old = %old.display(),
+                new = %new.app_data_dir.display(),
+                "path migration complete"
+            );
+        }
+    }
+
+    settings.last_resolved = new;
+    Ok(())
+}
+
+fn copy_file(src: &Path, dst: &Path) -> std::io::Result<()> {
+    if let Some(parent) = dst.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::copy(src, dst)?;
+    set_file_perms_if_unix(dst);
+    Ok(())
+}
+
+fn set_file_perms_if_unix(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
+}
+
+fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir(&from, &to)?;
+        } else if ty.is_symlink() {
+            // Skip symlinks to keep the copy self-contained.
+            continue;
+        } else if to.exists() {
+            // Don't overwrite existing files at the destination.
+            continue;
+        } else {
+            copy_file(&from, &to)?;
+        }
+    }
+    Ok(())
+}
+
+fn copy_dir_contents(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    copy_dir(src, dst)
 }
 
 #[cfg(test)]
@@ -1404,5 +1655,217 @@ mod tests {
             ..Aria2Options::default()
         };
         assert!(a.engine_restart_needed(&b));
+    }
+
+    fn unique_tmp(label: &str) -> PathBuf {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let pid = std::process::id();
+        std::env::temp_dir().join(format!("remotrix-cfg-{label}-{pid}-{nanos}"))
+    }
+
+    #[test]
+    fn migrate_paths_copies_aria2_dir() {
+        let old = unique_tmp("aria2-old");
+        let new = unique_tmp("aria2-new");
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join(".installed"), "{}").unwrap();
+        std::fs::write(old.join("session.txt"), "abc").unwrap();
+        std::fs::write(old.join("aria2-next-1.0-linux"), "bin").unwrap();
+
+        let mut settings = Settings {
+            last_resolved: ResolvedPaths {
+                aria2_bin_dir: old.clone(),
+                app_data_dir: old.clone(),
+                log_dir: old.clone(),
+            },
+            ..Settings::default()
+        };
+        settings.paths.aria2_bin_dir = Some(new.clone());
+
+        migrate_paths(&mut settings).unwrap();
+
+        assert!(new.join(".installed").exists());
+        assert_eq!(
+            std::fs::read_to_string(new.join("session.txt")).unwrap(),
+            "abc"
+        );
+        assert_eq!(
+            std::fs::read_to_string(new.join("aria2-next-1.0-linux")).unwrap(),
+            "bin"
+        );
+        assert_eq!(settings.last_resolved.aria2_bin_dir, new);
+
+        let _ = std::fs::remove_dir_all(&old);
+        let _ = std::fs::remove_dir_all(&new);
+    }
+
+    #[test]
+    fn migrate_paths_copies_log_files() {
+        let old = unique_tmp("log-old");
+        let new = unique_tmp("log-new");
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("remotrix.2026-08-25.log"), "old").unwrap();
+        std::fs::write(old.join("aria2.2026-08-25.log"), "old").unwrap();
+
+        let mut settings = Settings {
+            last_resolved: ResolvedPaths {
+                aria2_bin_dir: old.clone(),
+                app_data_dir: old.clone(),
+                log_dir: old.clone(),
+            },
+            ..Settings::default()
+        };
+        settings.paths.log_dir = Some(new.clone());
+
+        migrate_paths(&mut settings).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(new.join("remotrix.2026-08-25.log")).unwrap(),
+            "old"
+        );
+        assert_eq!(
+            std::fs::read_to_string(new.join("aria2.2026-08-25.log")).unwrap(),
+            "old"
+        );
+
+        let _ = std::fs::remove_dir_all(&old);
+        let _ = std::fs::remove_dir_all(&new);
+    }
+
+    #[test]
+    fn migrate_paths_app_data_whitelist() {
+        let old = unique_tmp("appdata-old");
+        let new = unique_tmp("appdata-new");
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::create_dir_all(old.join("aria2")).unwrap();
+        std::fs::create_dir_all(old.join("logs")).unwrap();
+        std::fs::write(old.join("remotrix.db"), "db").unwrap();
+        std::fs::write(old.join("aria2").join("keep.bin"), "bin").unwrap();
+        std::fs::write(old.join("logs").join("keep.log"), "log").unwrap();
+
+        let mut settings = Settings {
+            last_resolved: ResolvedPaths {
+                aria2_bin_dir: old.clone(),
+                app_data_dir: old.clone(),
+                log_dir: old.clone(),
+            },
+            ..Settings::default()
+        };
+        settings.paths.app_data_dir = Some(new.clone());
+
+        migrate_paths(&mut settings).unwrap();
+
+        assert!(new.join("remotrix.db").exists());
+        assert!(
+            !new.join("aria2").exists(),
+            "aria2/ must not be migrated here"
+        );
+        assert!(
+            !new.join("logs").exists(),
+            "logs/ must not be migrated here"
+        );
+
+        let _ = std::fs::remove_dir_all(&old);
+        let _ = std::fs::remove_dir_all(&new);
+    }
+
+    #[test]
+    fn migrate_paths_skips_existing_files_at_target() {
+        let old = unique_tmp("aria2-old2");
+        let new = unique_tmp("aria2-new2");
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join(".installed"), "{}").unwrap();
+        std::fs::write(old.join("aria2-next-2.0-linux"), "newer").unwrap();
+        std::fs::create_dir_all(&new).unwrap();
+        std::fs::write(new.join("aria2-next-2.0-linux"), "existing").unwrap();
+
+        let mut settings = Settings {
+            last_resolved: ResolvedPaths {
+                aria2_bin_dir: old.clone(),
+                app_data_dir: old.clone(),
+                log_dir: old.clone(),
+            },
+            ..Settings::default()
+        };
+        settings.paths.aria2_bin_dir = Some(new.clone());
+
+        migrate_paths(&mut settings).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(new.join("aria2-next-2.0-linux")).unwrap(),
+            "existing",
+            "existing target file must not be overwritten"
+        );
+        assert!(new.join(".installed").exists());
+
+        let _ = std::fs::remove_dir_all(&old);
+        let _ = std::fs::remove_dir_all(&new);
+    }
+
+    #[test]
+    fn migrate_paths_noop_when_unchanged() {
+        let same = unique_tmp("noop");
+        std::fs::create_dir_all(&same).unwrap();
+        std::fs::write(same.join("marker"), "x").unwrap();
+
+        let mut settings = Settings {
+            last_resolved: ResolvedPaths {
+                aria2_bin_dir: same.clone(),
+                app_data_dir: same.clone(),
+                log_dir: same.clone(),
+            },
+            ..Settings::default()
+        };
+
+        migrate_paths(&mut settings).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(same.join("marker")).unwrap(),
+            "x",
+            "nothing should have been copied"
+        );
+        let _ = std::fs::remove_dir_all(&same);
+    }
+
+    #[test]
+    fn migrate_paths_handles_missing_old() {
+        let old = unique_tmp("missing-old");
+        let new = unique_tmp("missing-new");
+        std::fs::create_dir_all(&new).unwrap();
+
+        let mut settings = Settings {
+            last_resolved: ResolvedPaths {
+                aria2_bin_dir: old.clone(),
+                app_data_dir: old.clone(),
+                log_dir: old.clone(),
+            },
+            ..Settings::default()
+        };
+        settings.paths.aria2_bin_dir = Some(new.clone());
+        settings.paths.log_dir = Some(new.clone());
+        settings.paths.app_data_dir = Some(new.clone());
+
+        migrate_paths(&mut settings).unwrap();
+
+        assert_eq!(settings.last_resolved.aria2_bin_dir, new);
+        let _ = std::fs::remove_dir_all(&new);
+    }
+
+    #[test]
+    fn path_overrides_default_serde_backcompat() {
+        let legacy = r#"{"download_dir":"/tmp","max_concurrent":5,"download_limit_kb":0,"upload_limit_kb":0,"split":16}"#;
+        let settings: Settings = serde_json::from_str(legacy).unwrap();
+        assert_eq!(settings.paths.aria2_bin_dir, None);
+        assert_eq!(settings.paths.app_data_dir, None);
+        assert_eq!(settings.paths.log_dir, None);
+        assert_eq!(
+            settings.last_resolved,
+            ResolvedPaths::default(),
+            "absent last_resolved falls back to default"
+        );
     }
 }

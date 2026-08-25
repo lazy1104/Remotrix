@@ -6,8 +6,6 @@
 //! [`SettingsMsg`]s.
 
 use std::collections::HashMap;
-use std::collections::HashSet;
-use std::path::PathBuf;
 use std::sync::Mutex;
 
 use iced::widget::{
@@ -21,7 +19,7 @@ use crate::engine::EngineCmd;
 use crate::i18n::{Fluent, Locale, Tr};
 use crate::message::{
     AddMsg, CtxTarget, EngineMsg, Message, PathPickerId, SettingKey, SettingValue,
-    SettingsCategory, SettingsMsg, SpeedUnit, TaskMsg,
+    SettingsCategory, SettingsMsg, SpeedUnit,
 };
 use crate::task::format_size;
 use chrono::TimeZone;
@@ -32,7 +30,7 @@ use crate::ui::components::copyable_text::copyable_text;
 use crate::ui::components::ctx_input;
 use crate::ui::components::ctx_menu::CtxMirrors;
 use crate::ui::components::number_stepper::number_stepper;
-use crate::ui::components::path_picker::{PathPicker, PathPickerEvent};
+use crate::ui::components::path_picker::PathPicker;
 use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::components::tag_picker::tag_picker;
 use crate::ui::components::tooltip;
@@ -50,12 +48,14 @@ pub struct SettingsUiState {
     pub download_picker: PathPicker,
     pub ed2k_server_list_picker: PathPicker,
     pub ed2k_node_list_picker: PathPicker,
+    pub aria2_dir_picker: PathPicker,
+    pub app_data_dir_picker: PathPicker,
+    pub log_dir_picker: PathPicker,
     pub speed_units: HashMap<SettingKey, SpeedUnit>,
     pub schedule_days_menu_open: bool,
     pub custom_tracker_input: String,
     pub syncing_trackers: bool,
     pub tracker_sync_toast_id: Option<u64>,
-    pub readonly_hovered: HashSet<String>,
     pub ed2k_search_state: Ed2kSearchUiState,
     pub ed2k_bootstrap_status: (Option<i64>, Option<i64>),
     pub custom_color_picker: CustomColorPickerUi,
@@ -164,6 +164,21 @@ impl SettingsUiState {
         ] {
             speed_units.insert(*key, SpeedUnit::Kbps);
         }
+        let aria2_default = settings
+            .paths
+            .aria2_bin_dir
+            .clone()
+            .unwrap_or_else(|| settings.last_resolved.aria2_bin_dir.clone());
+        let appdata_default = settings
+            .paths
+            .app_data_dir
+            .clone()
+            .unwrap_or_else(|| settings.last_resolved.app_data_dir.clone());
+        let logs_default = settings
+            .paths
+            .log_dir
+            .clone()
+            .unwrap_or_else(|| settings.last_resolved.log_dir.clone());
         Self {
             download_picker: PathPicker::folder(
                 settings.download_dir.to_string_lossy().into_owned(),
@@ -171,12 +186,20 @@ impl SettingsUiState {
             ),
             ed2k_server_list_picker: PathPicker::file(settings.aria2.ed2k_server_list.clone()),
             ed2k_node_list_picker: PathPicker::file(settings.aria2.ed2k_node_list.clone()),
+            aria2_dir_picker: PathPicker::folder(
+                aria2_default.to_string_lossy().into_owned(),
+                true,
+            ),
+            app_data_dir_picker: PathPicker::folder(
+                appdata_default.to_string_lossy().into_owned(),
+                true,
+            ),
+            log_dir_picker: PathPicker::folder(logs_default.to_string_lossy().into_owned(), true),
             speed_units,
             schedule_days_menu_open: false,
             custom_tracker_input: String::new(),
             syncing_trackers: false,
             tracker_sync_toast_id: None,
-            readonly_hovered: HashSet::new(),
             ed2k_search_state: Ed2kSearchUiState::new(),
             ed2k_bootstrap_status: crate::ed2k_bootstrap::bootstrap_status(),
             custom_color_picker: CustomColorPickerUi::default(),
@@ -306,10 +329,10 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
             applied_settings,
             settings_ui,
             *engine_restart_pending,
-            *aria2_version,
             *aria2_status,
             *aria2_fetch_error,
             port_status,
+            path_history,
         ),
     };
 
@@ -355,13 +378,18 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
     actions = actions.push(
         button(
             row![
-                crate::ui::components::spinner::Spinner::refresh(
-                    restart_icon_color,
-                    FONT_ICON as f32,
-                )
-                .animate(*engine_restart_in_progress)
-                .box_factor(RESTART_ICON_BOX_FACTOR)
-                .view(),
+                if *engine_restart_in_progress {
+                    crate::ui::components::spinner::Spinner::refresh(
+                        restart_icon_color,
+                        FONT_ICON as f32,
+                    )
+                    .animate(true)
+                    .box_factor(RESTART_ICON_BOX_FACTOR)
+                    .view()
+                } else {
+                    let dot_color = engine_status_color(theme, *aria2_status, *aria2_fetch_error);
+                    crate::ui::components::status_dot::StatusDot::new(dot_color).view()
+                },
                 text(fluent.get(Tr::RestartEngine)).size(FONT_BODY),
             ]
             .spacing(SPACE_SM)
@@ -2102,83 +2130,20 @@ fn advanced_view<'a>(
     applied_settings: &'a Settings,
     settings_ui: &'a SettingsUiState,
     engine_restart_pending: bool,
-    aria2_version: Option<&'a str>,
     aria2_status: Option<(&'a str, &'a str)>,
     aria2_fetch_error: Option<&'a str>,
     port_status: &'a std::collections::HashMap<
         crate::port_guard::PortKind,
         (u16, crate::port_guard::PortStatus),
     >,
+    path_history: &'a HashMap<String, Vec<String>>,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
-    let text_secondary = theme::text_secondary(theme);
 
     let mut engine_rows: Vec<Element<Message>> = Vec::new();
 
-    let version_text = match aria2_version {
-        Some(v) => format!("aria2-next v{v}"),
-        None => "aria2-next (--)".to_string(),
-    };
-    engine_rows.push(
-        row![]
-            .push(
-                text(fluent.get(Tr::Aria2Version))
-                    .size(FONT_MEDIUM)
-                    .width(Length::Fixed(200.0)),
-            )
-            .push(
-                text(version_text)
-                    .size(FONT_MEDIUM)
-                    .style(theme::style::text::secondary),
-            )
-            .height(Length::Fixed(36.0))
-            .align_y(Alignment::Center)
-            .into(),
-    );
-
-    if let Some(dir) = crate::config::aria2_bin_dir() {
-        let dir_str = dir.to_string_lossy().into_owned();
-        engine_rows.push(labeled_readonly(
-            fluent,
-            theme,
-            fluent.get(Tr::EngineDataDir),
-            &dir_str,
-            settings_ui.readonly_hovered.contains(&dir_str),
-        ));
-    }
-    if let Some(path) = crate::config::session_dir() {
-        let sf = path.join("session.txt");
-        let sf_str = sf.to_string_lossy().into_owned();
-        engine_rows.push(labeled_readonly(
-            fluent,
-            theme,
-            fluent.get(Tr::EngineSessionFile),
-            &sf_str,
-            settings_ui.readonly_hovered.contains(&sf_str),
-        ));
-    }
-    if let Some(path) = crate::config::config_file_path() {
-        let p_str = path.to_string_lossy().into_owned();
-        engine_rows.push(labeled_readonly(
-            fluent,
-            theme,
-            fluent.get(Tr::ConfigFile),
-            &p_str,
-            settings_ui.readonly_hovered.contains(&p_str),
-        ));
-    }
-
-    if let Some((stage, message)) = aria2_status {
-        let status_color = if stage == "update-downloading"
-            || stage == "update-verifying"
-            || stage == "starting"
-        {
-            accent
-        } else if stage == "ready" {
-            theme::success(theme)
-        } else {
-            text_secondary
-        };
+    if let Some((_stage, message)) = aria2_status {
+        let status_color = engine_status_color(theme, aria2_status, aria2_fetch_error);
         engine_rows.push(text(message).size(FONT_SMALL).color(status_color).into());
     }
 
@@ -2308,23 +2273,43 @@ fn advanced_view<'a>(
         .push(group_title(fluent, Tr::Logging, accent))
         .push(logging_view(
             fluent,
+            settings,
+            applied_settings,
+            engine_restart_pending,
+        ))
+        .push(group_title(fluent, Tr::PathsSectionTitle, accent))
+        .push(paths_section(
+            fluent,
             theme,
             settings,
             applied_settings,
             settings_ui,
-            engine_restart_pending,
+            path_history,
         ))
         .push(group_title(fluent, Tr::Engine, accent))
         .push(engine_col)
         .into()
 }
 
+fn engine_status_color(
+    theme: &iced::Theme,
+    aria2_status: Option<(&str, &str)>,
+    aria2_fetch_error: Option<&str>,
+) -> Color {
+    if aria2_fetch_error.is_some() {
+        return theme::danger(theme);
+    }
+    match aria2_status.map(|(stage, _)| stage) {
+        Some("ready") => theme::success(theme),
+        Some("update-downloading" | "update-verifying" | "starting") => theme::accent(theme),
+        _ => theme::text_secondary(theme),
+    }
+}
+
 fn logging_view<'a>(
     fluent: &'a Fluent,
-    theme: &'a iced::Theme,
     settings: &'a Settings,
     applied_settings: &'a Settings,
-    settings_ui: &'a SettingsUiState,
     engine_restart_pending: bool,
 ) -> Element<'a, Message> {
     let placeholder = fluent.get(Tr::SelectPlaceholder);
@@ -2354,17 +2339,6 @@ fn logging_view<'a>(
         .cloned();
 
     let mut col = column![].spacing(SPACE_SM);
-
-    if let Some(dir) = crate::config::log_dir() {
-        let dir_str = dir.to_string_lossy().into_owned();
-        col = col.push(labeled_readonly(
-            fluent,
-            theme,
-            fluent.get(Tr::LogLocation),
-            &dir_str,
-            settings_ui.readonly_hovered.contains(&dir_str),
-        ));
-    }
 
     col = col.push(setting_row(
         fluent.get(Tr::LogLevelApp),
@@ -2417,6 +2391,119 @@ fn logging_view<'a>(
     ));
 
     col.into()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paths_section<'a>(
+    fluent: &'a Fluent,
+    theme: &'a iced::Theme,
+    settings: &'a Settings,
+    applied_settings: &'a Settings,
+    settings_ui: &'a SettingsUiState,
+    path_history: &'a HashMap<String, Vec<String>>,
+) -> Element<'a, Message> {
+    let aria2_hist: &[String] = path_history
+        .get("custom_aria2_dir")
+        .map(|v| v.as_slice())
+        .unwrap_or(&[]);
+    let appdata_hist: &[String] = path_history
+        .get("custom_app_data_dir")
+        .map(|v| v.as_slice())
+        .unwrap_or(&[]);
+    let logs_hist: &[String] = path_history
+        .get("custom_log_dir")
+        .map(|v| v.as_slice())
+        .unwrap_or(&[]);
+
+    let mut col = column![].spacing(SPACE_SM);
+
+    col = col.push(paths_row(
+        fluent,
+        theme,
+        &fluent.get(Tr::PathAria2DirLabel),
+        &settings_ui.aria2_dir_picker,
+        aria2_hist,
+        PathPickerId::CustomAria2Dir,
+        settings.paths.aria2_bin_dir.is_some(),
+    ));
+    col = col.push(paths_row(
+        fluent,
+        theme,
+        &fluent.get(Tr::PathAppDataDirLabel),
+        &settings_ui.app_data_dir_picker,
+        appdata_hist,
+        PathPickerId::CustomAppDataDir,
+        settings.paths.app_data_dir.is_some(),
+    ));
+    col = col.push(paths_row(
+        fluent,
+        theme,
+        &fluent.get(Tr::PathLogDirLabel),
+        &settings_ui.log_dir_picker,
+        logs_hist,
+        PathPickerId::CustomLogDir,
+        settings.paths.log_dir.is_some(),
+    ));
+
+    let paths_changed = settings.paths != applied_settings.paths;
+    if paths_changed {
+        col = col.push(
+            text(fluent.get(Tr::PathRestartHint))
+                .size(FONT_SMALL)
+                .style(theme::style::text::secondary),
+        );
+        col = col.push(
+            button(text(fluent.get(Tr::SaveAndRestartApp)).size(FONT_SMALL))
+                .on_press(Message::Settings(SettingsMsg::RestartApp))
+                .padding(PADDING_BUTTON_SM)
+                .style(theme::style::button::primary()),
+        );
+    }
+
+    col.into()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paths_row<'a>(
+    fluent: &'a Fluent,
+    theme: &'a iced::Theme,
+    label: &str,
+    picker: &'a PathPicker,
+    history: &'a [String],
+    id: PathPickerId,
+    override_active: bool,
+) -> Element<'a, Message> {
+    let picker_elem = picker.view(fluent, theme, history, move |e| {
+        Message::Add(AddMsg::PathPicker(id, e))
+    });
+
+    let restore_btn: Element<'a, Message> = if override_active {
+        button(text(fluent.get(Tr::PathRestoreDefault)).size(FONT_SMALL))
+            .on_press(Message::Settings(SettingsMsg::RestoreDefaultPath(id)))
+            .padding(PADDING_BUTTON_SM)
+            .style(theme::style::button::secondary())
+            .into()
+    } else {
+        iced::widget::Space::new()
+            .width(Length::Fixed(0.0))
+            .height(Length::Fixed(0.0))
+            .into()
+    };
+
+    column![]
+        .push(
+            row![]
+                .spacing(SPACE_LG)
+                .align_y(Alignment::Center)
+                .push(
+                    text(label.to_string())
+                        .size(FONT_MEDIUM)
+                        .width(Length::Fixed(200.0)),
+                )
+                .push(picker_elem)
+                .push(restore_btn),
+        )
+        .into()
 }
 
 fn level_label(fluent: &Fluent, level: &str) -> String {
@@ -2683,38 +2770,6 @@ where
             .menu_style(theme::style::pick_list::menu)
             .into(),
     )
-}
-
-fn labeled_readonly<'a>(
-    fluent: &'a Fluent,
-    theme: &'a iced::Theme,
-    label: String,
-    value: &str,
-    hovered: bool,
-) -> Element<'a, Message> {
-    let mut picker = PathPicker::read_only(value.to_string());
-    picker.set_hovered(hovered);
-    let open_value = value.to_string();
-    row![]
-        .push(text(label).size(FONT_MEDIUM).width(Length::Fixed(200.0)))
-        .push(picker.view(fluent, theme, &[], move |e| match e {
-            PathPickerEvent::Copy(s) => Message::Task(TaskMsg::CopyPath(s)),
-            PathPickerEvent::Open => {
-                Message::Task(TaskMsg::OpenFolder(PathBuf::from(open_value.clone())))
-            }
-            PathPickerEvent::Entered => Message::Settings(SettingsMsg::ReadOnlyHover {
-                path: open_value.clone(),
-                hovered: true,
-            }),
-            PathPickerEvent::Exited => Message::Settings(SettingsMsg::ReadOnlyHover {
-                path: open_value.clone(),
-                hovered: false,
-            }),
-            _ => Message::Noop,
-        }))
-        .height(Length::Fixed(36.0))
-        .align_y(Alignment::Center)
-        .into()
 }
 
 #[derive(Debug, Clone, Copy)]
