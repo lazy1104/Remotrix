@@ -223,7 +223,7 @@ impl PathPicker {
             };
             let history_btn = tooltip::standard(
                 history_btn,
-                text(fluent.get(Tr::DownloadHistory)),
+                text(fluent.get(Tr::History)),
                 iced::widget::tooltip::Position::Bottom,
             );
             row = row.push(history_btn);

@@ -188,13 +188,13 @@ impl SettingsUiState {
             ed2k_node_list_picker: PathPicker::file(settings.aria2.ed2k_node_list.clone()),
             aria2_dir_picker: PathPicker::folder(
                 aria2_default.to_string_lossy().into_owned(),
-                true,
+                false,
             ),
             app_data_dir_picker: PathPicker::folder(
                 appdata_default.to_string_lossy().into_owned(),
-                true,
+                false,
             ),
-            log_dir_picker: PathPicker::folder(logs_default.to_string_lossy().into_owned(), true),
+            log_dir_picker: PathPicker::folder(logs_default.to_string_lossy().into_owned(), false),
             speed_units,
             schedule_days_menu_open: false,
             custom_tracker_input: String::new(),
@@ -332,7 +332,6 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
             *aria2_status,
             *aria2_fetch_error,
             port_status,
-            path_history,
         ),
     };
 
@@ -378,19 +377,22 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
     actions = actions.push(
         button(
             row![
-                if *engine_restart_in_progress {
-                    crate::ui::components::spinner::Spinner::refresh(
-                        restart_icon_color,
-                        FONT_ICON as f32,
-                    )
-                    .animate(true)
-                    .box_factor(RESTART_ICON_BOX_FACTOR)
-                    .view()
-                } else {
-                    let dot_color = engine_status_color(theme, *aria2_status, *aria2_fetch_error);
+                crate::ui::components::spinner::Spinner::refresh(
+                    restart_icon_color,
+                    FONT_ICON as f32,
+                )
+                .animate(*engine_restart_in_progress)
+                .box_factor(RESTART_ICON_BOX_FACTOR)
+                .view(),
+                text(fluent.get(Tr::RestartEngine)).size(FONT_BODY),
+                {
+                    let dot_color: Color = if *engine_restart_in_progress {
+                        restart_icon_color
+                    } else {
+                        engine_status_color(theme, *aria2_status, *aria2_fetch_error)
+                    };
                     crate::ui::components::status_dot::StatusDot::new(dot_color).view()
                 },
-                text(fluent.get(Tr::RestartEngine)).size(FONT_BODY),
             ]
             .spacing(SPACE_SM)
             .align_y(Alignment::Center),
@@ -2136,7 +2138,6 @@ fn advanced_view<'a>(
         crate::port_guard::PortKind,
         (u16, crate::port_guard::PortStatus),
     >,
-    path_history: &'a HashMap<String, Vec<String>>,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
 
@@ -2284,7 +2285,6 @@ fn advanced_view<'a>(
             settings,
             applied_settings,
             settings_ui,
-            path_history,
         ))
         .push(group_title(fluent, Tr::Engine, accent))
         .push(engine_col)
@@ -2400,21 +2400,7 @@ fn paths_section<'a>(
     settings: &'a Settings,
     applied_settings: &'a Settings,
     settings_ui: &'a SettingsUiState,
-    path_history: &'a HashMap<String, Vec<String>>,
 ) -> Element<'a, Message> {
-    let aria2_hist: &[String] = path_history
-        .get("custom_aria2_dir")
-        .map(|v| v.as_slice())
-        .unwrap_or(&[]);
-    let appdata_hist: &[String] = path_history
-        .get("custom_app_data_dir")
-        .map(|v| v.as_slice())
-        .unwrap_or(&[]);
-    let logs_hist: &[String] = path_history
-        .get("custom_log_dir")
-        .map(|v| v.as_slice())
-        .unwrap_or(&[]);
-
     let mut col = column![].spacing(SPACE_SM);
 
     col = col.push(paths_row(
@@ -2422,7 +2408,6 @@ fn paths_section<'a>(
         theme,
         &fluent.get(Tr::PathAria2DirLabel),
         &settings_ui.aria2_dir_picker,
-        aria2_hist,
         PathPickerId::CustomAria2Dir,
         settings.paths.aria2_bin_dir.is_some(),
     ));
@@ -2431,7 +2416,6 @@ fn paths_section<'a>(
         theme,
         &fluent.get(Tr::PathAppDataDirLabel),
         &settings_ui.app_data_dir_picker,
-        appdata_hist,
         PathPickerId::CustomAppDataDir,
         settings.paths.app_data_dir.is_some(),
     ));
@@ -2440,7 +2424,6 @@ fn paths_section<'a>(
         theme,
         &fluent.get(Tr::PathLogDirLabel),
         &settings_ui.log_dir_picker,
-        logs_hist,
         PathPickerId::CustomLogDir,
         settings.paths.log_dir.is_some(),
     ));
@@ -2469,11 +2452,10 @@ fn paths_row<'a>(
     theme: &'a iced::Theme,
     label: &str,
     picker: &'a PathPicker,
-    history: &'a [String],
     id: PathPickerId,
     override_active: bool,
 ) -> Element<'a, Message> {
-    let picker_elem = picker.view(fluent, theme, history, move |e| {
+    let picker_elem = picker.view(fluent, theme, &[], move |e| {
         Message::Add(AddMsg::PathPicker(id, e))
     });
 
