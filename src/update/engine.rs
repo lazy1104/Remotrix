@@ -515,8 +515,6 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
                                 delete_after: state.settings.delete_torrent_after_complete,
                             });
                             tracing::info!(?gid, "ui: auto-adding downloaded torrent as new task");
-                        } else {
-                            state.tracking.torrent_followed.remove(&gid);
                         }
                     }
                 }
