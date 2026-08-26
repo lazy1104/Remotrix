@@ -81,3 +81,13 @@ overflow-checks = true
 inherits = "release"
 lto = "thin"
 codegen-units = 16
+
+[dev-dependencies]
+axum = "0.7"
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+bytes = "1"
+rand = "0.8"
+rcgen = "0.13"
+serial_test = "3"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "process", "io-util", "sync", "net"] }

@@ -1,34 +1,11 @@
 #![windows_subsystem = "windows"]
 
-mod app;
-mod app_updater;
-mod aria2_fetcher;
-mod autostart;
-mod clipboard_watch;
-mod config;
-mod db;
-mod ed2k_bootstrap;
-mod engine;
-mod extension_api;
-mod i18n;
-mod logging;
-mod message;
-mod notify;
-mod port_guard;
-mod power;
-mod scheduler;
-mod shutdown;
-mod task;
-mod torrent_meta;
-mod trackers;
-mod tray;
-#[cfg(target_os = "windows")]
-mod tray_watchdog;
-mod ui;
-mod update;
-mod updater;
-#[cfg(target_os = "windows")]
-mod win_toast;
+use remotrix::app;
+use remotrix::autostart;
+use remotrix::config;
+use remotrix::logging;
+use remotrix::message;
+use remotrix::ui;
 
 const APP_ID: &str = "remotrix";
 

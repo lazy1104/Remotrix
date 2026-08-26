@@ -1,0 +1,31 @@
+pub mod app;
+pub mod app_updater;
+pub mod aria2_fetcher;
+pub mod autostart;
+pub mod clipboard_watch;
+pub mod config;
+pub mod db;
+pub mod ed2k_bootstrap;
+pub mod engine;
+pub mod extension_api;
+pub mod i18n;
+pub mod logging;
+pub mod message;
+pub mod notify;
+pub mod port_guard;
+pub mod power;
+pub mod scheduler;
+pub mod shutdown;
+pub mod task;
+pub mod torrent_meta;
+pub mod trackers;
+pub mod tray;
+#[cfg(target_os = "windows")]
+pub mod tray_watchdog;
+pub mod ui;
+pub mod update;
+pub mod updater;
+#[cfg(target_os = "windows")]
+pub mod win_toast;
+
+pub const APP_ID: &str = "remotrix";
