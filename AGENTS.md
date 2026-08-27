@@ -162,7 +162,18 @@ cargo run --                   # run app
 cargo clippy --workspace       # lint (no warnings allowed)
 cargo fmt --check              # formatting check
 cargo packager --release --config packager.toml --formats deb,appimage   # local Linux packaging
+cargo test --test download_e2e -- --nocapture   # integration tests for the download pipeline
 ```
+The `download_e2e` binary needs a real `aria2-next` binary on disk (set
+`ARIA2_BIN=/path/to/aria2-next` or have it on `$PATH`); without one, every
+test logs `skip: ARIA2_BIN not set` and returns `Ok(())` so the suite stays
+green on machines without aria2 (CI, fresh dev boxes). Tests are serialised
+via `#[serial(aria2)]` and require **Linux or macOS** — Windows isn't
+supported because the `directories` crate reads `SHGetKnownFolderPath`
+there, ignoring the `$HOME` redirect the harness uses for temp-dir
+isolation. Some tests are `#[ignore]`-d as follow-ups (BT seeder
+plumbing, hang-endpoint timeout, session-replay); see `tests/download_e2e.rs`
+for the per-test reasoning.
 Run `/check-docs` (Kilo command) to audit README.md and this file against the codebase.
 
 ## Release profile
@@ -273,3 +284,8 @@ may include breaking changes until `1.0.0`).
 - Large task lists may lag iced → use `scrollable` + cap visible items
 - No system tray support in iced → defer or use `tray-icon` crate separately
 - `Secret` passed as CLI argument visible in `ps` on debug builds — acceptable (random per-session, local only)
+- `tests/download_e2e.rs` runs against a live aria2-next sidecar — release validation requires the developer to run the suite locally with `ARIA2_BIN` set; CI is intentionally NOT wired up (the binary is an external dep).
+- `default_app_data_dir()` (config.rs:1088) does NOT honour `XDG_DATA_HOME` — only `data_home()` does. The integration test harness works around this by redirecting `$HOME`, but prod callers that set `XDG_DATA_HOME` while expecting ProjectDirs-style paths will silently land in the default location. Track as a real-config bug.
+
+## Repo conventions — AGENTS.md sync
+Any PR that introduces a new external dependency, a new env var, a new manual run step, a new failure mode, or a new operator-facing gotcha **must** update `AGENTS.md` in the same PR — never "I'll add docs later". Code-only PRs that need a doc tweak but skip it are rejected at review. The `Build / Check Commands` and `Risks to Watch` sections are the two places that catch the most landmines; new env vars also need a one-line mention under whichever section they apply to.

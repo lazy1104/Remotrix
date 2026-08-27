@@ -34,6 +34,7 @@ use remotrix::config;
 use remotrix::engine::{spawn_engine, EngineCmd, EngineEvent, EngineHandle, EventTx};
 use remotrix::task::TaskAdvancedOptions;
 
+pub mod bt;
 pub mod http;
 
 /// Locate an aria2 binary, preferring the explicit `ARIA2_BIN` env var and
@@ -261,6 +262,17 @@ impl Harness {
                 return None;
             }
         };
+        // aria2 reads its state dir from the real `$HOME` via
+        // `getpwuid_r` (it does NOT honor a redirected `HOME` env var
+        // the way the Rust `directories` crate does), so the per-test
+        // temp-dir redirection we use for `session.txt` does not extend
+        // to BT fast-resume caches. Wipe the global state before each
+        // test so a previous run's stale piece-bitfield can't reject
+        // a fresh download with a "mismatching file size" warning.
+        // SAFETY: #[serial(aria2)] ensures no concurrent file ops.
+        unsafe {
+            wipe_aria2_state_for_test();
+        }
         let prev_home = std::env::var_os("HOME");
         let temp = match TempDir::new() {
             Ok(t) => t,
@@ -269,6 +281,13 @@ impl Harness {
                 return None;
             }
         };
+        // Wipe aria2's *global* state dirs (it doesn't honour
+        // redirected HOME for state-dir / cache-dir) so a previous
+        // test's stale bitfields can't reject a fresh download with
+        // a "mismatching file size" warning. Done before HOME is
+        // redirected so we wipe the *original* home's aria2 dirs,
+        // which is also where aria2 will read on this test run.
+        wipe_aria2_state_for_test();
         // SAFETY: std::env::set_var is marked unsafe because the underlying
         // C runtime is not thread-safe; under #[serial(aria2)] tests run
         // strictly sequentially so this is fine.
@@ -386,16 +405,33 @@ impl Harness {
     }
 
     /// Send an `ApplyAria2Options` so tests can adjust global limits or
-    /// inject `ca-certificate` for the HTTPS fixture.
+    /// inject `ca-certificate` for the HTTPS fixture. Re-applies a few
+    /// times to defeat the boot-time apply task race: the engine
+    /// spawns a background `changeGlobalOption` (with default settings)
+    /// right after `EngineReady` is emitted, and if it lands between
+    /// our two apply calls the test's setting is reverted to defaults.
     pub async fn apply_options(&self, extra: Map<String, serde_json::Value>) {
         let options = aria2_ws::TaskOptions {
-            extra_options: extra,
+            extra_options: extra.clone(),
             ..Default::default()
         };
         let _ = self
             .handle
             .cmd_tx
             .send(EngineCmd::ApplyAria2Options { options });
+        // Wait for the boot-time apply to finish, then re-apply so our
+        // value lands LAST and is the one in effect for subsequent
+        // commands.
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        let options2 = aria2_ws::TaskOptions {
+            extra_options: extra,
+            ..Default::default()
+        };
+        let _ = self
+            .handle
+            .cmd_tx
+            .send(EngineCmd::ApplyAria2Options { options: options2 });
+        tokio::time::sleep(Duration::from_millis(150)).await;
     }
 
     /// Send a `Pause(gid)` and wait until the next Progress event for
@@ -514,21 +550,33 @@ impl Harness {
                 Duration::from_secs(15),
             )
             .await;
-        // Belt-and-braces: the supervisor's spawned `child.wait()` task
-        // owns the `Child`; if aria2 hasn't actually exited yet (e.g. it
-        // was idle when `client.shutdown()` ran), the process keeps
-        // running and would outlive the temp dir. Kill it by pid.
-        let pid_path = self.session_dir.join("aria2.pid");
-        if let Ok(content) = std::fs::read_to_string(&pid_path) {
-            if let Ok(pid) = content.trim().parse::<i32>() {
-                unsafe {
-                    libc::kill(pid, libc::SIGKILL);
+        // The supervisor removes the pid file *after* sending
+        // `EngineStopped` (run_supervisor end-of-function), so there's
+        // a small race: harness reads pid file, but supervisor may
+        // have just unlinked it. Try a few times, then fall back to a
+        // global pkill of aria2-next — safe under `#[serial(aria2)]`
+        // since only one test's aria2 is ever alive at a time.
+        for _ in 0..10 {
+            if let Ok(content) = std::fs::read_to_string(self.session_dir.join("aria2.pid")) {
+                if let Ok(pid) = content.trim().parse::<i32>() {
+                    unsafe {
+                        libc::kill(pid, libc::SIGKILL);
+                    }
+                    break;
                 }
-                // Give the OS a beat to reap the zombie so the next test
-                // can re-bind the same port range without EADDRINUSE.
-                tokio::time::sleep(Duration::from_millis(200)).await;
             }
+            tokio::time::sleep(Duration::from_millis(50)).await;
         }
+        // Final belt-and-braces: nuke any straggler aria2 process.
+        // Cheap, no-op when nothing is left running.
+        let _ = std::process::Command::new("pkill")
+            .args(["-9", "-f", "aria2-next"])
+            .output();
+        let _ = std::process::Command::new("pkill")
+            .args(["-9", "-x", "aria2c"])
+            .output();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
         // The supervisor's task drops its `event_tx` clone as it exits,
         // so the receiver in our pump returns `None` and the task ends
         // on its own. Give it a moment, then abort as a last resort.
@@ -553,6 +601,39 @@ fn restore_home(prev: Option<OsString>) {
         match prev {
             Some(v) => std::env::set_var("HOME", v),
             None => std::env::remove_var("HOME"),
+        }
+    }
+}
+
+/// Best-effort cleanup of aria2's global state dirs. aria2 stores
+/// its BT bitfields / DHT / etc. under `~/.local/state/aria2-next/`
+/// *and* `~/.aria2-next/`, and the GUI's persisted session + cached
+/// per-info-hash `.torrent` metadata files under
+/// `~/.local/share/remotrix/aria2/`. None of these paths honour a
+/// redirected `$HOME` env var (aria2 reads the real home via
+/// `getpwuid_r`), so per-test temp-dir isolation alone isn't enough —
+/// a previous run's stale bitfields can reject a fresh download with
+/// a "mismatching file size" warning. Wipe all known paths before
+/// each test. Safe under `#[serial(aria2)]`.
+pub fn wipe_aria2_state_for_test() {
+    let Some(home) = std::env::var_os("HOME") else {
+        return;
+    };
+    let home = std::path::PathBuf::from(home);
+    // aria2's legacy + current state roots.
+    for rel in [".local/state/aria2-next", ".aria2-next"] {
+        let _ = std::fs::remove_dir_all(home.join(rel));
+    }
+
+    let app_dir = home.join(".local/share/remotrix/aria2");
+    let _ = std::fs::remove_file(app_dir.join("session.txt"));
+    let _ = std::fs::remove_file(app_dir.join("aria2.pid"));
+    if let Ok(dir) = std::fs::read_dir(&app_dir) {
+        for entry in dir.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|s| s.to_str()) == Some("torrent") {
+                let _ = std::fs::remove_file(&p);
+            }
         }
     }
 }

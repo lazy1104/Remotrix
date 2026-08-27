@@ -56,9 +56,10 @@ pub struct HttpFixture {
 
 impl HttpFixture {
     pub async fn start(fixture_dir: PathBuf) -> Self {
+        let flaky_hits = Arc::new(AtomicUsize::new(0));
         let state = AppState {
             fixture_dir: fixture_dir.clone(),
-            flaky_hits: Arc::new(AtomicUsize::new(0)),
+            flaky_hits: flaky_hits.clone(),
         };
         let app = Router::new()
             .route("/file/:name", get(serve_file))
@@ -82,7 +83,7 @@ impl HttpFixture {
             addr,
             base_url,
             fixture_dir,
-            flaky_hits: Arc::new(AtomicUsize::new(0)),
+            flaky_hits,
             cancel: Some(cancel_tx),
             serve: Some(serve),
         }
@@ -106,6 +107,31 @@ impl HttpFixture {
         ]
     }
 
+    /// Single flaky URL — the fixture 503s the first `fail_n` requests,
+    /// then serves the file normally. Used to verify aria2 retries
+    /// 5xx responses within a single task (the per-task retry path;
+    /// the mirror-fallback path requires a single task with multiple
+    /// URLs which `add_download` does not emit).
+    #[allow(dead_code)]
+    pub fn flaky_url(&self, name: &str, fail_n: u32) -> String {
+        format!("{}/flaky/{}?fail_n={fail_n}", self.base_url, name)
+    }
+
+    /// URL that returns 503 forever — used to exercise aria2's
+    /// max-tries exhaustion path (`http_always500_yields_error_with_code`).
+    #[allow(dead_code)]
+    pub fn always_500_url(&self) -> String {
+        format!("{}/always500", self.base_url)
+    }
+
+    /// URL that accepts the connection but never sends a response —
+    /// combined with a low `connect-timeout`, exercises aria2's
+    /// timeout-retry path (`http_hang_endpoint_triggers_retry_until_timeout`).
+    #[allow(dead_code)]
+    pub fn hang_url(&self) -> String {
+        format!("{}/hang", self.base_url)
+    }
+
     pub async fn shutdown(mut self) {
         if let Some(tx) = self.cancel.take() {
             let _ = tx.send(());
@@ -122,14 +148,19 @@ struct AppState {
     flaky_hits: Arc<AtomicUsize>,
 }
 
-async fn serve_file(AxPath(name): AxPath<String>, State(state): State<AppState>) -> Response {
+async fn serve_file(
+    AxPath(name): AxPath<String>,
+    headers: axum::http::HeaderMap,
+    State(state): State<AppState>,
+) -> Response {
     let path = state.fixture_dir.join(&name);
-    serve_path(&path, false).await
+    serve_path(&path, headers.get(header::RANGE)).await
 }
 
 async fn serve_flaky(
     AxPath(name): AxPath<String>,
     Query(q): Query<FlakyQuery>,
+    headers: axum::http::HeaderMap,
     State(state): State<AppState>,
 ) -> Response {
     let hit = state.flaky_hits.fetch_add(1, Ordering::Relaxed);
@@ -137,7 +168,7 @@ async fn serve_flaky(
         return (StatusCode::SERVICE_UNAVAILABLE, "flaky").into_response();
     }
     let path = state.fixture_dir.join(&name);
-    serve_path(&path, true).await
+    serve_path(&path, headers.get(header::RANGE)).await
 }
 
 async fn always_500() -> Response {
@@ -149,19 +180,50 @@ async fn hang() -> Response {
     (StatusCode::OK, "never").into_response()
 }
 
-async fn serve_path(path: &Path, accept_range: bool) -> Response {
+async fn serve_path(path: &Path, range_header: Option<&axum::http::HeaderValue>) -> Response {
     let Ok(bytes) = tokio::fs::read(path).await else {
         return (StatusCode::NOT_FOUND, "missing").into_response();
     };
-    let len = bytes.len();
-    let mut resp = (StatusCode::OK, Body::from(bytes)).into_response();
+    let total = bytes.len();
+    // Parse `Range: bytes=START-END` (one range only — sufficient for the
+    // e2e tests; aria2 never asks for multi-range responses).
+    let (start, end, status) = if let Some(hv) = range_header {
+        let s = hv.to_str().unwrap_or("");
+        if let Some(rest) = s.strip_prefix("bytes=") {
+            if let Some((a, b)) = rest.split_once('-') {
+                let start: usize = a.parse().unwrap_or(0);
+                let end: usize = if b.is_empty() {
+                    total.saturating_sub(1)
+                } else {
+                    b.parse().unwrap_or(total.saturating_sub(1)).min(total - 1)
+                };
+                if start <= end && start < total {
+                    (start, end, StatusCode::PARTIAL_CONTENT)
+                } else {
+                    return (StatusCode::RANGE_NOT_SATISFIABLE, "bad range").into_response();
+                }
+            } else {
+                (0, total.saturating_sub(1), StatusCode::OK)
+            }
+        } else {
+            (0, total.saturating_sub(1), StatusCode::OK)
+        }
+    } else {
+        (0, total.saturating_sub(1), StatusCode::OK)
+    };
+    let slice = bytes[start..=end].to_vec();
+    let len = slice.len();
+    let mut resp = (status, Body::from(slice)).into_response();
     resp.headers_mut().insert(
         header::CONTENT_LENGTH,
         HeaderValue::from_str(&len.to_string()).unwrap(),
     );
-    if accept_range {
+    resp.headers_mut()
+        .insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+    if status == StatusCode::PARTIAL_CONTENT {
+        let cr = format!("bytes {start}-{end}/{total}");
         resp.headers_mut()
-            .insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+            .insert(header::CONTENT_RANGE, HeaderValue::from_str(&cr).unwrap());
     }
     resp
 }
@@ -234,7 +296,7 @@ impl HttpsFixture {
             let server = axum_server::from_tcp_rustls(std_listener, cfg).handle(handle);
             tokio::spawn(async move {
                 let _ = cancel_rx.await;
-                handle_for_shutdown.graceful_shutdown(None);
+                handle_for_shutdown.shutdown();
             });
             let _ = server.serve(app.into_make_service()).await;
         });
@@ -248,6 +310,7 @@ impl HttpsFixture {
             cancel: None,
             serve: None,
         };
+        let _ = http;
 
         HttpsFixture {
             http,
