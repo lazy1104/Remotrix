@@ -527,12 +527,11 @@ pub(crate) fn handle(state: &mut Remotrix, msg: TaskMsg) -> Task<Message> {
             Task::none()
         }
         TaskMsg::OpenTaskFolder(gid) => {
-            let dir = state
-                .tasks
-                .get(&gid)
-                .map(|t| t.save_dir.clone())
-                .unwrap_or_default();
-            if !dir.as_os_str().is_empty() {
+            let Some(t) = state.tasks.get(&gid).cloned() else {
+                return Task::none();
+            };
+            let dir = t.save_dir.clone();
+            if dir.exists() {
                 return Task::perform(
                     async move {
                         let _ = open::that(&dir);
@@ -540,6 +539,35 @@ pub(crate) fn handle(state: &mut Remotrix, msg: TaskMsg) -> Task<Message> {
                     |_| Message::Noop,
                 );
             }
+            if t.status == TaskStatus::Completed || t.status == TaskStatus::Removed {
+                if state.settings.remove_task_if_files_missing {
+                    state.tracking.paused_gids.remove(&gid);
+                    let _ = state.handle.cmd_tx.send(EngineCmd::Remove {
+                        gid: gid.clone(),
+                        delete_files: false,
+                    });
+                    spawn_toast(
+                        state,
+                        ToastGroup::Task,
+                        ToastKind::Normal,
+                        state.fluent.get(Tr::FilesMissingRemoved),
+                        Some(Duration::from_secs(3)),
+                        false,
+                    );
+                    return Task::none();
+                }
+                state.confirm = Some(ConfirmAction::RemoveMissingFileTask(gid));
+                state.confirm_anim.open();
+                return Task::none();
+            }
+            spawn_toast(
+                state,
+                ToastGroup::Task,
+                ToastKind::Warning,
+                state.fluent.get(Tr::FileMissing),
+                Some(Duration::from_secs(4)),
+                false,
+            );
             Task::none()
         }
         TaskMsg::CopyTaskLink(gid) => {
