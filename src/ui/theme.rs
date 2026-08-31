@@ -1023,13 +1023,14 @@ pub mod style {
 
     pub mod scrollable {
         use iced::widget::scrollable::{self, AutoScroll, Rail, Scroller};
-        use iced::{Border, Shadow, Vector};
+        use iced::{Border, Color, Shadow, Vector};
+        use std::time::Instant;
 
-        pub fn standard(t: &iced::Theme, _status: scrollable::Status) -> scrollable::Style {
+        fn build(t: &iced::Theme, scroller_color: Color) -> scrollable::Style {
             let p = t.extended_palette();
 
             let scroller = Scroller {
-                background: p.primary.base.color.into(),
+                background: scroller_color.into(),
                 border: Border {
                     radius: super::super::RADIUS_BUTTON.into(),
                     ..Default::default()
@@ -1061,6 +1062,40 @@ pub mod style {
                 horizontal_rail: rail,
                 gap: None,
                 auto_scroll,
+            }
+        }
+
+        pub fn standard(t: &iced::Theme, status: scrollable::Status) -> scrollable::Style {
+            let p = t.extended_palette();
+            let scroller_visible = matches!(
+                status,
+                scrollable::Status::Hovered { .. } | scrollable::Status::Dragged { .. }
+            );
+            let scroller_color = if scroller_visible {
+                p.primary.base.color
+            } else {
+                Color::TRANSPARENT
+            };
+            build(t, scroller_color)
+        }
+
+        pub fn animating(
+            id: iced::widget::Id,
+        ) -> impl Fn(&iced::Theme, scrollable::Status) -> scrollable::Style {
+            move |t, status| {
+                let visible = matches!(
+                    status,
+                    scrollable::Status::Hovered {
+                        is_vertical_scrollbar_hovered: true,
+                        ..
+                    } | scrollable::Status::Dragged {
+                        is_vertical_scrollbar_dragged: true,
+                        ..
+                    }
+                );
+                let alpha = crate::ui::scroll_anim::tick(id.clone(), visible, Instant::now());
+                let color = t.extended_palette().primary.base.color.scale_alpha(alpha);
+                build(t, color)
             }
         }
     }

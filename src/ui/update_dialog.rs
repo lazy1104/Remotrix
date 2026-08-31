@@ -58,6 +58,10 @@ fn tab_button<'a>(label: String, active: bool, on_press: Message) -> Element<'a,
     }
 }
 
+/// Stable scrollable id for the update-dialog changelog so the
+/// fade-in/out animation registry keeps state across frames.
+pub const UPDATE_CHANGELOG_ID: &str = "update_changelog";
+
 /// Build the update dialog for the supplied `offers` and per-offer
 /// changelog state. `progress` drives the pin enter/exit animation.
 pub fn view<'a>(
@@ -182,9 +186,13 @@ pub fn view<'a>(
     };
     body = body.push(
         container(
-            slim_scrollable(changelog)
-                .height(Length::Fixed(280.0))
-                .width(Length::Fill),
+            slim_scrollable(
+                changelog,
+                iced::widget::Id::new(UPDATE_CHANGELOG_ID),
+                |_v| Message::ScrollableScrolled(iced::widget::Id::new(UPDATE_CHANGELOG_ID)),
+            )
+            .height(Length::Fixed(280.0))
+            .width(Length::Fill),
         )
         .width(Length::Fill)
         .padding(PADDING_CARD)

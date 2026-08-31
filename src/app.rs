@@ -1798,6 +1798,12 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         Subscription::none()
     };
 
+    let scroll_anim_tick = if crate::ui::scroll_anim::is_any_active() {
+        iced::time::every(Duration::from_millis(16)).map(|_| Message::ScrollAnimTick)
+    } else {
+        Subscription::none()
+    };
+
     Subscription::batch(vec![
         engine,
         wake,
@@ -1817,6 +1823,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         persist_periodic,
         refresh,
         toast_tick,
+        scroll_anim_tick,
         signals,
         tracker_auto_sync,
         auto_update,

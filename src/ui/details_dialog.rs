@@ -160,6 +160,11 @@ impl DetailsDialogState {
     }
 }
 
+/// Stable scrollable ids for the two scrollable details-dialog tabs so the
+/// fade-in/out animation registry keeps state across frames.
+pub const DETAILS_SUMMARY_ID: &str = "details_summary";
+pub const DETAILS_ADVANCED_ID: &str = "details_advanced";
+
 /// Build the details dialog for `task` (or an empty shell if `None`).
 /// `progress` drives the pin enter/exit animation.
 pub fn view<'a>(
@@ -225,18 +230,22 @@ pub fn view<'a>(
         .center_y(Length::Fill)
         .into(),
         Some(task) => match state.active_tab {
-            DetailsTab::Summary => {
-                slim_scrollable(summary_tab(fluent, theme, task, state.details.as_ref()))
-                    .height(Length::Fill)
-                    .into()
-            }
+            DetailsTab::Summary => slim_scrollable(
+                summary_tab(fluent, theme, task, state.details.as_ref()),
+                iced::widget::Id::new(DETAILS_SUMMARY_ID),
+                |_v| Message::ScrollableScrolled(iced::widget::Id::new(DETAILS_SUMMARY_ID)),
+            )
+            .height(Length::Fill)
+            .into(),
             DetailsTab::Activity => activity_tab(fluent, theme, task, state, progress_anim),
             DetailsTab::Files => files_tab(fluent, theme, task, state, progress_anim),
-            DetailsTab::Advanced => {
-                slim_scrollable(advanced_tab(fluent, theme, task, state, ctx_mirrors))
-                    .height(Length::Fill)
-                    .into()
-            }
+            DetailsTab::Advanced => slim_scrollable(
+                advanced_tab(fluent, theme, task, state, ctx_mirrors),
+                iced::widget::Id::new(DETAILS_ADVANCED_ID),
+                |_v| Message::ScrollableScrolled(iced::widget::Id::new(DETAILS_ADVANCED_ID)),
+            )
+            .height(Length::Fill)
+            .into(),
         },
     };
 

@@ -118,6 +118,8 @@ pub enum Message {
     CloseDialogAnim(crate::ui::animation::Event<f32>),
     Extension(ExtensionMsg),
     Shutdown(ShutdownMsg),
+    ScrollAnimTick,
+    ScrollableScrolled(iced::widget::Id),
     Noop,
 }
 

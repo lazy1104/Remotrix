@@ -343,9 +343,10 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
             iced::widget::keyed::Column::new()
                 .push(
                     *category,
-                    slim_scrollable(content)
-                        .id(SETTINGS_SCROLL_ID)
-                        .height(Length::Fill),
+                    slim_scrollable(content, iced::widget::Id::new(SETTINGS_SCROLL_ID), |_v| {
+                        Message::ScrollableScrolled(iced::widget::Id::new(SETTINGS_SCROLL_ID))
+                    })
+                    .height(Length::Fill),
                 )
                 .width(Length::Fill)
                 .height(Length::Fill),

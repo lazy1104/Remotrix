@@ -18,6 +18,7 @@ pub mod hct;
 pub mod icon;
 pub mod icons;
 pub mod resize_frame;
+pub mod scroll_anim;
 pub mod settings_page;
 pub mod shutdown_card;
 pub mod sidebar;

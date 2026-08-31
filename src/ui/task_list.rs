@@ -26,6 +26,10 @@ use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
+/// Stable scrollable id for the task list body so the fade-in/out
+/// animation registry keeps state across frames.
+pub const TASK_LIST_BODY_ID: &str = "task_list_body";
+
 /// Build the main task list element.
 #[allow(clippy::too_many_arguments)]
 pub fn view<'a>(
@@ -303,6 +307,8 @@ pub fn view<'a>(
             .push(iced::widget::Space::new().height(Length::Fixed(SPACE_LG)))
             .push(list)
             .push(iced::widget::Space::new().height(Length::Fixed(36.0))),
+        iced::widget::Id::new(TASK_LIST_BODY_ID),
+        |_v| Message::ScrollableScrolled(iced::widget::Id::new(TASK_LIST_BODY_ID)),
     )
     .height(Length::Fill);
 

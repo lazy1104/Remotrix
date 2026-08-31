@@ -328,6 +328,10 @@ impl AddDialogState {
     }
 }
 
+/// Stable scrollable id for the add dialog body so the fade-in/out
+/// animation registry keeps state across frames.
+pub const ADD_DIALOG_BODY_ID: &str = "add_dialog_body";
+
 /// Build the "Add download" dialog. `progress` drives the pin enter/exit
 /// animation.
 pub fn view<'a>(
@@ -539,8 +543,12 @@ pub fn view<'a>(
         body_items.push(advanced_form(fluent, theme, state, ctx_mirrors));
     }
 
-    let body = slim_scrollable(column(body_items).spacing(SPACE_3XL).width(Length::Fill))
-        .height(Length::Fixed(350.0));
+    let body = slim_scrollable(
+        column(body_items).spacing(SPACE_3XL).width(Length::Fill),
+        iced::widget::Id::new(ADD_DIALOG_BODY_ID),
+        |_v| Message::ScrollableScrolled(iced::widget::Id::new(ADD_DIALOG_BODY_ID)),
+    )
+    .height(Length::Fixed(350.0));
 
     let content = column![]
         .push(tab_bar)

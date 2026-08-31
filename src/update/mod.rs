@@ -153,6 +153,11 @@ pub(crate) fn dispatch(state: &mut Remotrix, message: Message) -> Task<Message> 
             }
             Task::none()
         }
+        Message::ScrollAnimTick => Task::none(),
+        Message::ScrollableScrolled(id) => {
+            crate::ui::scroll_anim::note_scroll(id, std::time::Instant::now());
+            Task::none()
+        }
         Message::Noop => Task::none(),
     };
     state
