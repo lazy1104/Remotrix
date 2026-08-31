@@ -341,6 +341,14 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                         state.settings.clipboard_types.bt_infohash = b;
                     }
                 }
+                SettingKey::ClipboardWebpageFilter => {
+                    if let SettingValue::Text(s) = value {
+                        if let Some(mode) = crate::clipboard_watch::WebpageFilterMode::from_str(&s)
+                        {
+                            state.settings.webpage_filter = mode;
+                        }
+                    }
+                }
                 SettingKey::Ed2kServer => {
                     if let SettingValue::Text(s) = value {
                         state.settings.aria2.ed2k_server = s;

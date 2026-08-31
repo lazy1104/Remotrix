@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::clipboard_watch::ClipboardLinkTypes;
+use crate::clipboard_watch::WebpageFilterMode;
 use crate::i18n::Locale;
 use crate::scheduler::{in_speed_window, weekday_active};
 use crate::ui::theme::ThemeMode;
@@ -750,6 +751,8 @@ pub struct Settings {
     #[serde(default)]
     pub clipboard_types: ClipboardLinkTypes,
     #[serde(default)]
+    pub webpage_filter: WebpageFilterMode,
+    #[serde(default)]
     pub last_clipboard_hash: String,
     #[serde(default = "default_window_width")]
     pub window_width: f32,
@@ -820,6 +823,7 @@ impl Default for Settings {
             remove_task_if_files_missing: false,
             detect_clipboard_on_start: true,
             clipboard_types: ClipboardLinkTypes::default(),
+            webpage_filter: WebpageFilterMode::default(),
             last_clipboard_hash: String::new(),
             window_width: default_window_width(),
             window_height: default_window_height(),

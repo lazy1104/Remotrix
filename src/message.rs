@@ -489,6 +489,7 @@ pub enum SettingKey {
     ClipboardEd2k,
     ClipboardThunder,
     ClipboardBtInfohash,
+    ClipboardWebpageFilter,
     Ed2kServer,
     Ed2kListenPort,
     Ed2kUdpListenPort,

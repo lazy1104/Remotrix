@@ -2195,6 +2195,31 @@ fn advanced_view<'a>(
         ));
     if settings.detect_clipboard_on_start {
         clipboard_col = clipboard_col.push(sub_items([
+            labeled_pick(
+                fluent,
+                fluent.get(Tr::WebpageFilter),
+                vec![
+                    Labeled {
+                        value: crate::clipboard_watch::WebpageFilterMode::Smart,
+                        label: fluent.get(Tr::WebpageFilterSmart),
+                    },
+                    Labeled {
+                        value: crate::clipboard_watch::WebpageFilterMode::Static,
+                        label: fluent.get(Tr::WebpageFilterStatic),
+                    },
+                    Labeled {
+                        value: crate::clipboard_watch::WebpageFilterMode::Off,
+                        label: fluent.get(Tr::WebpageFilterOff),
+                    },
+                ],
+                Some(settings.webpage_filter),
+                |opt| {
+                    Message::Settings(SettingsMsg::SettingChanged(
+                        SettingKey::ClipboardWebpageFilter,
+                        SettingValue::Text(opt.value.as_str().into()),
+                    ))
+                },
+            ),
             labeled_checkbox(
                 fluent.get(Tr::LinkTypeHttp),
                 settings.clipboard_types.http,

@@ -107,28 +107,37 @@ pub(crate) fn handle(state: &mut Remotrix, msg: WindowMsg) -> Task<Message> {
             };
             let trimmed = text.trim().to_string();
             let prefs = state.settings.clipboard_types;
+            let filter_mode = state.settings.webpage_filter;
+            let proxy = state.settings.aria2.all_proxy_value();
+            let user_agent = state.settings.aria2.user_agent.clone();
             Task::perform(
                 async move {
                     let payload = crate::clipboard_watch::parse_clipboard(&trimmed, prefs);
-                    let hash = crate::clipboard_watch::payload_hash(&payload);
+                    let payload = crate::clipboard_watch::apply_webpage_filter(
+                        payload,
+                        filter_mode,
+                        proxy.as_deref(),
+                        &user_agent,
+                    )
+                    .await;
+                    let hash = crate::clipboard_watch::text_hash(&trimmed);
                     (payload, hash)
                 },
                 |(payload, hash)| Message::Window(WindowMsg::ClipboardParsed(payload, hash)),
             )
         }
         WindowMsg::ClipboardParsed(payload, hash) => {
+            if hash != state.settings.last_clipboard_hash {
+                state.settings.last_clipboard_hash = hash.clone();
+                state.applied_settings.last_clipboard_hash = hash;
+                crate::config::save(&state.settings);
+            }
             let Some(payload) = payload else {
                 return Task::none();
             };
             if state.add_dialog.is_visible() {
                 return Task::none();
             }
-            if hash == state.settings.last_clipboard_hash {
-                return Task::none();
-            }
-            state.settings.last_clipboard_hash = hash.clone();
-            state.applied_settings.last_clipboard_hash = hash;
-            crate::config::save(&state.settings);
             state.add_dialog.open_with(
                 state.settings.download_dir.clone(),
                 state.settings.split,
