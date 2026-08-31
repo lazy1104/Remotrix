@@ -14,36 +14,38 @@ use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::dims::*;
 use crate::ui::theme;
 
+const TOGGLE_W: f32 = 50.0;
+
 /// Build the shutdown-card element for the settings page.
 pub fn view<'a>(
     fluent: &'a Fluent,
     _theme: &'a iced::Theme,
     ctrl: &ShutdownControl,
 ) -> Element<'a, Message> {
-    let toggles = toggler(ctrl.after_complete)
-        .on_toggle(|v| Message::Shutdown(ShutdownMsg::SetAfterComplete(v)))
-        .width(Length::Fixed(50.0));
-    let after_row = row![
+    let labels_col = column![
         text(fluent.get(Tr::ShutdownAfterComplete)).size(FONT_MEDIUM),
-        toggles,
-    ]
-    .spacing(SPACE_MD)
-    .align_y(Alignment::Center);
-
-    let timer_row = row![
         text(fluent.get(Tr::ShutdownTimer)).size(FONT_MEDIUM),
+    ]
+    .spacing(SPACE_SM);
+
+    let switches_col = column![
+        toggler(ctrl.after_complete)
+            .on_toggle(|v| Message::Shutdown(ShutdownMsg::SetAfterComplete(v)))
+            .width(Length::Fixed(TOGGLE_W)),
         toggler(ctrl.timer_enabled)
             .on_toggle(|v| Message::Shutdown(ShutdownMsg::SetTimerEnabled(v)))
-            .width(Length::Fixed(50.0)),
+            .width(Length::Fixed(TOGGLE_W)),
     ]
-    .spacing(SPACE_MD)
-    .align_y(Alignment::Center);
+    .spacing(SPACE_SM);
+
+    let switches_row = row![labels_col, switches_col]
+        .spacing(SPACE_LG)
+        .align_y(Alignment::Center);
 
     let mut col = column![]
         .spacing(SPACE_MD)
         .push(text(fluent.get(Tr::Shutdown)).size(FONT_TITLE))
-        .push(after_row)
-        .push(timer_row);
+        .push(switches_row);
 
     if ctrl.timer_enabled {
         let stepper = number_stepper(
@@ -73,7 +75,7 @@ pub fn view<'a>(
 
     container(col)
         .padding(PADDING_CARD)
-        .width(Length::Fixed(240.0))
+        .width(Length::Shrink)
         .style(theme::style::subtle)
         .into()
 }
