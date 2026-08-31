@@ -531,21 +531,20 @@ pub(crate) fn handle(state: &mut Remotrix, msg: TaskMsg) -> Task<Message> {
                 return Task::none();
             };
             let dir = t.save_dir.clone();
-            if dir.exists() {
-                return Task::perform(
-                    async move {
-                        let _ = open::that(&dir);
-                    },
-                    |_| Message::Noop,
-                );
-            }
-            if t.status == TaskStatus::Completed || t.status == TaskStatus::Removed {
+            let prompt_remove = |state: &mut Remotrix, gid: String| -> iced::Task<Message> {
                 if state.settings.remove_task_if_files_missing {
                     state.tracking.paused_gids.remove(&gid);
-                    let _ = state.handle.cmd_tx.send(EngineCmd::Remove {
-                        gid: gid.clone(),
-                        delete_files: false,
-                    });
+                    if state
+                        .handle
+                        .cmd_tx
+                        .send(EngineCmd::Remove {
+                            gid: gid.clone(),
+                            delete_files: false,
+                        })
+                        .is_err()
+                    {
+                        tracing::warn!("ui: remove cmd send failed");
+                    }
                     spawn_toast(
                         state,
                         ToastGroup::Task,
@@ -558,7 +557,27 @@ pub(crate) fn handle(state: &mut Remotrix, msg: TaskMsg) -> Task<Message> {
                 }
                 state.confirm = Some(ConfirmAction::RemoveMissingFileTask(gid));
                 state.confirm_anim.open();
-                return Task::none();
+                Task::none()
+            };
+            let metadata_preview = t.metadata_only || t.name.starts_with("[METADATA]");
+            let file_path = if metadata_preview {
+                match t.info_hash.as_deref() {
+                    Some(hash) => t.save_dir.join(format!("{hash}.torrent")),
+                    None => t.save_dir.join(&t.name),
+                }
+            } else {
+                t.save_dir.join(&t.name)
+            };
+            if file_path.exists() && !dir.as_os_str().is_empty() {
+                return Task::perform(
+                    async move {
+                        let _ = open::that(&dir);
+                    },
+                    |_| Message::Noop,
+                );
+            }
+            if t.status == TaskStatus::Completed || t.status == TaskStatus::Removed {
+                return prompt_remove(state, gid);
             }
             spawn_toast(
                 state,
