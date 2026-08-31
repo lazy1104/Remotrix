@@ -18,8 +18,8 @@ use crate::engine::{EngineCmd, EngineHandle, EventRx};
 use crate::i18n::{Fluent, Tr};
 use crate::message::{
     AddField, AddMsg, ConfirmAction, CtxTarget, EngineMsg, ExtensionMsg, Message, Page,
-    PathPickerId, SettingsCategory, SettingsMsg, SortField, SortMsg, SortOrder, TaskFilter,
-    TaskMsg, ToastMsg, WindowMsg,
+    PathPickerId, SettingKey, SettingsCategory, SettingsMsg, SortField, SortMsg, SortOrder,
+    TaskFilter, TaskMsg, ToastMsg, WindowMsg,
 };
 use crate::task::{DownloadTask, TaskStatus};
 use crate::ui::add_dialog::AddDialogState;
@@ -29,6 +29,7 @@ use crate::ui::components::file_tree::FileTreeNode;
 use crate::ui::components::toast::{Toast, ToastGroup, ToastKind};
 use crate::ui::components::torrent_upload::{self};
 use crate::ui::details_dialog::DetailsDialogState;
+use crate::ui::dims::PADDING_CARD;
 use crate::ui::icons::{CATEGORY_W, SIDEBAR_W};
 use crate::ui::settings_page::SettingsUiState;
 use crate::ui::theme;
@@ -342,6 +343,8 @@ pub struct Remotrix {
         crate::port_guard::PortKind,
         (u16, crate::port_guard::PortStatus),
     >,
+    pub(crate) speed_limit_popover_open: bool,
+    pub(crate) speed_limit_pending_deadlines: HashMap<SettingKey, Instant>,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
@@ -494,6 +497,8 @@ pub fn init() -> (Remotrix, Task<Message>) {
             ..Default::default()
         },
         port_status: std::collections::HashMap::new(),
+        speed_limit_popover_open: false,
+        speed_limit_pending_deadlines: HashMap::new(),
     };
 
     state.window.hidden_to_tray =
@@ -1516,6 +1521,39 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         iced::widget::Space::new().into()
     };
 
+    let speed_popover_layer: iced::Element<'_, Message> = if state.speed_limit_popover_open {
+        let card_body = crate::ui::components::speed_limit_popover::view(&state.fluent, state);
+        let card = container(card_body)
+            .padding(PADDING_CARD)
+            .style(theme::style::subtle);
+        stack![
+            mouse_area(
+                iced::widget::Space::new()
+                    .width(Length::Fill)
+                    .height(Length::Fill),
+            )
+            .on_press(Message::Dialog(
+                crate::message::DialogMsg::CloseSpeedLimitPopover
+            )),
+            float::Float::new(card).translate(move |bounds, viewport| {
+                let x = (viewport.width - bounds.width - 16.0)
+                    .clamp(0.0, (viewport.width - bounds.width).max(0.0));
+                let y = (viewport.height
+                    - 20.0
+                    - crate::ui::components::speed_hud::HUD_SIZE
+                    - SPEED_POPOVER_GAP
+                    - bounds.height)
+                    .clamp(0.0, (viewport.height - bounds.height).max(0.0));
+                Vector::new(x - bounds.x, y - bounds.y)
+            }),
+        ]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
+    } else {
+        iced::widget::Space::new().into()
+    };
+
     let stacked: iced::Element<'_, Message> = stack![
         base_layer,
         add_layer,
@@ -1528,6 +1566,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         toast_layer,
         ctx_layer,
         shutdown_layer,
+        speed_popover_layer,
     ]
     .width(Length::Fill)
     .height(Length::Fill)
@@ -1804,6 +1843,9 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         Subscription::none()
     };
 
+    let speed_limit_tick =
+        iced::time::every(Duration::from_millis(100)).map(|_| Message::SpeedLimitDebounceTick);
+
     Subscription::batch(vec![
         engine,
         wake,
@@ -1829,6 +1871,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         auto_update,
         ed2k_bootstrap_auto_sync,
         shutdown_tick,
+        speed_limit_tick,
     ])
 }
 
@@ -2087,6 +2130,59 @@ pub(crate) fn dismiss_toast(state: &mut Remotrix, id: u64) {
 
 const SHUTDOWN_CONFIRM_SECS: u32 = 30;
 const SHUTDOWN_CARD_ANCHOR: f32 = 112.0;
+const SPEED_LIMIT_DEBOUNCE_MS: u64 = 250;
+const SPEED_POPOVER_GAP: f32 = 8.0;
+
+pub(crate) fn schedule_speed_limit_deadline(state: &mut Remotrix, key: SettingKey) {
+    state.speed_limit_pending_deadlines.insert(
+        key,
+        Instant::now() + Duration::from_millis(SPEED_LIMIT_DEBOUNCE_MS),
+    );
+}
+
+pub(crate) fn flush_speed_limit_debounce(state: &mut Remotrix) {
+    if state.speed_limit_pending_deadlines.is_empty() {
+        return;
+    }
+    state.speed_limit_pending_deadlines.clear();
+    let opts = state.settings.effective_task_options();
+    if state
+        .handle
+        .cmd_tx
+        .send(EngineCmd::ApplyAria2Options { options: opts })
+        .is_err()
+    {
+        tracing::warn!("ui: speed limit flush cmd send failed");
+    }
+}
+
+pub(crate) fn handle_speed_limit_debounce_tick(state: &mut Remotrix) {
+    if state.speed_limit_pending_deadlines.is_empty() {
+        return;
+    }
+    let now = Instant::now();
+    let mut ready = false;
+    state.speed_limit_pending_deadlines.retain(|_, deadline| {
+        if now >= *deadline {
+            ready = true;
+            false
+        } else {
+            true
+        }
+    });
+    if !ready {
+        return;
+    }
+    let opts = state.settings.effective_task_options();
+    if state
+        .handle
+        .cmd_tx
+        .send(EngineCmd::ApplyAria2Options { options: opts })
+        .is_err()
+    {
+        tracing::warn!("ui: speed limit debounce tick cmd send failed");
+    }
+}
 
 pub(crate) fn reset_shutdown_card(state: &mut Remotrix) {
     let minutes = state.shutdown.timer_minutes.max(1);

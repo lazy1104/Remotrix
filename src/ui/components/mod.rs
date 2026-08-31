@@ -21,6 +21,7 @@ pub mod piece_map;
 pub mod secret_input;
 pub mod slim_scrollable;
 pub mod speed_hud;
+pub mod speed_limit_popover;
 pub mod spinner;
 pub mod status_dot;
 pub mod tag_picker;

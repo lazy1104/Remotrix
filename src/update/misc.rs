@@ -9,8 +9,8 @@ use crate::app::{
 };
 use crate::i18n::Tr;
 use crate::message::{
-    ConfirmAction, DialogMsg, ExtensionMsg, Message, Page, ShutdownMsg, SortMsg, SortOrder,
-    ToastMsg, TrayMsg,
+    ConfirmAction, DialogMsg, ExtensionMsg, Message, Page, SettingKey, ShutdownMsg, SortMsg,
+    SortOrder, ToastMsg, TrayMsg,
 };
 use crate::ui::components::toast::{ToastGroup, ToastKind};
 
@@ -66,6 +66,29 @@ pub(crate) fn handle_dialog(state: &mut Remotrix, msg: DialogMsg) -> Task<Messag
                 reset_shutdown_card(state);
             }
             state.confirm_anim.begin_exit();
+            Task::none()
+        }
+        DialogMsg::OpenSpeedLimitPopover => {
+            state.speed_limit_popover_open = !state.speed_limit_popover_open;
+            Task::none()
+        }
+        DialogMsg::CloseSpeedLimitPopover => {
+            state.speed_limit_popover_open = false;
+            crate::app::flush_speed_limit_debounce(state);
+            Task::none()
+        }
+        DialogMsg::SpeedLimitChanged(key, v) => {
+            match key {
+                SettingKey::DownloadLimit => state.settings.download_limit_kb = v,
+                SettingKey::UploadLimit => state.settings.upload_limit_kb = v,
+                _ => {}
+            }
+            state.applied_settings = state.settings.clone();
+            crate::app::schedule_speed_limit_deadline(state, key);
+            Task::none()
+        }
+        DialogMsg::SpeedLimitUnitChanged(key, unit) => {
+            state.settings_ui.speed_units.insert(key, unit);
             Task::none()
         }
     }

@@ -74,6 +74,6 @@ pub fn view<'a>(
     container(col)
         .padding(PADDING_CARD)
         .width(Length::Fixed(240.0))
-        .style(theme::style::card)
+        .style(theme::style::subtle)
         .into()
 }

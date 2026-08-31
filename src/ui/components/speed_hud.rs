@@ -5,14 +5,14 @@ use iced::advanced::{mouse, Clipboard, Layout, Renderer, Shell};
 use iced::widget::{button, column, container, row, text};
 use iced::{Element, Event, Length, Padding, Rectangle, Size};
 
-use crate::message::Message;
+use crate::message::{DialogMsg, Message};
 use crate::task::format_speed;
 use crate::ui::animation::{animation, Animated};
 use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
-const HUD_SIZE: f32 = 44.0;
+pub const HUD_SIZE: f32 = 44.0;
 
 pub fn view<'a>(
     theme: &'a iced::Theme,
@@ -59,7 +59,7 @@ pub fn view<'a>(
     .on_update(Message::HudAnim);
 
     let button = button(hud_content)
-        .on_press(Message::Noop)
+        .on_press(Message::Dialog(DialogMsg::OpenSpeedLimitPopover))
         .padding(Padding {
             top: PADDING_HUD.top,
             right: 0.0,

@@ -120,6 +120,7 @@ pub enum Message {
     Shutdown(ShutdownMsg),
     ScrollAnimTick,
     ScrollableScrolled(iced::widget::Id),
+    SpeedLimitDebounceTick,
     Noop,
 }
 
@@ -340,6 +341,10 @@ pub enum DialogMsg {
     ConfirmCancel,
     OpenAbout,
     CloseAbout,
+    OpenSpeedLimitPopover,
+    CloseSpeedLimitPopover,
+    SpeedLimitChanged(SettingKey, u64),
+    SpeedLimitUnitChanged(SettingKey, SpeedUnit),
 }
 
 #[derive(Debug, Clone)]

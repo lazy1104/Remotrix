@@ -2798,7 +2798,7 @@ impl PartialEq for UnitOption {
     }
 }
 
-fn speed_labeled_input<'a>(
+pub fn speed_labeled_input<'a>(
     label: String,
     value_kb: u64,
     unit: SpeedUnit,

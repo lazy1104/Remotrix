@@ -154,6 +154,10 @@ pub(crate) fn dispatch(state: &mut Remotrix, message: Message) -> Task<Message> 
             Task::none()
         }
         Message::ScrollAnimTick => Task::none(),
+        Message::SpeedLimitDebounceTick => {
+            crate::app::handle_speed_limit_debounce_tick(state);
+            Task::none()
+        }
         Message::ScrollableScrolled(id) => {
             crate::ui::scroll_anim::note_scroll(id, std::time::Instant::now());
             Task::none()
