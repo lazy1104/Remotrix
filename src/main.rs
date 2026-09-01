@@ -6,22 +6,21 @@ use remotrix::config;
 use remotrix::logging;
 use remotrix::message;
 use remotrix::ui;
-
-const APP_ID: &str = "remotrix";
+use remotrix::APP_ID;
 
 fn main() -> iced::Result {
-    let mut cfg = crate::config::load();
+    let mut cfg = config::load();
 
-    if let Err(e) = crate::config::migrate_paths(&mut cfg) {
+    if let Err(e) = config::migrate_paths(&mut cfg) {
         eprintln!("remotrix: path migration failed: {e}");
     }
-    crate::config::save(&cfg);
+    config::save(&cfg);
 
-    let _log_guard = crate::logging::init();
+    let _log_guard = logging::init();
 
-    crate::config::install_desktop_file();
+    config::install_desktop_file();
     #[cfg(target_os = "windows")]
-    crate::win_toast::init();
+    win_toast::init();
 
     if std::env::var_os("REMOTRIX_RESTART").is_none()
         && app_single_instance::notify_if_running(APP_ID)
@@ -35,10 +34,10 @@ fn main() -> iced::Result {
         "remotrix starting"
     );
 
-    if let Err(e) = crate::autostart::set_enabled(cfg.autostart_enabled) {
+    if let Err(e) = autostart::set_enabled(cfg.autostart_enabled) {
         tracing::warn!(error = %e, "autostart sync failed");
     }
-    let hidden_start = crate::autostart::is_autostart_launch() && cfg.start_hidden_on_autostart;
+    let hidden_start = autostart::is_autostart_launch() && cfg.start_hidden_on_autostart;
 
     let w = cfg.window_width.max(800.0);
     let h = cfg.window_height.max(560.0);
@@ -47,12 +46,12 @@ fn main() -> iced::Result {
         .title(app::app_title as fn(&app::Remotrix) -> String)
         .theme(app::theme as fn(&app::Remotrix) -> iced::Theme)
         .subscription(
-            app::subscription as fn(&app::Remotrix) -> iced::Subscription<crate::message::Message>,
+            app::subscription as fn(&app::Remotrix) -> iced::Subscription<message::Message>,
         )
-        .font(crate::ui::icon::FONT as &[_])
+        .font(ui::icon::FONT as &[_])
         .font(include_bytes!("../fonts/HarmonyOS_Sans_SC_Regular.ttf") as &[_])
         .font(iced_aw::ICED_AW_FONT_BYTES)
-        .default_font(crate::ui::theme::font_from_family(&cfg.font_family))
+        .default_font(ui::theme::font_from_family(&cfg.font_family))
         .window(iced::window::Settings {
             size: iced::Size::new(w, h),
             maximized: cfg.window_maximized,
@@ -71,7 +70,7 @@ fn main() -> iced::Result {
 #[cfg(target_os = "linux")]
 fn platform_specific_settings() -> iced::window::settings::PlatformSpecific {
     iced::window::settings::PlatformSpecific {
-        application_id: crate::APP_ID.to_string(),
+        application_id: APP_ID.to_string(),
         ..Default::default()
     }
 }
