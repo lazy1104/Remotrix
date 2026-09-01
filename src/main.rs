@@ -7,6 +7,8 @@ use remotrix::logging;
 use remotrix::message;
 use remotrix::ui;
 use remotrix::APP_ID;
+#[cfg(target_os = "windows")]
+use remotrix::win_toast;
 
 fn main() -> iced::Result {
     let mut cfg = config::load();
