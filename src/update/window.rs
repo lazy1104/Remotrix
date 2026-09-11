@@ -106,6 +106,10 @@ pub(crate) fn handle(state: &mut Remotrix, msg: WindowMsg) -> Task<Message> {
                 return Task::none();
             };
             let trimmed = text.trim().to_string();
+            let hash = crate::clipboard_watch::text_hash(&trimmed);
+            if hash == state.settings.last_clipboard_hash {
+                return Task::none();
+            }
             let prefs = state.settings.clipboard_types;
             let filter_mode = state.settings.webpage_filter;
             let proxy = state.settings.aria2.all_proxy_value();
@@ -120,18 +124,18 @@ pub(crate) fn handle(state: &mut Remotrix, msg: WindowMsg) -> Task<Message> {
                         &user_agent,
                     )
                     .await;
-                    let hash = crate::clipboard_watch::text_hash(&trimmed);
                     (payload, hash)
                 },
                 |(payload, hash)| Message::Window(WindowMsg::ClipboardParsed(payload, hash)),
             )
         }
         WindowMsg::ClipboardParsed(payload, hash) => {
-            if hash != state.settings.last_clipboard_hash {
-                state.settings.last_clipboard_hash = hash.clone();
-                state.applied_settings.last_clipboard_hash = hash;
-                crate::config::save(&state.settings);
+            if hash == state.settings.last_clipboard_hash {
+                return Task::none();
             }
+            state.settings.last_clipboard_hash = hash.clone();
+            state.applied_settings.last_clipboard_hash = hash;
+            crate::config::save(&state.settings);
             let Some(payload) = payload else {
                 return Task::none();
             };
