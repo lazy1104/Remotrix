@@ -304,7 +304,7 @@ pub fn view<'a>(
 
     let body = slim_scrollable(
         column![]
-            .push(iced::widget::Space::new().height(Length::Fixed(SPACE_LG)))
+            .push(crate::ui::components::scroll_top_gap::view())
             .push(list)
             .push(iced::widget::Space::new().height(Length::Fixed(36.0))),
         iced::widget::Id::new(TASK_LIST_BODY_ID),

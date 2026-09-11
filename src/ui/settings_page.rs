@@ -460,7 +460,7 @@ fn general_view<'a>(
 
     let mut col = column![]
         .spacing(SPACE_SM)
-        .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
+        .push(crate::ui::components::scroll_top_gap::view())
         .push(group_title(fluent, Tr::SystemInfo, accent))
         .push(setting_row_auto(
             fluent.get(Tr::SystemPlatform),
@@ -949,6 +949,7 @@ fn download_view<'a>(
         .unwrap_or(&[]);
     column![]
         .spacing(SPACE_SM)
+        .push(crate::ui::components::scroll_top_gap::view())
         .push(group_title(fluent, Tr::DownloadFolder, accent))
         .push(
             row![]
@@ -1565,6 +1566,7 @@ fn bittorrent_view<'a>(
 
     let mut bt_col = column![]
         .spacing(SPACE_SM)
+        .push(crate::ui::components::scroll_top_gap::view())
         .push(group_title(fluent, Tr::BtSettings, accent))
         .push(labeled_toggle(
             fluent.get(Tr::BtAutoDownload),
@@ -1655,6 +1657,7 @@ fn ed2k_view<'a>(
         .unwrap_or_default();
     column![]
         .spacing(SPACE_SM)
+        .push(crate::ui::components::scroll_top_gap::view())
         .push(group_title(fluent, Tr::Ed2kSettings, accent))
         .push({
             let placeholder = fluent.get(Tr::Ed2kServerPlaceholder);
@@ -2060,6 +2063,7 @@ fn network_view<'a>(
 ) -> Element<'a, Message> {
     column![]
         .spacing(SPACE_SM)
+        .push(crate::ui::components::scroll_top_gap::view())
         .push(group_title(fluent, Tr::Proxy, accent))
         .push(labeled_toggle(
             fluent.get(Tr::EnableProxy),
@@ -2256,6 +2260,7 @@ fn advanced_view<'a>(
 
     column![]
         .spacing(SPACE_2XL)
+        .push(crate::ui::components::scroll_top_gap::view())
         .push(extension_view(fluent, theme, settings, port_status))
         .push(clipboard_col)
         .push(group_title(fluent, Tr::Performance, accent))
