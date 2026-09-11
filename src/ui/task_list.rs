@@ -383,6 +383,23 @@ fn task_card<'a>(
         )
     };
 
+    let redownload_btn: Element<'a, Message> = {
+        let can_redownload = !t.url.is_empty() || t.info_hash.is_some();
+        let btn = button(icon::refresh().size(FONT_ICON).color(text_secondary))
+            .padding(PADDING_ICON_BTN)
+            .style(theme::style::button::toolbar_icon(false));
+        let btn = if can_redownload {
+            btn.on_press(Message::Task(TaskMsg::RedownloadTask(t.gid.clone())))
+        } else {
+            btn
+        };
+        tip::standard(
+            btn,
+            text(fluent.get(Tr::ReDownload)).size(FONT_SMALL),
+            tooltip::Position::Bottom,
+        )
+    };
+
     let pause_resume_btn: Element<'a, Message> = match t.status {
         TaskStatus::Active | TaskStatus::Waiting => toolbar_icon(
             icon::pause().size(FONT_ICON).color(text_secondary),
@@ -394,27 +411,7 @@ fn task_card<'a>(
             Some(Message::Task(TaskMsg::ResumeTask(t.gid.clone()))),
             fluent.get(Tr::Resume),
         ),
-        TaskStatus::Completed => {
-            let can_redownload = !t.url.is_empty() || t.info_hash.is_some();
-            let btn = button(icon::refresh().size(FONT_ICON).color(text_secondary))
-                .padding(PADDING_ICON_BTN)
-                .style(theme::style::button::toolbar_icon(false));
-            let btn = if can_redownload {
-                btn.on_press(Message::Task(TaskMsg::RedownloadTask(t.gid.clone())))
-            } else {
-                btn
-            };
-            tip::standard(
-                btn,
-                text(fluent.get(Tr::ReDownload)).size(FONT_SMALL),
-                tooltip::Position::Bottom,
-            )
-        }
-        _ => toolbar_icon(
-            icon::pause().size(FONT_ICON).color(text_secondary),
-            None,
-            fluent.get(Tr::Pause),
-        ),
+        TaskStatus::Completed | TaskStatus::Error | TaskStatus::Removed => redownload_btn,
     };
 
     let show_in_folder_btn: Element<'a, Message> = if !t.save_dir.as_os_str().is_empty() {
