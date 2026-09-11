@@ -1,8 +1,8 @@
-//! Settings card controlling the post-task-completion shutdown behaviour.
+//! Shutdown popover card.
 //!
-//! Two toggles: shut down after all tasks complete, or shut down after a
-//! user-configured number of minutes. Used by the Download settings
-//! category.
+//! Toggles for "shutdown after all tasks complete" and "shutdown after a
+//! user-configured number of minutes". Rendered as a popover anchored to
+//! the sidebar power button (not inlined into the settings page).
 
 use iced::widget::{column, container, row, text, toggler};
 use iced::{Alignment, Element, Length};

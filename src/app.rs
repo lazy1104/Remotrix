@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use iced::alignment::{Horizontal, Vertical};
 use iced::futures::SinkExt;
-use iced::widget::{column, container, float, mouse_area, row, stack, text_editor};
+use iced::widget::{column, container, row, stack, text_editor};
 use iced::window::Id;
 use iced::{Element, Length, Padding, Subscription, Task, Vector};
 
@@ -1473,15 +1473,9 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         };
         let position = menu.position;
         let menu_el = ctx_menu::menu(&state.fluent, selected, menu.clipboard.clone(), menu.target);
-        stack![
-            mouse_area(
-                iced::widget::Space::new()
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            )
-            .on_press(Message::CtxClose)
-            .on_right_press(Message::CtxClose),
-            float::Float::new(menu_el).translate(move |bounds, viewport| {
+        crate::ui::components::popover::popover(
+            menu_el,
+            move |bounds, viewport| {
                 let px = position
                     .x
                     .clamp(0.0, (viewport.width - bounds.width).max(0.0));
@@ -1489,53 +1483,37 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                     .y
                     .clamp(0.0, (viewport.height - bounds.height).max(0.0));
                 Vector::new(px - bounds.x, py - bounds.y)
-            }),
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+            },
+            Some(Message::CtxClose),
+        )
     } else {
         iced::widget::Space::new().into()
     };
 
     let shutdown_layer: iced::Element<'_, Message> = if state.shutdown.card_open {
-        let card = crate::ui::shutdown_card::view(&state.fluent, t, &state.shutdown);
-        stack![
-            mouse_area(
-                iced::widget::Space::new()
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            )
-            .on_press(Message::Shutdown(crate::message::ShutdownMsg::CloseCard)),
-            float::Float::new(card).translate(move |bounds, viewport| {
+        let card = crate::ui::components::shutdown_popover::view(&state.fluent, t, &state.shutdown);
+        crate::ui::components::popover::popover(
+            card,
+            move |bounds, viewport| {
                 let x = SIDEBAR_W + 8.0;
                 let y = (viewport.height - SHUTDOWN_CARD_ANCHOR)
                     .clamp(0.0, (viewport.height - bounds.height).max(0.0));
                 Vector::new(x - bounds.x, y - bounds.y)
-            }),
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+            },
+            Some(Message::Shutdown(crate::message::ShutdownMsg::CloseCard)),
+        )
     } else {
         iced::widget::Space::new().into()
     };
 
     let speed_popover_layer: iced::Element<'_, Message> = if state.speed_limit_popover_open {
-        let card_body = crate::ui::components::speed_limit_popover::view(&state.fluent, state);
+        let card_body = crate::ui::components::speed_popover::view(&state.fluent, state);
         let card = container(card_body)
             .padding(PADDING_CARD)
             .style(theme::style::subtle);
-        stack![
-            mouse_area(
-                iced::widget::Space::new()
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            )
-            .on_press(Message::Dialog(
-                crate::message::DialogMsg::CloseSpeedLimitPopover
-            )),
-            float::Float::new(card).translate(move |bounds, viewport| {
+        crate::ui::components::popover::popover(
+            card,
+            move |bounds, viewport| {
                 let x = (viewport.width - bounds.width - 16.0)
                     .clamp(0.0, (viewport.width - bounds.width).max(0.0));
                 let y = (viewport.height
@@ -1545,11 +1523,11 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                     - bounds.height)
                     .clamp(0.0, (viewport.height - bounds.height).max(0.0));
                 Vector::new(x - bounds.x, y - bounds.y)
-            }),
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+            },
+            Some(Message::Dialog(
+                crate::message::DialogMsg::CloseSpeedLimitPopover,
+            )),
+        )
     } else {
         iced::widget::Space::new().into()
     };

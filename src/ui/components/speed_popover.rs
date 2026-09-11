@@ -1,3 +1,8 @@
+//! Speed-limit popover card.
+//!
+//! Two `number_stepper`s (download / upload) plus unit pick-lists. Rendered
+//! as a popover anchored to the HUD capsule in the bottom-right corner.
+
 use iced::widget::{column, container, pick_list, row, text};
 use iced::{Alignment, Element, Length};
 
@@ -5,9 +10,9 @@ use crate::app::Remotrix;
 use crate::i18n::{Fluent, Tr};
 use crate::message::{DialogMsg, Message, SettingKey, SpeedUnit};
 use crate::ui::components::number_stepper::number_stepper;
+use crate::ui::components::CONTROL_HEIGHT;
 use crate::ui::dims::*;
 use crate::ui::theme;
-use crate::ui::components::CONTROL_HEIGHT;
 
 const STEP_W: f32 = 140.0;
 const UNIT_W: f32 = 72.0;
@@ -110,11 +115,11 @@ pub fn view<'a>(fluent: &'a Fluent, state: &'a Remotrix) -> Element<'a, Message>
 
     let labels_col = column![
         container(text(fluent.get(Tr::DownloadLimit)).size(FONT_MEDIUM))
-        .height(Length::Fixed(CONTROL_HEIGHT))
-        .align_y(Alignment::Center),
+            .height(Length::Fixed(CONTROL_HEIGHT))
+            .align_y(Alignment::Center),
         container(text(fluent.get(Tr::UploadLimit)).size(FONT_MEDIUM))
-        .height(Length::Fixed(CONTROL_HEIGHT))
-        .align_y(Alignment::Center),
+            .height(Length::Fixed(CONTROL_HEIGHT))
+            .align_y(Alignment::Center),
     ]
     .spacing(SPACE_MD);
 
