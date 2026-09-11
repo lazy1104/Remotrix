@@ -2248,6 +2248,141 @@ async fn boot(
     Ok((sidecar, applied))
 }
 
+async fn poll_loop(poll_client: Client, poll_event_tx: EventTx) {
+    let mut ticker = interval(Duration::from_millis(1000));
+    let mut slow = interval(Duration::from_secs(10));
+    let mut stopped_seen: HashSet<String> = HashSet::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut terminal: HashSet<String> = HashSet::new();
+    let mut orphan_grace: HashMap<String, u32> = HashMap::new();
+    let mut last_logged_pct: HashMap<String, u32> = HashMap::new();
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {
+                let active = match timeout(RPC_TIMEOUT, poll_client.tell_active()).await {
+                    Ok(Ok(list)) => list,
+                    Ok(Err(e)) => {
+                        tracing::warn!("tell_active: {e}");
+                        continue;
+                    }
+                    Err(_) => {
+                        tracing::warn!("tell_active timed out; skipping tick");
+                        continue;
+                    }
+                };
+                for s in &active {
+                    stopped_seen.remove(&s.gid);
+                    let total = s.total_length;
+                    let pct = if total > 0 {
+                        ((s.completed_length as u128 * 100) / total as u128) as u32
+                    } else {
+                        0
+                    };
+                    match last_logged_pct.get(&s.gid) {
+                        None => {
+                            tracing::info!(?s.gid, pct, "download started");
+                            last_logged_pct.insert(s.gid.clone(), pct);
+                        }
+                        Some(&last) if pct >= last.saturating_add(5) => {
+                            tracing::info!(
+                                ?s.gid, pct, speed = s.download_speed,
+                                "download progress"
+                            );
+                            last_logged_pct.insert(s.gid.clone(), pct);
+                        }
+                        _ => {}
+                    }
+                    emit_progress(&poll_event_tx, s).await;
+                }
+                match timeout(RPC_TIMEOUT, poll_client.get_global_stat()).await {
+                    Ok(Ok(stat)) => {
+                        let _ = poll_event_tx.send(EngineEvent::GlobalSpeed {
+                            download: stat.download_speed,
+                            upload: stat.upload_speed,
+                        });
+                    }
+                    Ok(Err(e)) => tracing::warn!("get_global_stat: {e}"),
+                    Err(_) => tracing::debug!("get_global_stat timed out"),
+                }
+            }
+            _ = slow.tick() => {
+                let (active_res, waiting_res, stopped_res) = tokio::join!(
+                    timeout(RPC_TIMEOUT, poll_client.tell_active()),
+                    timeout(RPC_TIMEOUT, poll_client.tell_waiting(-1, 1000)),
+                    timeout(RPC_TIMEOUT, poll_client.tell_stopped(-1, 1000)),
+                );
+                let (active, waiting, stopped) = match (active_res, waiting_res, stopped_res) {
+                    (Ok(Ok(a)), Ok(Ok(w)), Ok(Ok(s))) => (a, w, s),
+                    _ => {
+                        tracing::debug!("slow scan skipped (rpc failure/timeout)");
+                        continue;
+                    }
+                };
+                let mut all = active;
+                all.extend(waiting);
+                all.extend(stopped);
+                let mut current: HashSet<&str> = HashSet::with_capacity(all.len());
+                for s in &all {
+                    current.insert(s.gid.as_str());
+                    if seen.insert(s.gid.clone()) {
+                        emit_added(&poll_event_tx, s, TaskAdvancedOptions::default()).await;
+                    }
+                    let is_terminal = matches!(
+                        s.status,
+                        Aria2TaskStatus::Complete
+                            | Aria2TaskStatus::Error
+                            | Aria2TaskStatus::Removed
+                    );
+                    if is_terminal {
+                        terminal.insert(s.gid.clone());
+                        if stopped_seen.insert(s.gid.clone()) {
+                            match s.status {
+                                Aria2TaskStatus::Complete => {
+                                    tracing::info!(?s.gid, "download finished")
+                                }
+                                _ => tracing::warn!(?s.gid, "download failed"),
+                            }
+                            emit_progress(&poll_event_tx, s).await;
+                        }
+                    } else {
+                        stopped_seen.remove(&s.gid);
+                        if s.status != Aria2TaskStatus::Active {
+                            emit_progress(&poll_event_tx, s).await;
+                        }
+                    }
+                }
+                for g in &seen {
+                    if current.contains(g.as_str()) {
+                        orphan_grace.remove(g.as_str());
+                    }
+                }
+                let orphans: Vec<String> = seen
+                    .iter()
+                    .filter(|g| !current.contains(g.as_str()) && !terminal.contains(*g))
+                    .cloned()
+                    .collect();
+                for gid in orphans {
+                    let count = orphan_grace.entry(gid.clone()).or_insert(0);
+                    *count += 1;
+                    if *count < 2 {
+                        continue;
+                    }
+                    tracing::info!(?gid, "orphan task detected, removing");
+                    let _ = poll_event_tx.send(EngineEvent::Removed(gid.clone()));
+                    orphan_grace.remove(&gid);
+                    seen.remove(&gid);
+                    terminal.remove(&gid);
+                    stopped_seen.remove(&gid);
+                }
+                seen.retain(|g| current.contains(g.as_str()) || orphan_grace.contains_key(g));
+                terminal.retain(|g| current.contains(g.as_str()));
+                stopped_seen.retain(|g| current.contains(g.as_str()));
+                last_logged_pct.retain(|g, _| current.contains(g.as_str()));
+            }
+        }
+    }
+}
+
 fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>> {
     let _ = event_tx.send(EngineEvent::EngineReady);
     let _ = event_tx.send(EngineEvent::Aria2Version {
@@ -2308,137 +2443,10 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
     let poll_client = sidecar.client.clone();
     let poll_event_tx = event_tx.clone();
     handles.push(tokio::spawn(async move {
-        let mut ticker = interval(Duration::from_millis(1000));
-        let mut slow = interval(Duration::from_secs(10));
-        let mut stopped_seen: HashSet<String> = HashSet::new();
-        let mut seen: HashSet<String> = HashSet::new();
-        let mut terminal: HashSet<String> = HashSet::new();
-        let mut orphan_grace: HashMap<String, u32> = HashMap::new();
-        let mut last_logged_pct: HashMap<String, u32> = HashMap::new();
         loop {
-            tokio::select! {
-                _ = ticker.tick() => {
-                    let active = match timeout(RPC_TIMEOUT, poll_client.tell_active()).await {
-                        Ok(Ok(list)) => list,
-                        Ok(Err(e)) => {
-                            tracing::warn!("tell_active: {e}");
-                            continue;
-                        }
-                        Err(_) => {
-                            tracing::warn!("tell_active timed out; skipping tick");
-                            continue;
-                        }
-                    };
-                    for s in &active {
-                        stopped_seen.remove(&s.gid);
-                        let total = s.total_length;
-                        let pct = if total > 0 {
-                            ((s.completed_length as u128 * 100) / total as u128) as u32
-                        } else {
-                            0
-                        };
-                        match last_logged_pct.get(&s.gid) {
-                            None => {
-                                tracing::info!(?s.gid, pct, "download started");
-                                last_logged_pct.insert(s.gid.clone(), pct);
-                            }
-                            Some(&last) if pct >= last.saturating_add(5) => {
-                                tracing::info!(
-                                    ?s.gid, pct, speed = s.download_speed,
-                                    "download progress"
-                                );
-                                last_logged_pct.insert(s.gid.clone(), pct);
-                            }
-                            _ => {}
-                        }
-                        emit_progress(&poll_event_tx, s).await;
-                    }
-                    match timeout(RPC_TIMEOUT, poll_client.get_global_stat()).await {
-                        Ok(Ok(stat)) => {
-                            let _ = poll_event_tx.send(EngineEvent::GlobalSpeed {
-                                download: stat.download_speed,
-                                upload: stat.upload_speed,
-                            });
-                        }
-                        Ok(Err(e)) => tracing::warn!("get_global_stat: {e}"),
-                        Err(_) => tracing::debug!("get_global_stat timed out"),
-                    }
-                }
-                _ = slow.tick() => {
-                    let (active_res, waiting_res, stopped_res) = tokio::join!(
-                        poll_client.tell_active(),
-                        poll_client.tell_waiting(-1, 1000),
-                        poll_client.tell_stopped(-1, 1000),
-                    );
-                    let (active, waiting, stopped) = match (active_res, waiting_res, stopped_res) {
-                        (Ok(a), Ok(w), Ok(s)) => (a, w, s),
-                        _ => {
-                            tracing::debug!("slow scan skipped (rpc failure)");
-                            continue;
-                        }
-                    };
-                    let mut all = active;
-                    all.extend(waiting);
-                    all.extend(stopped);
-                    let mut current: HashSet<&str> = HashSet::with_capacity(all.len());
-                    for s in &all {
-                        current.insert(s.gid.as_str());
-                        if seen.insert(s.gid.clone()) {
-                            emit_added(&poll_event_tx, s, TaskAdvancedOptions::default()).await;
-                        }
-                        let is_terminal = matches!(
-                            s.status,
-                            Aria2TaskStatus::Complete
-                                | Aria2TaskStatus::Error
-                                | Aria2TaskStatus::Removed
-                        );
-                        if is_terminal {
-                            terminal.insert(s.gid.clone());
-                            if stopped_seen.insert(s.gid.clone()) {
-                                match s.status {
-                                    Aria2TaskStatus::Complete => {
-                                        tracing::info!(?s.gid, "download finished")
-                                    }
-                                    _ => tracing::warn!(?s.gid, "download failed"),
-                                }
-                                emit_progress(&poll_event_tx, s).await;
-                            }
-                        } else {
-                            stopped_seen.remove(&s.gid);
-                            if s.status != Aria2TaskStatus::Active {
-                                emit_progress(&poll_event_tx, s).await;
-                            }
-                        }
-                    }
-                    for g in &seen {
-                        if current.contains(g.as_str()) {
-                            orphan_grace.remove(g.as_str());
-                        }
-                    }
-                    let orphans: Vec<String> = seen
-                        .iter()
-                        .filter(|g| !current.contains(g.as_str()) && !terminal.contains(*g))
-                        .cloned()
-                        .collect();
-                    for gid in orphans {
-                        let count = orphan_grace.entry(gid.clone()).or_insert(0);
-                        *count += 1;
-                        if *count < 2 {
-                            continue;
-                        }
-                        tracing::info!(?gid, "orphan task detected, removing");
-                        let _ = poll_event_tx.send(EngineEvent::Removed(gid.clone()));
-                        orphan_grace.remove(&gid);
-                        seen.remove(&gid);
-                        terminal.remove(&gid);
-                        stopped_seen.remove(&gid);
-                    }
-                    seen.retain(|g| current.contains(g.as_str()) || orphan_grace.contains_key(g));
-                    terminal.retain(|g| current.contains(g.as_str()));
-                    stopped_seen.retain(|g| current.contains(g.as_str()));
-                    last_logged_pct.retain(|g, _| current.contains(g.as_str()));
-                }
-            }
+            poll_loop(poll_client.clone(), poll_event_tx.clone()).await;
+            tracing::warn!("progress poll loop exited; restarting");
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
     }));
 
