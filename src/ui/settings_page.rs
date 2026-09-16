@@ -1786,9 +1786,13 @@ fn ed2k_view<'a>(
                 .size(FONT_SMALL)
                 .style(theme::style::text::secondary),
         )
-        .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
-        .push(group_title(fluent, Tr::Ed2kSearch, accent))
-        .push(ed2k_search_view(fluent, theme, settings_ui))
+        // ED2K Search section temporarily hidden — aria2-next's
+        // aria2.ed2kSearch option contract is unstable across builds.
+        // Engine plumbing (Ed2kSearchStart cmd, Ed2kSearch* events)
+        // is intentionally retained so re-enabling is a one-line revert.
+        // .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
+        // .push(group_title(fluent, Tr::Ed2kSearch, accent))
+        // .push(ed2k_search_view(fluent, theme, settings_ui))
         .push(follow_metalink_row(fluent, theme, settings, accent))
         .into()
 }
@@ -1880,6 +1884,7 @@ fn follow_metalink_row<'a>(
         .into()
 }
 
+#[allow(dead_code)]
 fn ed2k_search_view<'a>(
     fluent: &'a Fluent,
     _theme: &'a iced::Theme,
@@ -2043,6 +2048,7 @@ fn ed2k_search_session_card<'a>(
         .into()
 }
 
+#[allow(dead_code)]
 struct Ed2kResultEntry {
     name: String,
     size_bytes: Option<u64>,
@@ -2050,6 +2056,7 @@ struct Ed2kResultEntry {
     ed2k_link: Option<String>,
 }
 
+#[allow(dead_code)]
 fn parse_ed2k_results(value: &serde_json::Value) -> Vec<Ed2kResultEntry> {
     let Some(arr) = value.get("results").and_then(|r| r.as_array()) else {
         return Vec::new();
