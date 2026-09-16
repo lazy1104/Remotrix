@@ -295,3 +295,106 @@ impl Db {
         }
     }
 }
+
+/// Open a fresh, read-only SQLite connection against `path`. Intended for
+/// one-shot lookups (e.g. engine spawn-time pruning) where we don't want to
+/// contend with the main `Db` mutex.
+fn open_readonly(path: &Path) -> Result<Connection, String> {
+    let conn = Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| format!("open db readonly: {e}"))?;
+    conn.execute_batch("PRAGMA busy_timeout=5000;")
+        .map_err(|e| format!("db pragma: {e}"))?;
+    Ok(conn)
+}
+
+/// Return `true` iff the DB at `path` records `gid` with status="error".
+/// Used by the engine on startup to decide which entries of aria2's
+/// `session.txt` to strip so that previously-failed tasks are not
+/// auto-restored on the next `--input-file` replay.
+///
+/// Any failure (missing DB, missing table, I/O error) collapses to `false`
+/// so the caller can keep going without blocking the spawn path.
+pub fn is_task_error(path: &Path, gid: &str) -> bool {
+    let conn = match open_readonly(path) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(error = %e, "is_task_error: open failed");
+            return false;
+        }
+    };
+    let mut stmt = match conn.prepare("SELECT status FROM tasks WHERE gid = ?1 LIMIT 1") {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(error = %e, "is_task_error: prepare failed");
+            return false;
+        }
+    };
+    let status: Result<String, _> = stmt.query_row(rusqlite::params![gid], |row| row.get(0));
+    match status {
+        Ok(s) => s == "error",
+        Err(rusqlite::Error::QueryReturnedNoRows) => false,
+        Err(e) => {
+            tracing::warn!(error = %e, "is_task_error: query failed");
+            false
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_db() -> std::path::PathBuf {
+        let mut p = std::env::temp_dir();
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        p.push(format!("remotrix_is_task_error_{nonce}.db"));
+        p
+    }
+
+    #[test]
+    fn returns_false_when_db_missing() {
+        let mut p = std::env::temp_dir();
+        p.push("definitely_does_not_exist_xyz.db");
+        let _ = std::fs::remove_file(&p);
+        assert!(!is_task_error(&p, "anything"));
+    }
+
+    #[test]
+    fn detects_error_status_and_skips_other_statuses() {
+        let path = temp_db();
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE tasks (
+                gid TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                name TEXT NOT NULL DEFAULT ''
+             );",
+        )
+        .unwrap();
+        conn.execute("INSERT INTO tasks(gid, status) VALUES ('err1','error')", [])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO tasks(gid, status) VALUES ('paused1','paused')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO tasks(gid, status) VALUES ('done1','complete')",
+            [],
+        )
+        .unwrap();
+
+        assert!(is_task_error(&path, "err1"));
+        assert!(!is_task_error(&path, "paused1"));
+        assert!(!is_task_error(&path, "done1"));
+        assert!(!is_task_error(&path, "nope"));
+
+        let _ = std::fs::remove_file(&path);
+    }
+}
