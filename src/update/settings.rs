@@ -578,12 +578,17 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
             Task::none()
         }
         SettingsMsg::Ed2kBootstrapSyncNow => {
+            if state.settings_ui.syncing_bootstrap {
+                return Task::none();
+            }
+            state.settings_ui.syncing_bootstrap = true;
             if state
                 .handle
                 .cmd_tx
                 .send(EngineCmd::Ed2kBootstrapSyncNow)
                 .is_err()
             {
+                state.settings_ui.syncing_bootstrap = false;
                 tracing::warn!("ui: ed2k bootstrap sync now send failed");
             }
             Task::none()

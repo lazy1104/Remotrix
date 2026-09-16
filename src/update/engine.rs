@@ -947,6 +947,7 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
             nodes_dat_modified,
         } => {
             state.settings_ui.ed2k_bootstrap_status = (server_met_modified, nodes_dat_modified);
+            state.settings_ui.syncing_bootstrap = false;
             spawn_toast(
                 state,
                 ToastGroup::General,
@@ -958,6 +959,7 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
             Task::none()
         }
         EngineEvent::Ed2kBootstrapSyncFailed { error } => {
+            state.settings_ui.syncing_bootstrap = false;
             spawn_toast(
                 state,
                 ToastGroup::General,

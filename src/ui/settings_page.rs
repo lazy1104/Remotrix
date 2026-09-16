@@ -55,6 +55,7 @@ pub struct SettingsUiState {
     pub schedule_days_menu_open: bool,
     pub custom_tracker_input: String,
     pub syncing_trackers: bool,
+    pub syncing_bootstrap: bool,
     pub tracker_sync_toast_id: Option<u64>,
     pub ed2k_search_state: Ed2kSearchUiState,
     pub ed2k_bootstrap_status: (Option<i64>, Option<i64>),
@@ -192,6 +193,7 @@ impl SettingsUiState {
             schedule_days_menu_open: false,
             custom_tracker_input: String::new(),
             syncing_trackers: false,
+            syncing_bootstrap: false,
             tracker_sync_toast_id: None,
             ed2k_search_state: Ed2kSearchUiState::new(),
             ed2k_bootstrap_status: crate::ed2k_bootstrap::bootstrap_status(),
@@ -604,27 +606,13 @@ fn general_view<'a>(
                     settings.update.aria2_silent_update,
                     SettingKey::Aria2SilentUpdate,
                 ),
-                row![
-                    iced::widget::Space::new().width(Length::Fixed(200.0)),
-                    text(fluent.get(Tr::Aria2SilentUpdateHint))
-                        .size(FONT_TINY)
-                        .style(theme::style::text::secondary),
-                ]
-                .align_y(Alignment::Center)
-                .into(),
+                labeled_hint(fluent.get(Tr::Aria2SilentUpdateHint)),
                 labeled_toggle(
                     fluent.get(Tr::UpdateBetaChannel),
                     settings.update.beta_channel,
                     SettingKey::BetaChannel,
                 ),
-                row![
-                    iced::widget::Space::new().width(Length::Fixed(200.0)),
-                    text(fluent.get(Tr::UpdateBetaChannelHint))
-                        .size(FONT_TINY)
-                        .style(theme::style::text::secondary),
-                ]
-                .align_y(Alignment::Center)
-                .into(),
+                labeled_hint(fluent.get(Tr::UpdateBetaChannelHint)),
             ])
         } else {
             iced::widget::Space::new().height(Length::Fixed(0.0)).into()
@@ -1222,13 +1210,7 @@ fn download_view<'a>(
                             ),
                         )
                     },
-                    setting_row_auto(
-                        String::new(),
-                        text(fluent.get(Tr::ScheduleHint))
-                            .size(FONT_SMALL)
-                            .style(theme::style::text::secondary)
-                            .into(),
-                    ),
+                    labeled_hint(fluent.get(Tr::ScheduleHint)),
                 ])
             } else {
                 iced::widget::Space::new().height(Length::Fixed(0.0)).into()
@@ -1500,13 +1482,7 @@ fn bittorrent_view<'a>(
         .style(theme::style::button::secondary())
         .into(),
     ));
-    tracker_rows.push(setting_row_auto(
-        String::new(),
-        text(format!("{count_str} · {last_sync_str}"))
-            .size(FONT_SMALL)
-            .style(theme::style::text::secondary)
-            .into(),
-    ));
+    tracker_rows.push(labeled_hint(format!("{count_str} · {last_sync_str}")));
     tracker_rows.push(labeled_editor(
         fluent.get(Tr::BtTracker),
         bt_tracker_editor,
@@ -1625,7 +1601,7 @@ fn ed2k_view<'a>(
     >,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme);
-    let text_secondary = theme::text_secondary(theme);
+    let syncing_bootstrap = settings_ui.syncing_bootstrap;
     let bootstrap_auto = settings.aria2.ed2k_bootstrap_auto_sync;
     let server_met_placeholder = fluent.get_args(
         Tr::Ed2kBootstrapServerMetUrlPlaceholder,
@@ -1736,11 +1712,7 @@ fn ed2k_view<'a>(
             SettingKey::Ed2kUploadSlots,
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(8.0)))
-        .push(
-            text(fluent.get(Tr::Ed2kRestartHint))
-                .size(FONT_SMALL)
-                .style(theme::style::text::secondary),
-        )
+        .push(labeled_hint(fluent.get(Tr::Ed2kRestartHint)))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::Ed2kBootstrapSync, accent))
         .push(labeled_toggle(
@@ -1769,23 +1741,38 @@ fn ed2k_view<'a>(
             false,
             &nodes_dat_placeholder,
         ))
-        .push(
-            row![]
-                .push(
-                    button(text(fluent.get(Tr::Ed2kBootstrapSyncNow)).size(FONT_BODY))
-                        .on_press(Message::Settings(SettingsMsg::Ed2kBootstrapSyncNow))
-                        .padding(PADDING_BUTTON_SM)
-                        .style(theme::style::button::secondary()),
+        .push(setting_row_auto(
+            fluent.get(Tr::Ed2kBootstrapSyncNow),
+            column![
+                button(
+                    row![
+                        if syncing_bootstrap {
+                            crate::ui::components::spinner::Spinner::refresh(
+                                accent,
+                                FONT_ICON as f32,
+                            )
+                            .view()
+                        } else {
+                            icon::circle_fading_arrow_up().size(FONT_ICON).into()
+                        },
+                        text(fluent.get(Tr::Ed2kBootstrapSyncNow)).size(FONT_BODY),
+                    ]
+                    .spacing(SPACE_SM)
+                    .align_y(Alignment::Center),
                 )
-                .push(iced::widget::Space::new().width(Length::Fill))
-                .align_y(Alignment::Center),
-        )
-        .push(bootstrap_status_line(fluent, settings_ui, text_secondary))
-        .push(
-            text(fluent.get(Tr::Ed2kBootstrapManagedDefaultHint))
-                .size(FONT_SMALL)
-                .style(theme::style::text::secondary),
-        )
+                .on_press_maybe(if syncing_bootstrap {
+                    None
+                } else {
+                    Some(Message::Settings(SettingsMsg::Ed2kBootstrapSyncNow))
+                })
+                .padding(PADDING_BUTTON_SM)
+                .height(Length::Fixed(crate::ui::components::CONTROL_HEIGHT))
+                .style(theme::style::button::secondary()),
+                bootstrap_status_column(fluent, settings_ui),
+            ]
+            .spacing(SPACE_XS)
+            .into(),
+        ))
         // ED2K Search section temporarily hidden — aria2-next's
         // aria2.ed2kSearch option contract is unstable across builds.
         // Engine plumbing (Ed2kSearchStart cmd, Ed2kSearch* events)
@@ -1797,10 +1784,9 @@ fn ed2k_view<'a>(
         .into()
 }
 
-fn bootstrap_status_line<'a>(
+fn bootstrap_status_column<'a>(
     fluent: &'a Fluent,
     settings_ui: &'a SettingsUiState,
-    _text_secondary: iced::Color,
 ) -> Element<'a, Message> {
     let (sm_modified, nd_modified) = settings_ui.ed2k_bootstrap_status;
     let fmt = |ms: Option<i64>| {
@@ -1823,43 +1809,42 @@ fn bootstrap_status_line<'a>(
         .as_deref()
         .and_then(|p| std::fs::metadata(p).ok())
         .map(|m| format_size(m.len()));
-    column![]
-        .spacing(SPACE_XS)
-        .push(
-            text(format!(
-                "{}: {}",
-                fluent.get(Tr::Ed2kBootstrapServerMetModified),
-                fmt(sm_modified)
-            ))
+    column![
+        text(format!(
+            "{}: {}",
+            fluent.get(Tr::Ed2kBootstrapServerMetModified),
+            fmt(sm_modified)
+        ))
+        .size(FONT_SMALL)
+        .style(theme::style::text::secondary),
+        text(format!(
+            "{}: {}",
+            fluent.get(Tr::Ed2kBootstrapNodesDatModified),
+            fmt(nd_modified)
+        ))
+        .size(FONT_SMALL)
+        .style(theme::style::text::secondary),
+        text(fluent.get_args(Tr::Ed2kBootstrapCacheStatus, &{
+            let mut a = std::collections::HashMap::new();
+            a.insert(
+                std::borrow::Cow::from("server-met-size"),
+                sm_size.unwrap_or_else(|| "-".into()).into(),
+            );
+            a.insert(
+                std::borrow::Cow::from("nodes-dat-size"),
+                nd_size.unwrap_or_else(|| "-".into()).into(),
+            );
+            a
+        }))
+        .size(FONT_SMALL)
+        .style(theme::style::text::secondary),
+        text(fluent.get(Tr::Ed2kBootstrapManagedDefaultHint))
             .size(FONT_SMALL)
             .style(theme::style::text::secondary),
-        )
-        .push(
-            text(format!(
-                "{}: {}",
-                fluent.get(Tr::Ed2kBootstrapNodesDatModified),
-                fmt(nd_modified)
-            ))
-            .size(FONT_SMALL)
-            .style(theme::style::text::secondary),
-        )
-        .push(
-            text(fluent.get_args(Tr::Ed2kBootstrapCacheStatus, &{
-                let mut a = std::collections::HashMap::new();
-                a.insert(
-                    std::borrow::Cow::from("server-met-size"),
-                    sm_size.unwrap_or_else(|| "-".into()).into(),
-                );
-                a.insert(
-                    std::borrow::Cow::from("nodes-dat-size"),
-                    nd_size.unwrap_or_else(|| "-".into()).into(),
-                );
-                a
-            }))
-            .size(FONT_SMALL)
-            .style(theme::style::text::secondary),
-        )
-        .into()
+    ]
+    .spacing(SPACE_XS)
+    .width(Length::Fill)
+    .into()
 }
 
 fn follow_metalink_row<'a>(
@@ -1876,11 +1861,7 @@ fn follow_metalink_row<'a>(
             settings.aria2.follow_metalink,
             SettingKey::FollowMetalink,
         ))
-        .push(
-            text(fluent.get(Tr::FollowMetalinkHint))
-                .size(FONT_SMALL)
-                .style(theme::style::text::secondary),
-        )
+        .push(labeled_hint(fluent.get(Tr::FollowMetalinkHint)))
         .into()
 }
 
@@ -2142,14 +2123,7 @@ fn proxy_fields<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, M
                 false,
                 &address,
             ),
-            row![
-                iced::widget::Space::new().width(Length::Fixed(200.0)),
-                text(fluent.get(Tr::ProxyProtocolHint))
-                    .size(FONT_TINY)
-                    .style(theme::style::text::secondary),
-            ]
-            .align_y(Alignment::Center)
-            .into(),
+            labeled_hint(fluent.get(Tr::ProxyProtocolHint)),
             labeled_text_input(
                 fluent.get(Tr::ProxyUsername),
                 &settings.aria2.proxy_username,
@@ -2446,11 +2420,7 @@ fn logging_view<'a>(
     ));
 
     if engine_restart_pending || settings.log.engine_level != applied_settings.log.engine_level {
-        col = col.push(
-            text(fluent.get(Tr::LogLevelEngineHint))
-                .size(FONT_SMALL)
-                .style(theme::style::text::secondary),
-        );
+        col = col.push(labeled_hint(fluent.get(Tr::LogLevelEngineHint)));
     }
 
     col = col.push(setting_row(
@@ -2620,6 +2590,16 @@ fn setting_row_auto<'a>(label: String, control: Element<'a, Message>) -> Element
         .push(control)
         .align_y(Alignment::Start)
         .into()
+}
+
+fn labeled_hint<'a>(text: String) -> Element<'a, Message> {
+    setting_row_auto(
+        String::new(),
+        text::Text::new(text)
+            .size(FONT_SMALL)
+            .style(theme::style::text::secondary)
+            .into(),
+    )
 }
 
 fn sub_items<'a>(children: impl IntoIterator<Item = Element<'a, Message>>) -> Element<'a, Message> {
