@@ -695,6 +695,14 @@ fn advanced_form<'a>(
             false,
             ctx_mirrors
         ),
+        row![
+            iced::widget::Space::new().width(Length::Fixed(140.0)),
+            text(fluent.get(Tr::ProxyProtocolHint))
+                .size(FONT_TINY)
+                .style(theme::style::text::secondary),
+        ]
+        .align_y(Alignment::Center)
+        .width(Length::Fill),
         advanced_field(
             fluent,
             Tr::ProxyUsername,

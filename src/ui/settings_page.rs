@@ -2109,6 +2109,14 @@ fn proxy_fields<'a>(fluent: &'a Fluent, settings: &'a Settings) -> Element<'a, M
                 false,
                 &address,
             ),
+            row![
+                iced::widget::Space::new().width(Length::Fixed(200.0)),
+                text(fluent.get(Tr::ProxyProtocolHint))
+                    .size(FONT_TINY)
+                    .style(theme::style::text::secondary),
+            ]
+            .align_y(Alignment::Center)
+            .into(),
             labeled_text_input(
                 fluent.get(Tr::ProxyUsername),
                 &settings.aria2.proxy_username,
