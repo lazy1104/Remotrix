@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use aria2_ws::response::TaskStatus as Aria2TaskStatus;
 use aria2_ws::{Client, Event, Notification, TaskOptions};
+use std::time::Instant;
 use tokio::io::AsyncBufReadExt;
 use tokio::process::{Child, Command};
 use tokio::sync::mpsc;
@@ -125,6 +126,7 @@ pub enum EngineCmd {
     Ed2kSearchStart {
         keyword: String,
         options: serde_json::Map<String, serde_json::Value>,
+        timeout_secs: u32,
     },
     Ed2kSearchCleanup {
         gid: String,
@@ -350,6 +352,15 @@ impl Sidecar {
         #[cfg(windows)]
         cmd.creation_flags(0x08000000);
         for arg in settings.aria2.ed2k_startup_args() {
+            cmd.arg(arg);
+        }
+        let mut managed_ed2k = Vec::new();
+        if let Err(e) =
+            crate::ed2k_bootstrap::inject_managed_bootstrap_args(&mut managed_ed2k, &settings.aria2)
+        {
+            tracing::warn!(error = %e, "ed2k: managed bootstrap injection skipped");
+        }
+        for arg in managed_ed2k {
             cmd.arg(arg);
         }
         if let Some(log_file) = crate::logging::engine_log_path() {
@@ -870,6 +881,7 @@ async fn add_download_internal(
         );
     }
     let dir = save_dir.to_string_lossy().to_string();
+    let aria2 = crate::config::load();
     let mut added = 0;
     for url in urls {
         let mut opts = options.clone();
@@ -881,6 +893,18 @@ async fn add_download_internal(
             }
         }
         apply_bt_url_options(&mut opts, url, bt_metadata_only);
+        if url
+            .trim_start()
+            .to_ascii_lowercase()
+            .starts_with("ed2k://|file|")
+        {
+            if let Err(e) = crate::ed2k_bootstrap::inject_managed_bootstrap_options(
+                &mut opts.extra_options,
+                &aria2.aria2,
+            ) {
+                tracing::warn!(url = %url, error = %e, "ed2k download: managed bootstrap injection failed");
+            }
+        }
         match client
             .add_uri(vec![url.clone()], Some(opts), None, None)
             .await
@@ -1539,8 +1563,12 @@ async fn handle_client_cmd(
                 tracing::warn!(?path, error = ?e, "add metalink failed");
             }
         }
-        EngineCmd::Ed2kSearchStart { keyword, options } => {
-            ed2k_search_start(client, &keyword, options, event_tx).await;
+        EngineCmd::Ed2kSearchStart {
+            keyword,
+            options,
+            timeout_secs,
+        } => {
+            ed2k_search_start(client, &keyword, options, timeout_secs, event_tx).await;
         }
         EngineCmd::Ed2kSearchCleanup { gid } => {
             ed2k_search_cleanup(client, &gid, event_tx).await;
@@ -2077,6 +2105,7 @@ async fn ed2k_search_start(
     client: &Client,
     keyword: &str,
     options: serde_json::Map<String, serde_json::Value>,
+    timeout_secs: u32,
     event_tx: &EventTx,
 ) {
     let keyword_trim = keyword.trim();
@@ -2098,32 +2127,27 @@ async fn ed2k_search_start(
         }
     };
     let mut options = options;
-    options.insert(
-        "dir".to_string(),
-        serde_json::Value::String(search_dir.to_string_lossy().to_string()),
-    );
     let aria2 = crate::config::load();
-    if aria2.aria2.ed2k_server.trim().is_empty() {
+    if !aria2.aria2.ed2k_server.trim().is_empty() {
         options
             .entry("ed2k-server".to_string())
             .or_insert(serde_json::Value::String(
                 aria2.aria2.ed2k_server.trim().to_string(),
             ));
     }
-    if !aria2.aria2.ed2k_server_list.trim().is_empty() {
-        options
-            .entry("ed2k-server-list".to_string())
-            .or_insert(serde_json::Value::String(
-                aria2.aria2.ed2k_server_list.trim().to_string(),
-            ));
+    if let Err(e) =
+        crate::ed2k_bootstrap::inject_managed_bootstrap_options(&mut options, &aria2.aria2)
+    {
+        tracing::warn!(error = %e, "ed2k search: managed bootstrap injection failed");
     }
-    if !aria2.aria2.ed2k_node_list.trim().is_empty() {
-        options
-            .entry("ed2k-node-list".to_string())
-            .or_insert(serde_json::Value::String(
-                aria2.aria2.ed2k_node_list.trim().to_string(),
-            ));
-    }
+    let cache_status = crate::ed2k_bootstrap::bootstrap_status();
+    tracing::info!(
+        keyword = %keyword_trim,
+        ?options,
+        server_met_modified = ?cache_status.0,
+        nodes_dat_modified = ?cache_status.1,
+        "ed2k: dispatching ed2kSearch RPC"
+    );
     let params = vec![
         serde_json::Value::String(keyword_trim.to_string()),
         serde_json::Value::Object(options),
@@ -2148,10 +2172,20 @@ async fn ed2k_search_start(
             let poll_client = client.clone();
             let poll_event_tx = event_tx.clone();
             let poll_gid = gid.clone();
+            let poll_timeout_secs = timeout_secs.max(1);
             tokio::spawn(async move {
+                let deadline = Instant::now() + Duration::from_secs(poll_timeout_secs as u64);
                 loop {
                     tokio::time::sleep(Duration::from_secs(2)).await;
                     if !is_safe_gid(&poll_gid) {
+                        break;
+                    }
+                    if Instant::now() >= deadline {
+                        tracing::info!(
+                            ?poll_gid,
+                            timeout_secs = poll_timeout_secs,
+                            "ed2k search poll deadline reached"
+                        );
                         break;
                     }
                     match timeout(
@@ -2189,6 +2223,7 @@ async fn ed2k_search_start(
             });
         }
         Ok(Err(e)) => {
+            tracing::warn!(error = ?e, keyword = %keyword_trim, "ed2k: ed2kSearch RPC returned error");
             cleanup_ed2k_search_dir(&search_dir);
             let _ = event_tx.send(EngineEvent::Ed2kSearchFailed {
                 gid: String::new(),

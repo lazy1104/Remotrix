@@ -172,10 +172,10 @@ fn default_ed2k_upload_slots() -> u16 {
     3
 }
 fn default_ed2k_server_met_url() -> String {
-    "http://www.gruk.org/server.met".to_string()
+    "https://upd.emule-security.org/server.met".to_string()
 }
 fn default_ed2k_nodes_dat_url() -> String {
-    "http://www.gruk.org/nodes.dat".to_string()
+    "https://upd.emule-security.org/nodes.dat".to_string()
 }
 fn default_ed2k_bootstrap_sync_interval_hours() -> u32 {
     24
@@ -978,7 +978,31 @@ pub fn load() -> Settings {
         settings.theme_color = upper;
         save(&settings);
     }
+    if fix_dead_ed2k_bootstrap_urls(&mut settings) {
+        save(&settings);
+    }
     settings
+}
+
+/// Rewrite the long-deprecated gruk.org default bootstrap URLs to the
+/// current emule-security mirrors. Only matches the exact old default
+/// strings; user-customised URLs are left untouched. Returns `true` when
+/// any field was rewritten so the caller knows to persist.
+fn fix_dead_ed2k_bootstrap_urls(settings: &mut Settings) -> bool {
+    const OLD_SERVER_MET: &str = "http://www.gruk.org/server.met";
+    const OLD_NODES_DAT: &str = "http://www.gruk.org/nodes.dat";
+    const NEW_SERVER_MET: &str = "https://upd.emule-security.org/server.met";
+    const NEW_NODES_DAT: &str = "https://upd.emule-security.org/nodes.dat";
+    let mut changed = false;
+    if settings.aria2.ed2k_server_met_url == OLD_SERVER_MET {
+        settings.aria2.ed2k_server_met_url = NEW_SERVER_MET.to_string();
+        changed = true;
+    }
+    if settings.aria2.ed2k_nodes_dat_url == OLD_NODES_DAT {
+        settings.aria2.ed2k_nodes_dat_url = NEW_NODES_DAT.to_string();
+        changed = true;
+    }
+    changed
 }
 
 /// Atomically persist `settings` to disk.
@@ -1870,6 +1894,38 @@ mod tests {
             settings.last_resolved,
             ResolvedPaths::default(),
             "absent last_resolved falls back to default"
+        );
+    }
+
+    #[test]
+    fn fix_dead_ed2k_bootstrap_urls_rewrites_gruk_defaults() {
+        let mut settings = Settings::default();
+        settings.aria2.ed2k_server_met_url = "http://www.gruk.org/server.met".into();
+        settings.aria2.ed2k_nodes_dat_url = "http://www.gruk.org/nodes.dat".into();
+        assert!(fix_dead_ed2k_bootstrap_urls(&mut settings));
+        assert_eq!(
+            settings.aria2.ed2k_server_met_url,
+            "https://upd.emule-security.org/server.met"
+        );
+        assert_eq!(
+            settings.aria2.ed2k_nodes_dat_url,
+            "https://upd.emule-security.org/nodes.dat"
+        );
+    }
+
+    #[test]
+    fn fix_dead_ed2k_bootstrap_urls_preserves_user_urls() {
+        let mut settings = Settings::default();
+        settings.aria2.ed2k_server_met_url = "https://my-mirror.example/server.met".into();
+        settings.aria2.ed2k_nodes_dat_url = "https://upd.emule-security.org/nodes.dat".into();
+        assert!(!fix_dead_ed2k_bootstrap_urls(&mut settings));
+        assert_eq!(
+            settings.aria2.ed2k_server_met_url,
+            "https://my-mirror.example/server.met"
+        );
+        assert_eq!(
+            settings.aria2.ed2k_nodes_dat_url,
+            "https://upd.emule-security.org/nodes.dat"
         );
     }
 }

@@ -122,28 +122,21 @@ impl Ed2kSearchUiState {
             return None;
         }
         let mut opts = serde_json::Map::new();
-        opts.insert(
-            "method".to_string(),
-            serde_json::Value::String("overlap".to_string()),
-        );
         let ft = self.file_type.trim();
         if !ft.is_empty() && ft != "any" {
             opts.insert(
-                "type".to_string(),
+                "fileType".to_string(),
                 serde_json::Value::String(ft.to_string()),
             );
         }
         opts.insert(
-            "min-num-sources".to_string(),
-            serde_json::Value::Number(self.min_sources.into()),
-        );
-        opts.insert(
-            "timeout".to_string(),
-            serde_json::Value::Number(self.timeout_secs.into()),
+            "minSourceCount".to_string(),
+            serde_json::Value::String(self.min_sources.to_string()),
         );
         Some(EngineCmd::Ed2kSearchStart {
             keyword: keyword.to_string(),
             options: opts,
+            timeout_secs: self.timeout_secs,
         })
     }
 
@@ -1788,6 +1781,11 @@ fn ed2k_view<'a>(
                 .align_y(Alignment::Center),
         )
         .push(bootstrap_status_line(fluent, settings_ui, text_secondary))
+        .push(
+            text(fluent.get(Tr::Ed2kBootstrapManagedDefaultHint))
+                .size(FONT_SMALL)
+                .style(theme::style::text::secondary),
+        )
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::Ed2kSearch, accent))
         .push(ed2k_search_view(fluent, theme, settings_ui))
@@ -1809,6 +1807,18 @@ fn bootstrap_status_line<'a>(
             })
             .unwrap_or_else(|| fluent.get(Tr::Never))
     };
+    let (sm_path, nd_path) = (
+        crate::ed2k_bootstrap::server_met_path(),
+        crate::ed2k_bootstrap::nodes_dat_path(),
+    );
+    let sm_size = sm_path
+        .as_deref()
+        .and_then(|p| std::fs::metadata(p).ok())
+        .map(|m| format_size(m.len()));
+    let nd_size = nd_path
+        .as_deref()
+        .and_then(|p| std::fs::metadata(p).ok())
+        .map(|m| format_size(m.len()));
     column![]
         .spacing(SPACE_XS)
         .push(
@@ -1826,6 +1836,22 @@ fn bootstrap_status_line<'a>(
                 fluent.get(Tr::Ed2kBootstrapNodesDatModified),
                 fmt(nd_modified)
             ))
+            .size(FONT_SMALL)
+            .style(theme::style::text::secondary),
+        )
+        .push(
+            text(fluent.get_args(Tr::Ed2kBootstrapCacheStatus, &{
+                let mut a = std::collections::HashMap::new();
+                a.insert(
+                    std::borrow::Cow::from("server-met-size"),
+                    sm_size.unwrap_or_else(|| "-".into()).into(),
+                );
+                a.insert(
+                    std::borrow::Cow::from("nodes-dat-size"),
+                    nd_size.unwrap_or_else(|| "-".into()).into(),
+                );
+                a
+            }))
             .size(FONT_SMALL)
             .style(theme::style::text::secondary),
         )

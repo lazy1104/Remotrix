@@ -2,9 +2,13 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+use crate::config::Aria2Options;
 use crate::engine::EngineEvent;
 
 const MAX_BOOTSTRAP_FILE_SIZE: u64 = 4 * 1024 * 1024;
+
+const BUNDLED_SERVER_MET: &[u8] = include_bytes!("../assets/ed2k-bootstrap/server.met");
+const BUNDLED_NODES_DAT: &[u8] = include_bytes!("../assets/ed2k-bootstrap/nodes.dat");
 
 static SEARCH_DIRS: OnceLock<std::sync::Mutex<HashMap<String, PathBuf>>> = OnceLock::new();
 
@@ -90,6 +94,13 @@ fn write_cache_file(target: &Path, bytes: &[u8]) -> Result<(), String> {
     std::fs::rename(&tmp, target).map_err(|e| format!("rename: {e}"))
 }
 
+fn copy_default_if_missing(target: &Path, bytes: &[u8]) -> Result<(), String> {
+    if target.is_file() {
+        return Ok(());
+    }
+    write_cache_file(target, bytes)
+}
+
 fn file_modified_millis(path: &Path) -> Option<i64> {
     let meta = std::fs::metadata(path).ok()?;
     let modified = meta.modified().ok()?;
@@ -104,7 +115,118 @@ pub fn bootstrap_status() -> (Option<i64>, Option<i64>) {
     )
 }
 
+fn ensure_cache_with(base: &Path) -> Result<(PathBuf, PathBuf), String> {
+    let dir = base.join("ed2k-bootstrap");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create bootstrap dir: {e}"))?;
+    let server_met = dir.join("server.met");
+    let nodes_dat = dir.join("nodes.dat");
+    copy_default_if_missing(&server_met, BUNDLED_SERVER_MET)?;
+    copy_default_if_missing(&nodes_dat, BUNDLED_NODES_DAT)?;
+    if std::fs::metadata(&server_met)
+        .map(|m| m.len() == 0)
+        .unwrap_or(true)
+    {
+        return Err(format!(
+            "bundled server.met is empty at {}",
+            server_met.display()
+        ));
+    }
+    if std::fs::metadata(&nodes_dat)
+        .map(|m| m.len() == 0)
+        .unwrap_or(true)
+    {
+        return Err(format!(
+            "bundled nodes.dat is empty at {}",
+            nodes_dat.display()
+        ));
+    }
+    Ok((server_met, nodes_dat))
+}
+
+pub fn ensure_cache() -> Result<(PathBuf, PathBuf), String> {
+    let base = crate::config::db_path()
+        .and_then(|p| p.parent().map(Path::to_path_buf))
+        .ok_or_else(|| "no data dir".to_string())?;
+    ensure_cache_with(&base)
+}
+
+pub fn inject_managed_bootstrap_args(
+    args: &mut Vec<String>,
+    opts: &Aria2Options,
+) -> Result<(), String> {
+    let base = crate::config::db_path()
+        .and_then(|p| p.parent().map(Path::to_path_buf))
+        .ok_or_else(|| "no data dir".to_string())?;
+    inject_managed_bootstrap_args_with(&base, args, opts)
+}
+
+fn inject_managed_bootstrap_args_with(
+    base: &Path,
+    args: &mut Vec<String>,
+    opts: &Aria2Options,
+) -> Result<(), String> {
+    let (server_met, nodes_dat) = match ensure_cache_with(base) {
+        Ok(pair) => pair,
+        Err(e) => {
+            tracing::warn!(error = %e, "ed2k: ensure_cache failed; skipping managed bootstrap injection");
+            return Ok(());
+        }
+    };
+    if opts.ed2k_server_list.trim().is_empty() {
+        args.push("--ed2k-server-list".to_string());
+        args.push(server_met.to_string_lossy().into_owned());
+    }
+    if opts.ed2k_node_list.trim().is_empty() {
+        args.push("--ed2k-node-list".to_string());
+        args.push(nodes_dat.to_string_lossy().into_owned());
+    }
+    Ok(())
+}
+
+pub fn inject_managed_bootstrap_options(
+    options: &mut serde_json::Map<String, serde_json::Value>,
+    opts: &Aria2Options,
+) -> Result<(), String> {
+    let base = crate::config::db_path()
+        .and_then(|p| p.parent().map(Path::to_path_buf))
+        .ok_or_else(|| "no data dir".to_string())?;
+    inject_managed_bootstrap_options_with(&base, options, opts)
+}
+
+fn inject_managed_bootstrap_options_with(
+    base: &Path,
+    options: &mut serde_json::Map<String, serde_json::Value>,
+    opts: &Aria2Options,
+) -> Result<(), String> {
+    let (server_met, nodes_dat) = match ensure_cache_with(base) {
+        Ok(pair) => pair,
+        Err(e) => {
+            tracing::warn!(error = %e, "ed2k: ensure_cache failed; skipping managed bootstrap injection");
+            return Ok(());
+        }
+    };
+    if opts.ed2k_server_list.trim().is_empty() {
+        options
+            .entry("ed2k-server-list".to_string())
+            .or_insert(serde_json::Value::String(
+                server_met.to_string_lossy().into_owned(),
+            ));
+    }
+    if opts.ed2k_node_list.trim().is_empty() {
+        options
+            .entry("ed2k-node-list".to_string())
+            .or_insert(serde_json::Value::String(
+                nodes_dat.to_string_lossy().into_owned(),
+            ));
+    }
+    Ok(())
+}
+
 pub async fn sync_once(event_tx: crate::engine::EventTx) {
+    if let Err(e) = ensure_cache() {
+        let _ = event_tx.send(EngineEvent::Ed2kBootstrapSyncFailed { error: e });
+        return;
+    }
     let settings = crate::config::load();
     let server_met_url = settings.aria2.ed2k_server_met_url.clone();
     let nodes_dat_url = settings.aria2.ed2k_nodes_dat_url.clone();
@@ -202,5 +324,180 @@ mod tests {
         write_cache_file(&target, b"hello").unwrap();
         assert_eq!(std::fs::read(&target).unwrap(), b"hello".to_vec());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn fresh_base(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "remotrix-bootstrap-cache-{tag}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn ensure_cache_with_writes_defaults_when_missing() {
+        let base = fresh_base("missing");
+        let (server_met, nodes_dat) = ensure_cache_with(&base).unwrap();
+        assert!(server_met.is_file());
+        assert!(nodes_dat.is_file());
+        assert!(!std::fs::read(&server_met).unwrap().is_empty());
+        assert!(!std::fs::read(&nodes_dat).unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn ensure_cache_with_does_not_overwrite() {
+        let base = fresh_base("nooverwrite");
+        let (server_met, nodes_dat) = ensure_cache_with(&base).unwrap();
+        std::fs::write(&server_met, b"user-server").unwrap();
+        std::fs::write(&nodes_dat, b"user-nodes").unwrap();
+        ensure_cache_with(&base).unwrap();
+        assert_eq!(std::fs::read(&server_met).unwrap(), b"user-server".to_vec());
+        assert_eq!(std::fs::read(&nodes_dat).unwrap(), b"user-nodes".to_vec());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn ensure_cache_with_rejects_empty_cache_files() {
+        let base = fresh_base("empty");
+        let dir = base.join("ed2k-bootstrap");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("server.met"), b"").unwrap();
+        std::fs::write(dir.join("nodes.dat"), b"valid").unwrap();
+        let err = ensure_cache_with(&base).unwrap_err();
+        assert!(err.contains("server.met"), "got: {err}");
+        std::fs::write(dir.join("server.met"), b"valid").unwrap();
+        std::fs::write(dir.join("nodes.dat"), b"").unwrap();
+        let err = ensure_cache_with(&base).unwrap_err();
+        assert!(err.contains("nodes.dat"), "got: {err}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    fn opts_with(server_list: &str, node_list: &str) -> Aria2Options {
+        let mut opts = Aria2Options::default();
+        opts.ed2k_server_list = server_list.into();
+        opts.ed2k_node_list = node_list.into();
+        opts
+    }
+
+    #[test]
+    fn inject_managed_bootstrap_args_uses_cache_when_user_empty() {
+        let base = fresh_base("inject-empty");
+        let (server_met, nodes_dat) = ensure_cache_with(&base).unwrap();
+        let opts = opts_with("", "");
+        let mut args = Vec::new();
+        inject_managed_bootstrap_args_with(&base, &mut args, &opts).unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--ed2k-server-list".to_string(),
+                server_met.to_string_lossy().into_owned(),
+                "--ed2k-node-list".to_string(),
+                nodes_dat.to_string_lossy().into_owned(),
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn inject_managed_bootstrap_args_skips_when_user_set() {
+        let base = fresh_base("inject-set");
+        ensure_cache_with(&base).unwrap();
+        let opts = opts_with("/explicit/server.met", "/explicit/nodes.dat");
+        let mut args = Vec::new();
+        inject_managed_bootstrap_args_with(&base, &mut args, &opts).unwrap();
+        assert!(args.is_empty());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn inject_managed_bootstrap_args_trims_whitespace_only_as_empty() {
+        let base = fresh_base("inject-ws");
+        let (server_met, nodes_dat) = ensure_cache_with(&base).unwrap();
+        let opts = opts_with("   ", "\n\t  ");
+        let mut args = Vec::new();
+        inject_managed_bootstrap_args_with(&base, &mut args, &opts).unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--ed2k-server-list".to_string(),
+                server_met.to_string_lossy().into_owned(),
+                "--ed2k-node-list".to_string(),
+                nodes_dat.to_string_lossy().into_owned(),
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn inject_managed_bootstrap_options_uses_cache_when_empty() {
+        let base = fresh_base("opts-empty");
+        let (server_met, nodes_dat) = ensure_cache_with(&base).unwrap();
+        let opts = opts_with("", "");
+        let mut options = serde_json::Map::new();
+        inject_managed_bootstrap_options_with(&base, &mut options, &opts).unwrap();
+        assert_eq!(
+            options.get("ed2k-server-list"),
+            Some(&serde_json::Value::String(
+                server_met.to_string_lossy().into_owned()
+            ))
+        );
+        assert_eq!(
+            options.get("ed2k-node-list"),
+            Some(&serde_json::Value::String(
+                nodes_dat.to_string_lossy().into_owned()
+            ))
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn inject_managed_bootstrap_options_skips_when_present() {
+        let base = fresh_base("opts-skip");
+        ensure_cache_with(&base).unwrap();
+        let opts = opts_with("/explicit/server.met", "/explicit/nodes.dat");
+        let mut options = serde_json::Map::new();
+        options.insert(
+            "ed2k-server-list".to_string(),
+            serde_json::Value::String("/user/server.met".into()),
+        );
+        options.insert(
+            "ed2k-node-list".to_string(),
+            serde_json::Value::String("/user/nodes.dat".into()),
+        );
+        inject_managed_bootstrap_options_with(&base, &mut options, &opts).unwrap();
+        assert_eq!(
+            options.get("ed2k-server-list"),
+            Some(&serde_json::Value::String("/user/server.met".into()))
+        );
+        assert_eq!(
+            options.get("ed2k-node-list"),
+            Some(&serde_json::Value::String("/user/nodes.dat".into()))
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn inject_managed_bootstrap_options_trims_whitespace_as_empty() {
+        let base = fresh_base("opts-ws");
+        let (server_met, nodes_dat) = ensure_cache_with(&base).unwrap();
+        let opts = opts_with("   ", "\n\t  ");
+        let mut options = serde_json::Map::new();
+        inject_managed_bootstrap_options_with(&base, &mut options, &opts).unwrap();
+        assert_eq!(
+            options.get("ed2k-server-list"),
+            Some(&serde_json::Value::String(
+                server_met.to_string_lossy().into_owned()
+            ))
+        );
+        assert_eq!(
+            options.get("ed2k-node-list"),
+            Some(&serde_json::Value::String(
+                nodes_dat.to_string_lossy().into_owned()
+            ))
+        );
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
