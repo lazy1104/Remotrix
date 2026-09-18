@@ -568,6 +568,10 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
             Task::none()
         }
         SettingsMsg::RestartApp => {
+            config::save(&state.settings);
+            state.applied_settings = state.settings.clone();
+            state.applied_font_family = state.settings.font_family.clone();
+            state.settings_dirty = false;
             state.restart_pending = true;
             begin_close(state)
         }
