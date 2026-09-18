@@ -22,7 +22,7 @@ pub(crate) fn handle(state: &mut Remotrix, msg: NavMsg) -> Task<Message> {
         }
         NavMsg::SetSettingsCategory(cat) => {
             state.settings_ui.download_picker.close_history();
-            state.settings_ui.custom_color_picker.open = false;
+            state.custom_color_picker_open = false;
             state.settings_cat = cat;
             pill_to_index(state, crate::ui::category_bar::settings_cat_index(cat));
             iced::widget::operation::scroll_to::<Message>(

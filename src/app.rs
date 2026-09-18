@@ -345,6 +345,8 @@ pub struct Remotrix {
     >,
     pub(crate) speed_limit_popover_open: bool,
     pub(crate) speed_limit_pending_deadlines: HashMap<SettingKey, Instant>,
+    pub(crate) custom_color_picker_open: bool,
+    pub(crate) custom_color_anchor: iced::Point,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
@@ -499,6 +501,8 @@ pub fn init() -> (Remotrix, Task<Message>) {
         port_status: std::collections::HashMap::new(),
         speed_limit_popover_open: false,
         speed_limit_pending_deadlines: HashMap::new(),
+        custom_color_picker_open: false,
+        custom_color_anchor: iced::Point::ORIGIN,
     };
 
     state.window.hidden_to_tray =
@@ -1532,6 +1536,46 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         iced::widget::Space::new().into()
     };
 
+    let color_popover_layer: iced::Element<'_, Message> = if state.custom_color_picker_open {
+        let ui = &state.settings_ui.custom_color_picker;
+        let on_hex = |s: String| SettingsMsg::CustomColorHexChanged(s);
+        let on_apply = || SettingsMsg::CustomColorApply;
+        let on_cancel = || SettingsMsg::CustomColorCancel;
+        let on_history_select = |hex: String| SettingsMsg::CustomColorHistorySelect(hex);
+        let body = crate::ui::components::color_picker::view(
+            &state.fluent,
+            t,
+            ui,
+            &state.settings.custom_color_history,
+            on_hex,
+            on_apply,
+            on_cancel,
+            on_history_select,
+        );
+        let card = container(body)
+            .width(Length::Fixed(COLOR_POPOVER_WIDTH))
+            .style(theme::style::subtle);
+        let anchor = state.custom_color_anchor;
+        crate::ui::components::popover::popover(
+            card,
+            move |bounds, viewport| {
+                let mut x = anchor.x + COLOR_POPOVER_GAP;
+                if x + bounds.width > viewport.width
+                    && anchor.x - bounds.width - COLOR_POPOVER_GAP >= 0.0
+                {
+                    x = anchor.x - bounds.width - COLOR_POPOVER_GAP;
+                }
+                x = x.clamp(0.0, (viewport.width - bounds.width).max(0.0));
+                let y = (anchor.y + COLOR_POPOVER_GAP)
+                    .clamp(0.0, (viewport.height - bounds.height).max(0.0));
+                Vector::new(x - bounds.x, y - bounds.y)
+            },
+            Some(Message::Settings(SettingsMsg::CustomColorCancel)),
+        )
+    } else {
+        iced::widget::Space::new().into()
+    };
+
     let stacked: iced::Element<'_, Message> = stack![
         base_layer,
         add_layer,
@@ -1545,6 +1589,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         ctx_layer,
         shutdown_layer,
         speed_popover_layer,
+        color_popover_layer,
     ]
     .width(Length::Fill)
     .height(Length::Fill)
@@ -2110,6 +2155,8 @@ const SHUTDOWN_CONFIRM_SECS: u32 = 30;
 const SHUTDOWN_CARD_ANCHOR: f32 = 112.0;
 const SPEED_LIMIT_DEBOUNCE_MS: u64 = 250;
 const SPEED_POPOVER_GAP: f32 = 8.0;
+const COLOR_POPOVER_WIDTH: f32 = 280.0;
+const COLOR_POPOVER_GAP: f32 = 8.0;
 
 pub(crate) fn schedule_speed_limit_deadline(state: &mut Remotrix, key: SettingKey) {
     state.speed_limit_pending_deadlines.insert(

@@ -486,7 +486,7 @@ fn general_view<'a>(
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::Appearance, accent))
-        .push(theme_color_swatches(fluent, theme, settings, settings_ui))
+        .push(theme_color_swatches(fluent, theme, settings))
         .push(labeled_pick(
             fluent,
             fluent.get(Tr::ColorMode),
@@ -736,7 +736,6 @@ fn theme_color_swatches<'a>(
     fluent: &'a Fluent,
     theme: &'a iced::Theme,
     settings: &'a Settings,
-    settings_ui: &'a SettingsUiState,
 ) -> Element<'a, Message> {
     let current = theme::accent_color(&settings.theme_color);
     let mut swatch_row = row![].spacing(SPACE_XL).align_y(Alignment::Center);
@@ -787,56 +786,14 @@ fn theme_color_swatches<'a>(
     );
     swatch_row = swatch_row.push(add_swatch);
 
-    let picker = if settings_ui.custom_color_picker.open {
-        theme_color_picker_panel(fluent, theme, settings_ui)
-    } else {
-        iced::widget::Space::new()
+    setting_row_auto(
+        fluent.get(Tr::ThemeColor),
+        swatch_row
             .width(Length::Fill)
-            .height(Length::Fixed(0.0))
-            .into()
-    };
-
-    column![
-        setting_row_auto(
-            fluent.get(Tr::ThemeColor),
-            swatch_row
-                .width(Length::Fill)
-                .wrap()
-                .vertical_spacing(SPACE_LG)
-                .into(),
-        ),
-        picker,
-    ]
-    .spacing(SPACE_SM)
-    .width(Length::Fill)
-    .into()
-}
-
-fn theme_color_picker_panel<'a>(
-    fluent: &'a Fluent,
-    theme: &'a iced::Theme,
-    settings_ui: &'a SettingsUiState,
-) -> Element<'a, Message> {
-    let ui = &settings_ui.custom_color_picker;
-    let current_color = hsv_to_panel_color(ui.hsv, ui.alpha);
-    let on_alpha = |a: f32| SettingsMsg::CustomColorAlphaChanged(a);
-    let on_hex = |s: String| SettingsMsg::CustomColorHexChanged(s);
-    let on_apply = || SettingsMsg::CustomColorApply;
-    let on_cancel = || SettingsMsg::CustomColorCancel;
-    crate::ui::components::color_picker::view(
-        fluent,
-        theme,
-        ui,
-        current_color,
-        on_alpha,
-        on_hex,
-        on_apply,
-        on_cancel,
+            .wrap()
+            .vertical_spacing(SPACE_LG)
+            .into(),
     )
-}
-
-fn hsv_to_panel_color(h: crate::ui::components::color_picker::HsvColor, alpha: f32) -> Color {
-    crate::ui::components::color_picker::hsv_to_color(&h, alpha)
 }
 
 fn font_family_row<'a>(

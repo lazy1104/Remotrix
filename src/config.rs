@@ -13,6 +13,8 @@ use crate::ui::theme::ThemeMode;
 
 pub const MAX_CONCURRENT_DOWNLOADS: u32 = 32;
 
+pub const MAX_CUSTOM_COLOR_HISTORY: usize = 6;
+
 pub const EXTENSION_API_DEFAULT_PORT: u16 = 29110;
 pub const EXTENSION_API_MIN_PORT: u16 = 1024;
 pub const EXTENSION_API_MAX_PORT: u16 = 65535;
@@ -782,6 +784,8 @@ pub struct Settings {
     pub start_hidden_on_autostart: bool,
     #[serde(default)]
     pub prevent_sleep: bool,
+    #[serde(default)]
+    pub custom_color_history: Vec<String>,
 }
 
 fn default_resolved_paths() -> ResolvedPaths {
@@ -839,6 +843,7 @@ impl Default for Settings {
             autostart_enabled: false,
             start_hidden_on_autostart: false,
             prevent_sleep: false,
+            custom_color_history: Vec::new(),
         }
     }
 }

@@ -1,7 +1,7 @@
-//! Custom RGBA accent picker: HSV canvases (saturation×value + hue bar),
-//! alpha slider, HEX text input, and a live preview swatch. Designed for the
-//! "Appearance > Theme Color" section; emits high-level `SettingsMsg`s so
-//! the owning page owns persistence and theme rebuilds.
+//! Custom RGB accent picker: HSV canvases (saturation×value + hue bar),
+//! HEX text input, and a recently-used history row. Designed for the
+//! "Appearance > Theme Color" section; emits high-level `SettingsMsg`s
+//! so the owning page owns persistence and theme rebuilds.
 //!
 //! The widget is purely a view layer: it stores no state of its own, reads
 //! `CustomColorPickerUi` from the caller, and forwards user edits via the
@@ -9,11 +9,10 @@
 
 use iced::mouse;
 use iced::widget::canvas::{self, Event, Fill, Geometry, Path, Stroke, Style};
-use iced::widget::{
-    button as ibutton, column, container, mouse_area, row, slider, text, text_input,
-};
+use iced::widget::{button as ibutton, column, container, row, text, text_input};
 use iced::{Alignment, Color, Element, Length, Point, Rectangle, Renderer, Size, Theme};
 
+use crate::config::MAX_CUSTOM_COLOR_HISTORY;
 use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, SettingsMsg};
 use crate::ui::dims::*;
@@ -21,11 +20,8 @@ use crate::ui::theme;
 
 const SV_PANEL_SIZE: f32 = 200.0;
 const HUE_BAR_HEIGHT: f32 = 16.0;
-const HUE_BAR_WIDTH: f32 = 200.0;
 const MARKER_RADIUS: f32 = 6.0;
 const PICKER_INSET: f32 = 2.0;
-const HEX_INPUT_WIDTH: f32 = 120.0;
-const SLIDER_HEIGHT: f32 = 16.0;
 
 /// HSV coordinates used internally by the picker. `hue` is in degrees
 /// 0–360, `sat` and `val` are 0.0–1.0.
@@ -49,8 +45,8 @@ impl Default for HsvColor {
     }
 }
 
-/// Convert HSV + alpha to an [`iced::Color`].
-pub fn hsv_to_color(h: &HsvColor, alpha: f32) -> Color {
+/// Convert HSV to an opaque [`iced::Color`].
+pub fn hsv_to_color(h: &HsvColor) -> Color {
     let hue_norm = (h.hue.rem_euclid(360.0)) / 360.0;
     let s = h.sat.clamp(0.0, 1.0);
     let v = h.val.clamp(0.0, 1.0);
@@ -67,7 +63,7 @@ pub fn hsv_to_color(h: &HsvColor, alpha: f32) -> Color {
         4 => (t, p, v),
         _ => (v, p, q),
     };
-    Color::from_rgba(r, g, b, alpha.clamp(0.0, 1.0))
+    Color::from_rgba(r, g, b, 1.0)
 }
 
 /// Convert an [`iced::Color`] into HSV (ignoring alpha). Hue is in
@@ -106,8 +102,6 @@ pub struct CustomColorPickerUi {
     pub open: bool,
     /// Current HSV; hue in 0–360, sat/val 0–1.
     pub hsv: HsvColor,
-    /// Current alpha, 0–1.
-    pub alpha: f32,
     /// Edit buffer for the HEX input (`#RRGGBBAA` or `#RRGGBB`).
     pub hex_input: String,
     /// Whether `hex_input` currently parses to a valid RGBA/RGB color.
@@ -119,7 +113,6 @@ impl Default for CustomColorPickerUi {
         Self {
             open: false,
             hsv: HsvColor::default(),
-            alpha: 1.0,
             hex_input: String::new(),
             hex_valid: true,
         }
@@ -138,7 +131,6 @@ impl CustomColorPickerUi {
         Self {
             open: true,
             hsv,
-            alpha: color.a,
             hex_input: theme::color_to_hex(color),
             hex_valid: true,
         }
@@ -166,7 +158,6 @@ pub fn sanitize_hex_input(raw: &str) -> String {
 
 struct SvProgram {
     hsv: HsvColor,
-    alpha: f32,
     border: Color,
     marker_border: Color,
 }
@@ -186,14 +177,11 @@ impl SvProgram {
     fn draw_gradient(&self, frame: &mut canvas::Frame, bounds: Rectangle) {
         let cols = (bounds.width as i32).max(1);
         let rows = (bounds.height as i32).max(1);
-        let pure = hsv_to_color(
-            &HsvColor {
-                hue: self.hsv.hue,
-                sat: 1.0,
-                val: 1.0,
-            },
-            1.0,
-        );
+        let pure = hsv_to_color(&HsvColor {
+            hue: self.hsv.hue,
+            sat: 1.0,
+            val: 1.0,
+        });
         let pw = bounds.width / cols as f32;
         let ph = bounds.height / rows as f32;
         for j in 0..rows {
@@ -209,7 +197,7 @@ impl SvProgram {
                 frame.fill_rectangle(
                     Point::new(i as f32 * pw, j as f32 * ph),
                     Size::new(pw + 1.0, ph + 1.0),
-                    Fill::from(Color::from_rgba(r, g, b, self.alpha)),
+                    Fill::from(Color::from_rgba(r, g, b, 1.0)),
                 );
             }
         }
@@ -306,14 +294,11 @@ impl HueProgram {
         let pw = bounds.width / cols as f32;
         for i in 0..cols {
             let hue = (i as f32 + 0.5) / cols as f32 * 360.0;
-            let color = hsv_to_color(
-                &HsvColor {
-                    hue,
-                    sat: 1.0,
-                    val: 1.0,
-                },
-                1.0,
-            );
+            let color = hsv_to_color(&HsvColor {
+                hue,
+                sat: 1.0,
+                val: 1.0,
+            });
             frame.fill_rectangle(
                 Point::new(i as f32 * pw, 0.0),
                 Size::new(pw + 1.0, bounds.height),
@@ -405,38 +390,68 @@ impl canvas::Program<Message> for HueProgram {
     }
 }
 
-/// Layout the SV picker square + hue bar + alpha slider + HEX input +
-/// preview + Cancel/Apply row. The SV/Hue canvases publish
-/// `SettingsMsg::CustomColorHsvChanged` directly; the remaining widgets
-/// call `on_alpha` / `on_hex` / `on_apply` / `on_cancel` which must
-/// return the matching [`SettingsMsg`]s.
+fn history_row<'a, F>(colors: &'a [String], on_select: F) -> Element<'a, Message>
+where
+    F: Fn(String) -> SettingsMsg + 'a,
+{
+    let mut items: Vec<Element<'a, Message>> = Vec::with_capacity(MAX_CUSTOM_COLOR_HISTORY);
+    for slot in 0..MAX_CUSTOM_COLOR_HISTORY {
+        if let Some(hex) = colors.get(slot) {
+            let color = theme::accent_color(hex);
+            let hex_owned = hex.clone();
+            let btn = ibutton(iced::widget::Space::new())
+                .on_press(Message::Settings(on_select(hex_owned)))
+                .width(Length::Fixed(SWATCH_SIZE))
+                .height(Length::Fixed(SWATCH_SIZE))
+                .padding(0)
+                .style(theme::style::button::swatch(color, false));
+            items.push(btn.into());
+        } else {
+            items.push(
+                iced::widget::Space::new()
+                    .width(Length::Fixed(SWATCH_SIZE))
+                    .height(Length::Fixed(SWATCH_SIZE))
+                    .into(),
+            );
+        }
+    }
+    row(items)
+        .spacing(SPACE_SM)
+        .align_y(Alignment::Center)
+        .into()
+}
+
+/// Layout the SV picker square + hue bar + HEX input + recently-used
+/// history + Cancel/Apply row in a single vertical column. The SV/Hue
+/// canvases publish `SettingsMsg::CustomColorHsvChanged` directly; the
+/// remaining widgets call `on_hex` / `on_apply` / `on_cancel` /
+/// `on_history_select` which must return the matching [`SettingsMsg`]s.
 #[allow(clippy::too_many_arguments)]
 pub fn view<'a, F3, F4, F5, F6>(
     fluent: &'a Fluent,
     theme: &'a Theme,
     ui: &'a CustomColorPickerUi,
-    current_color: Color,
-    on_alpha: F3,
-    on_hex: F4,
-    on_apply: F5,
-    on_cancel: F6,
+    history: &'a [String],
+    on_hex: F3,
+    on_apply: F4,
+    on_cancel: F5,
+    on_history_select: F6,
 ) -> Element<'a, Message>
 where
-    F3: Fn(f32) -> SettingsMsg + 'a,
-    F4: Fn(String) -> SettingsMsg + 'a,
+    F3: Fn(String) -> SettingsMsg + 'a,
+    F4: Fn() -> SettingsMsg + 'a,
     F5: Fn() -> SettingsMsg + 'a,
-    F6: Fn() -> SettingsMsg + 'a,
+    F6: Fn(String) -> SettingsMsg + 'a,
 {
     let border = theme::border_color(theme);
     let marker_border = theme.extended_palette().background.base.text;
 
     let sv_canvas = canvas::Canvas::new(SvProgram {
         hsv: ui.hsv,
-        alpha: ui.alpha,
         border,
         marker_border,
     })
-    .width(Length::Fixed(SV_PANEL_SIZE))
+    .width(Length::Fill)
     .height(Length::Fixed(SV_PANEL_SIZE));
 
     let hue_canvas = canvas::Canvas::new(HueProgram {
@@ -444,29 +459,18 @@ where
         border,
         marker_border,
     })
-    .width(Length::Fixed(HUE_BAR_WIDTH))
+    .width(Length::Fill)
     .height(Length::Fixed(HUE_BAR_HEIGHT));
 
-    let alpha_slider = slider(0.0..=1.0, ui.alpha, move |v| Message::Settings(on_alpha(v)))
-        .height(SLIDER_HEIGHT)
-        .step(0.01)
-        .width(Length::Fixed(HUE_BAR_WIDTH));
-
     let hue_label = format!("Hue: {:.0}°", ui.hsv.hue);
-    let alpha_label = format!("Alpha: {:.0}%", ui.alpha * 100.0);
 
-    let hex_placeholder = "#RRGGBBAA";
+    let hex_placeholder = "#RRGGBB";
     let hex_input = theme::input_layout(
         text_input(hex_placeholder, &ui.hex_input)
             .on_input(move |s| Message::Settings(on_hex(sanitize_hex_input(&s))))
-            .width(Length::Fixed(HEX_INPUT_WIDTH))
+            .width(Length::Fill)
             .style(theme::style::input::standard),
     );
-
-    let preview = container(text("").size(FONT_ICON))
-        .width(Length::Fixed(SWATCH_SIZE))
-        .height(Length::Fixed(SWATCH_SIZE))
-        .style(swatch_preview(current_color));
 
     let cancel_btn = ibutton(text(fluent.get(Tr::Cancel)).size(FONT_BODY))
         .on_press(Message::Settings(on_cancel()))
@@ -482,62 +486,35 @@ where
         .padding(PADDING_BUTTON_SM)
         .style(theme::style::button::primary());
 
-    let left = column![sv_canvas]
-        .spacing(SPACE_SM)
-        .width(Length::Fixed(SV_PANEL_SIZE));
+    let sv_column = column![sv_canvas].spacing(SPACE_XS).width(Length::Fill);
 
-    let right = column![
+    let panel = column![
+        sv_column,
         text(hue_label).size(FONT_SMALL),
         hue_canvas,
-        text(alpha_label).size(FONT_SMALL),
-        alpha_slider,
         row![text("Hex:").size(FONT_SMALL), hex_input]
             .spacing(SPACE_SM)
             .align_y(Alignment::Center),
+        history_row(history, on_history_select),
+        row![
+            iced::widget::Space::new().width(Length::Fill),
+            cancel_btn,
+            apply_btn,
+        ]
+        .spacing(SPACE_SM)
+        .align_y(Alignment::Center),
     ]
-    .spacing(SPACE_XS)
+    .spacing(SPACE_MD)
+    .padding(iced::Padding {
+        top: SPACE_MD,
+        right: SPACE_LG,
+        bottom: SPACE_MD,
+        left: SPACE_LG,
+    })
     .width(Length::Fill);
-
-    let top_row = row![left, right]
-        .spacing(SPACE_LG)
-        .align_y(Alignment::Start);
-
-    let bottom_row = row![
-        preview,
-        iced::widget::Space::new().width(Length::Fill),
-        cancel_btn,
-        apply_btn,
-    ]
-    .spacing(SPACE_SM)
-    .align_y(Alignment::Center);
-
-    let panel = column![top_row, bottom_row]
-        .spacing(SPACE_MD)
-        .padding(iced::Padding {
-            top: SPACE_MD,
-            right: SPACE_LG,
-            bottom: SPACE_MD,
-            left: SPACE_LG,
-        })
-        .width(Length::Fill);
 
     container(panel)
         .width(Length::Fill)
         .style(theme::style::subtle)
         .into()
 }
-
-fn swatch_preview(color: Color) -> impl Fn(&Theme) -> iced::widget::container::Style {
-    move |t| iced::widget::container::Style {
-        background: Some(iced::Background::Color(color)),
-        border: iced::Border {
-            color: t.extended_palette().background.strong.color,
-            width: 1.0,
-            radius: iced::border::radius(SWATCH_SIZE / 2.0),
-        },
-        ..Default::default()
-    }
-}
-
-#[allow(unused_imports)]
-use mouse_area as _;
