@@ -306,86 +306,50 @@ fn pipe_lines<R: tokio::io::AsyncRead + Unpin + Send + 'static>(reader: R, targe
     });
 }
 
-/// Strip aria2 `--input-file` entries whose GID is already known to be in
-/// `Error` state by our own SQLite DB. Without this, every engine restart
-/// would replay the dead task via `--input-file`, hit max-tries, log
-/// `download failed`, and write the entry back to `session.txt` un-paused —
-/// an infinite retry loop. We do the strip *before* spawning aria2 so the
-/// bad task never enters the engine.
+/// Post-spawn cleanup: enumerate aria2's stopped-task list and remove any
+/// task in `error` status so it cannot be re-resurrected by the next
+/// `--save-session` write or the next `--input-file` replay on restart.
 ///
-/// aria2's `session.txt` is a sequence of blank-line-separated blocks: the
-/// first non-blank line is the URI(s) (HTTP/HTTPS, magnet, or torrent path),
-/// subsequent lines are `key=value` option pairs including `gid=<hex>`. We
-/// preserve any block we don't recognise or whose GID is not in our error
-/// set, byte-for-byte.
+/// aria2 is the source of truth here — the SQLite row may still report
+/// `waiting` for up to ~1 s after a task fails (or forever if the process
+/// is killed mid-flush), so filtering on DB status was unreliable. Using
+/// aria2's own `tell_stopped` view gives the same answer regardless of
+/// flush timing. DB rows are intentionally left in place: the UI still
+/// shows the task as `Error` so the user can delete it or hit "重新下载",
+/// which generates a fresh GID via `aria2.addUri`.
 ///
-/// Any failure (missing file, DB unreachable, parse glitch) is logged at
+/// Any failure (RPC error, individual `force_remove` failure) is logged at
 /// `warn` and treated as a no-op — the spawn path must never be blocked
 /// by this cleanup.
-fn prune_error_tasks_from_session(session_file: &Path) {
-    let raw = match std::fs::read_to_string(session_file) {
+async fn prune_error_tasks_in_aria2(client: &Client) {
+    let stopped = match client.tell_stopped(-1, 1000).await {
         Ok(s) => s,
         Err(e) => {
-            tracing::warn!(error = %e, "session prune: read failed");
+            tracing::warn!(error = %e, "aria2 post-spawn prune: tell_stopped error");
             return;
         }
     };
-    if raw.trim().is_empty() {
-        return;
-    }
-    let db_path = match crate::config::db_path() {
-        Some(p) => p,
-        None => {
-            tracing::warn!("session prune: db_path unavailable");
-            return;
-        }
-    };
-
-    let blocks: Vec<&str> = raw.split("\n\n").collect();
-    let mut kept: Vec<&str> = Vec::with_capacity(blocks.len());
-    let mut pruned: Vec<String> = Vec::new();
-    for block in blocks {
-        if block.trim().is_empty() {
-            kept.push(block);
+    let mut removed = Vec::new();
+    for s in stopped {
+        if status_to_string(&s.status) != "error" {
             continue;
         }
-        let mut gid: Option<&str> = None;
-        for line in block.lines() {
-            let Some(rest) = line.strip_prefix("gid=") else {
-                continue;
-            };
-            let trimmed = rest.trim();
-            if !trimmed.is_empty() {
-                gid = Some(trimmed);
-                break;
-            }
-        }
-        match gid {
-            Some(g) if crate::db::is_task_error(&db_path, g) => {
-                pruned.push(g.to_string());
-            }
-            _ => kept.push(block),
+        let force_ok = client.force_remove(&s.gid).await.is_ok();
+        let result_ok = client.remove_download_result(&s.gid).await.is_ok();
+        if force_ok && result_ok {
+            removed.push(s.gid.clone());
+        } else {
+            tracing::warn!(gid = %s.gid, force_ok, result_ok, "aria2 post-spawn prune: remove failed");
         }
     }
-
-    if pruned.is_empty() {
-        return;
-    }
-    let mut out = String::with_capacity(raw.len());
-    for (i, block) in kept.iter().enumerate() {
-        if i > 0 {
-            out.push('\n');
-            out.push('\n');
-        }
-        out.push_str(block);
-    }
-    match std::fs::write(session_file, out.as_bytes()) {
-        Ok(()) => tracing::info!(
-            pruned = pruned.len(),
-            pruned_gids = ?pruned,
-            "session prune: stripped error-state entries from session.txt"
-        ),
-        Err(e) => tracing::warn!(error = %e, "session prune: write failed"),
+    if removed.is_empty() {
+        tracing::debug!("aria2 post-spawn prune: no error tasks");
+    } else {
+        tracing::info!(
+            count = removed.len(),
+            gids = ?removed,
+            "aria2 post-spawn prune: removed error tasks from aria2"
+        );
     }
 }
 
@@ -421,7 +385,6 @@ impl Sidecar {
         if !session_file.exists() {
             std::fs::write(&session_file, "").map_err(|e| format!("create session file: {e}"))?;
         }
-        prune_error_tasks_from_session(&session_file);
         let session_str = session_file.to_string_lossy().to_string();
 
         let dir_str = config.download_dir.to_string_lossy();
@@ -491,6 +454,7 @@ impl Sidecar {
             match Client::connect(&ws_url, Some(&secret)).await {
                 Ok(client) => {
                     tracing::info!(port, "aria2-ws connected");
+                    prune_error_tasks_in_aria2(&client).await;
                     let _ = client.get_version().await.map(|v| {
                         tracing::info!(enabled_features = ?v.enabled_features, version = ?v.version, "aria2-next version");
                     });
