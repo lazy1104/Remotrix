@@ -334,6 +334,8 @@ pub struct Remotrix {
     pub(crate) filter_pill: crate::ui::animation::Animated<f32>,
     pub(crate) swap: crate::ui::animation::Animated<f32>,
     pub(crate) swap_pending: Option<crate::update::nav::SwapTarget>,
+    pub(crate) page_swap: crate::ui::animation::Animated<f32>,
+    pub(crate) page_swap_pending: Option<crate::message::Page>,
     pub(crate) hud_anim: crate::ui::animation::Animated<f32>,
     pub(crate) add_dialog_anim: crate::ui::animation::DialogAnim,
     pub(crate) about_dialog_anim: crate::ui::animation::DialogAnim,
@@ -492,6 +494,11 @@ pub fn init() -> (Remotrix, Task<Message>) {
             crate::ui::animation::ease_out_cubic(crate::ui::animation::SWAP_EXIT_MS),
         ),
         swap_pending: None,
+        page_swap: crate::ui::animation::Animated::transition(
+            1.0,
+            crate::ui::animation::ease_out_cubic(crate::ui::animation::SWAP_EXIT_MS),
+        ),
+        page_swap_pending: None,
         hud_anim: crate::ui::animation::Animated::transition(
             0.0,
             crate::ui::animation::ease_out_cubic(crate::ui::animation::HUD_ANIM_MS),
@@ -1189,7 +1196,8 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
     let titlebar = crate::ui::title_bar::view(t, state.window.maximized);
     let left_col = crate::ui::sidebar::view(&state.fluent, t, state.page);
 
-    let mid_col = crate::ui::category_bar::view(
+    let mid_bg = crate::ui::category_bar::background(t);
+    let mid_content_inner = crate::ui::category_bar::content(
         &state.fluent,
         t,
         state.page,
@@ -1198,6 +1206,20 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         &counts,
         &state.filter_pill,
     );
+
+    let mid_scaled: Element<'_, Message> = crate::ui::animation::animation(
+        &state.page_swap,
+        crate::ui::components::scale::scale(mid_content_inner, *state.page_swap.value()),
+    )
+    .on_update(Message::PageSwapAnim)
+    .into();
+
+    let mid_col: Element<'_, Message> = iced::widget::Stack::new()
+        .push(mid_scaled)
+        .push_under(mid_bg)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into();
 
     let right_col_inner: Element<'_, Message> = match state.page {
         Page::Tasks => {

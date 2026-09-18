@@ -49,13 +49,24 @@ pub fn settings_cat_index(c: SettingsCategory) -> usize {
     }
 }
 
-/// Build the sidebar element for the active [`Page`].
-///
-/// When `page` is [`Page::Tasks`] the sidebar shows the three task filters
-/// and is driven by `task_filter`/`counts`; otherwise it shows the six
-/// settings categories and ignores both. `pill` is mutated by `animation`
-/// to slide to the row matching the active entry.
-pub fn view<'a>(
+/// Background shell painted with `category_background` style. Sized to
+/// fill whatever bounds the caller provides; contents are empty so it
+/// renders as a flat coloured panel. Kept separate from [`content`] so
+/// callers (e.g. `app.rs`) can wrap the content in a scale animation
+/// while the background stays at 100%.
+pub fn background<'a>(_theme: &iced::Theme) -> Element<'a, Message> {
+    container(iced::widget::Space::new())
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .padding(PADDING_CATEGORY_BAR)
+        .style(theme::style::category_background)
+        .into()
+}
+
+/// The inner column (title + items + pill indicator) without the
+/// background panel. Sized to fill the caller's bounds; carries the
+/// same padding as [`background`] so layout is identical.
+pub fn content<'a>(
     fluent: &'a Fluent,
     _theme: &iced::Theme,
     page: Page,
@@ -196,8 +207,30 @@ pub fn view<'a>(
     .width(Length::Fill)
     .height(Length::Fill)
     .padding(PADDING_CATEGORY_BAR)
-    .style(theme::style::category_background)
     .into()
+}
+
+/// Compose [`background`] and [`content`] into a single element using a
+/// `Stack`. Equivalent to the historical all-in-one sidebar; callers that
+/// want the background excluded from a scale animation should use
+/// [`background`] + [`content`] directly instead.
+pub fn view<'a>(
+    fluent: &'a Fluent,
+    theme: &iced::Theme,
+    page: Page,
+    task_filter: TaskFilter,
+    settings_cat: SettingsCategory,
+    counts: &Counts,
+    pill: &'a Animated<f32>,
+) -> Element<'a, Message> {
+    let bg = background(theme);
+    let content = content(fluent, theme, page, task_filter, settings_cat, counts, pill);
+    Stack::new()
+        .push(content)
+        .push_under(bg)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
 }
 
 #[cfg(test)]

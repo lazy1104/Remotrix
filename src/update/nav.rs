@@ -19,6 +19,7 @@ pub(crate) fn handle(state: &mut Remotrix, msg: NavMsg) -> Task<Message> {
                 state.confirm_anim.open();
             } else {
                 request_swap(state, SwapTarget::Page(page));
+                request_page_swap(state, page);
                 let pill_index = match page {
                     Page::Tasks => crate::ui::category_bar::task_filter_index(state.task_filter),
                     Page::Settings => {
@@ -88,5 +89,29 @@ pub(crate) fn on_swap_anim(state: &mut Remotrix, value: f32) -> Task<Message> {
             iced::widget::operation::AbsoluteOffset::<f32>::default(),
         );
     }
+    Task::none()
+}
+
+fn request_page_swap(state: &mut Remotrix, target: Page) {
+    if state.page == target && state.page_swap_pending.is_none() {
+        return;
+    }
+    state.page_swap_pending = Some(target);
+    state.page_swap.set_target(crate::ui::animation::SWAP_MIN);
+}
+
+pub(crate) fn on_page_swap_anim(state: &mut Remotrix, value: f32) -> Task<Message> {
+    if state.page_swap_pending.is_none()
+        || state.page_swap.is_animating()
+        || value > crate::ui::animation::SWAP_MIN + 0.01
+    {
+        return Task::none();
+    }
+    state.page_swap_pending = None;
+    state.page_swap = crate::ui::animation::Animated::transition(
+        crate::ui::animation::SWAP_MIN,
+        crate::ui::animation::ease_out_cubic(crate::ui::animation::SWAP_ENTER_MS),
+    );
+    state.page_swap.set_target(1.0);
     Task::none()
 }
