@@ -70,24 +70,93 @@ pub fn font_from_family(family: &str) -> Font {
     font
 }
 
-static FONT_FAMILIES: OnceLock<Vec<String>> = OnceLock::new();
+static FONT_FAMILIES: std::sync::Mutex<Option<(crate::i18n::Locale, &'static [FontFamily])>> =
+    std::sync::Mutex::new(None);
+static FONT_RAW: OnceLock<Vec<Vec<(String, fontdb::Language)>>> = OnceLock::new();
 
-/// Sorted, de-duplicated list of font families available on the system,
-/// used by the settings dialog font picker.
-pub fn system_font_families() -> &'static [String] {
-    FONT_FAMILIES
+/// One font family surfaced by [`system_font_families`]: `id` is the
+/// English (or otherwise first) name recorded in the font's `name`
+/// table and is what `iced::Font::with_name` plus
+/// `Settings.font_family` expect; `display` is the localised name
+/// resolved against the active UI locale, or `id` when no match is
+/// found.
+#[derive(Debug, Clone)]
+pub struct FontFamily {
+    pub id: String,
+    pub display: String,
+}
+
+fn pick_display_name(
+    families: &[(String, fontdb::Language)],
+    locale: crate::i18n::Locale,
+) -> (String, String) {
+    let id = match families.first() {
+        Some((name, _)) => name.clone(),
+        None => return (String::new(), String::new()),
+    };
+    if locale != crate::i18n::Locale::ZhCN {
+        return (id.clone(), id);
+    }
+    let display = families
+        .iter()
+        .skip(1)
+        .find_map(|(name, lang)| {
+            if lang.primary_language() == "Chinese" {
+                Some(name.clone())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| id.clone());
+    (id, display)
+}
+
+fn raw_font_families() -> &'static [Vec<(String, fontdb::Language)>] {
+    FONT_RAW
         .get_or_init(|| {
             let mut db = fontdb::Database::new();
             db.load_system_fonts();
-            let mut names: Vec<String> = db
-                .faces()
-                .filter_map(|f| f.families.first().map(|(n, _)| n.clone()))
-                .collect();
-            names.sort_by_key(|n| n.to_lowercase());
-            names.dedup_by_key(|n| n.to_lowercase());
-            names
+            let mut raw: Vec<Vec<(String, fontdb::Language)>> =
+                db.faces().map(|f| f.families.clone()).collect();
+            raw.sort_by(|a, b| {
+                let ka = a.first().map(|(n, _)| n.to_lowercase()).unwrap_or_default();
+                let kb = b.first().map(|(n, _)| n.to_lowercase()).unwrap_or_default();
+                ka.cmp(&kb)
+            });
+            raw.dedup_by(|a, b| {
+                a.first().map(|(n, _)| n.to_lowercase()) == b.first().map(|(n, _)| n.to_lowercase())
+            });
+            raw
         })
         .as_slice()
+}
+
+/// Sorted, de-duplicated list of font families available on the system,
+/// used by the settings dialog font picker. Each entry exposes both
+/// the English `id` (for `Font::with_name` and persistence) and a
+/// locale-aware `display` name. The cache rebuilds when the active
+/// locale changes; each rebuild `Box::leak`s a fresh slice (rare,
+/// only at startup and on locale switch).
+pub fn system_font_families() -> &'static [FontFamily] {
+    let locale = crate::i18n::current_locale();
+    let mut cache = FONT_FAMILIES.lock().unwrap_or_else(|e| e.into_inner());
+    let needs_rebuild = cache
+        .as_ref()
+        .map(|(cached_locale, _)| *cached_locale != locale)
+        .unwrap_or(true);
+    if needs_rebuild {
+        let families: Vec<FontFamily> = raw_font_families()
+            .iter()
+            .map(|f| {
+                let (id, display) = pick_display_name(f, locale);
+                FontFamily { id, display }
+            })
+            .filter(|f| !f.id.is_empty())
+            .collect();
+        let leaked: &'static [FontFamily] = Box::leak(families.into_boxed_slice());
+        *cache = Some((locale, leaked));
+    }
+    cache.as_ref().map(|(_, v)| *v).unwrap_or(&[])
 }
 
 /// Translucent black used as a scrim behind dialogs and dropdowns.
@@ -614,6 +683,27 @@ pub mod style {
                 };
                 Style {
                     background: Some(p.background.base.color.into()),
+                    text_color: p.background.base.text,
+                    border: iced::Border {
+                        color: border,
+                        width: 1.0,
+                        radius: iced::border::rounded(super::super::RADIUS_BUTTON).radius,
+                    },
+                    shadow: Shadow::default(),
+                    ..Default::default()
+                }
+            }
+        }
+
+        pub fn trigger<'a>() -> impl Fn(&iced::Theme, Status) -> Style + 'a {
+            move |t: &iced::Theme, status: Status| -> Style {
+                let p = t.extended_palette();
+                let border = match status {
+                    Status::Hovered | Status::Pressed => p.primary.base.color,
+                    _ => super::super::border_color(t),
+                };
+                Style {
+                    background: Some(p.background.weak.color.into()),
                     text_color: p.background.base.text,
                     border: iced::Border {
                         color: border,

@@ -46,6 +46,23 @@ pub fn detect_locale() -> Locale {
     }
 }
 
+std::thread_local! {
+    static CURRENT_LOCALE: std::cell::Cell<Locale> = const { std::cell::Cell::new(Locale::System) };
+}
+
+/// Snapshot of the active locale used by components that need to
+/// resolve a localised string without holding the full `Fluent`. The
+/// settings page updates this whenever [`crate::message::SettingsMsg::LocaleChanged`]
+/// fires so background cache builders (e.g. `theme::system_font_families`)
+/// can pick display names in the right language.
+pub fn current_locale() -> Locale {
+    CURRENT_LOCALE.with(|c| c.get())
+}
+
+pub fn set_current_locale(locale: Locale) {
+    CURRENT_LOCALE.with(|c| c.set(locale));
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[allow(dead_code)]
 pub enum Tr {
@@ -204,6 +221,9 @@ pub enum Tr {
     SystemDefault,
     FontRestartHint,
     SaveAndRestartApp,
+    FontPickerSearch,
+    FontPickerNoResults,
+    FontPickerBundledLabel,
     RestartEngine,
     ConfirmRestartEngineTitle,
     ConfirmRestartEngineBody,
@@ -644,6 +664,9 @@ impl Tr {
             Tr::SystemDefault => "system-default",
             Tr::FontRestartHint => "font-restart-hint",
             Tr::SaveAndRestartApp => "save-and-restart-app",
+            Tr::FontPickerSearch => "font-picker-search",
+            Tr::FontPickerNoResults => "font-picker-no-results",
+            Tr::FontPickerBundledLabel => "font-picker-bundled-label",
             Tr::RestartEngine => "restart-engine",
             Tr::ConfirmRestartEngineTitle => "confirm-restart-engine-title",
             Tr::ConfirmRestartEngineBody => "confirm-restart-engine-body",

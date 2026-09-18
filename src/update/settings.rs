@@ -538,13 +538,33 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
         SettingsMsg::LocaleChanged(locale) => {
             state.settings.locale = locale;
             state.fluent = Fluent::new(locale);
+            crate::i18n::set_current_locale(locale);
             config::save(&state.settings);
             state.applied_settings.locale = locale;
             Task::none()
         }
         SettingsMsg::FontFamilyChanged(family) => {
             state.settings.font_family = family;
+            state.settings_ui.font_picker.open = false;
+            state.settings_ui.font_picker.query.clear();
             mark_settings_dirty(state);
+            Task::none()
+        }
+        SettingsMsg::FontPickerToggle => {
+            state.settings_ui.font_picker.open = !state.settings_ui.font_picker.open;
+            if !state.settings_ui.font_picker.open {
+                state.settings_ui.font_picker.query.clear();
+            }
+            Task::none()
+        }
+        SettingsMsg::FontPickerClose => {
+            state.settings_ui.font_picker.open = false;
+            state.settings_ui.font_picker.query.clear();
+            Task::none()
+        }
+        SettingsMsg::FontPickerQueryChanged(query) => {
+            state.settings_ui.font_picker.query = query;
+            state.settings_ui.font_picker.open = true;
             Task::none()
         }
         SettingsMsg::RestartApp => {

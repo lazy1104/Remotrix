@@ -6,7 +6,6 @@
 //! [`SettingsMsg`]s.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
 
 use iced::widget::{
     button, checkbox, column, container, mouse_area, pick_list, row, text, text_editor, text_input,
@@ -29,6 +28,7 @@ use crate::ui::components::color_picker::CustomColorPickerUi;
 use crate::ui::components::copyable_text::copyable_text;
 use crate::ui::components::ctx_input;
 use crate::ui::components::ctx_menu::CtxMirrors;
+use crate::ui::components::font_picker::{self as font_picker, FontPickerOption, FontPickerUi};
 use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::path_picker::PathPicker;
 use crate::ui::components::slim_scrollable::slim_scrollable;
@@ -60,6 +60,7 @@ pub struct SettingsUiState {
     pub ed2k_search_state: Ed2kSearchUiState,
     pub ed2k_bootstrap_status: (Option<i64>, Option<i64>),
     pub custom_color_picker: CustomColorPickerUi,
+    pub font_picker: FontPickerUi,
 }
 
 #[derive(Debug, Clone)]
@@ -198,6 +199,7 @@ impl SettingsUiState {
             ed2k_search_state: Ed2kSearchUiState::new(),
             ed2k_bootstrap_status: crate::ed2k_bootstrap::bootstrap_status(),
             custom_color_picker: CustomColorPickerUi::default(),
+            font_picker: FontPickerUi::new(),
         }
     }
 }
@@ -491,7 +493,13 @@ fn general_view<'a>(
             Some(settings.theme_mode),
             |opt| Message::Settings(SettingsMsg::ThemeModeChanged(opt.value)),
         ))
-        .push(font_family_row(fluent, settings, font_restart_required))
+        .push(font_family_row(
+            fluent,
+            theme,
+            settings,
+            settings_ui,
+            font_restart_required,
+        ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
         .push(group_title(fluent, Tr::Locale, accent))
         .push(labeled_pick(
@@ -832,25 +840,25 @@ fn hsv_to_panel_color(h: crate::ui::components::color_picker::HsvColor, alpha: f
 
 fn font_family_row<'a>(
     fluent: &'a Fluent,
+    theme: &'a iced::Theme,
     settings: &'a Settings,
+    settings_ui: &'a SettingsUiState,
     restart_required: bool,
 ) -> Element<'a, Message> {
-    let options = font_family_options(fluent);
-    let placeholder = fluent.get(Tr::SelectPlaceholder);
-    let selected = options
-        .iter()
-        .find(|o| o.value == settings.font_family)
-        .cloned();
-    let pick: Element<'a, Message> = pick_list(options, selected, |o| {
-        Message::Settings(SettingsMsg::FontFamilyChanged(o.value))
-    })
-    .placeholder(&placeholder)
-    .text_size(FONT_MEDIUM)
-    .padding(theme::INPUT_PADDING)
-    .width(Length::Fixed(240.0))
-    .style(theme::style::pick_list::standard)
-    .menu_style(theme::style::pick_list::menu)
-    .into();
+    let options: &'static [FontPickerOption] =
+        font_picker::build_options(fluent, theme::system_font_families());
+    let pick: Element<'a, Message> = font_picker::view(
+        fluent,
+        theme,
+        &settings_ui.font_picker,
+        options,
+        &settings.font_family,
+        Message::Settings(SettingsMsg::FontPickerToggle),
+        Message::Settings(SettingsMsg::FontPickerClose),
+        |s| Message::Settings(SettingsMsg::FontPickerQueryChanged(s)),
+        |id| Message::Settings(SettingsMsg::FontFamilyChanged(id)),
+        |_v| Message::ScrollableScrolled(iced::widget::Id::new("font-picker-list")),
+    );
 
     let mut controls = column![
         pick,
@@ -879,41 +887,6 @@ fn font_family_row<'a>(
     ]
     .align_y(Alignment::Start)
     .into()
-}
-
-type FontOptions = &'static [Labeled<String>];
-
-static FONT_OPTIONS: Mutex<Option<(Locale, FontOptions)>> = Mutex::new(None);
-
-fn font_family_options(fluent: &Fluent) -> FontOptions {
-    let mut cache = FONT_OPTIONS.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some((locale, options)) = cache.as_ref() {
-        if *locale == fluent.locale {
-            return options;
-        }
-    }
-    let mut options = Vec::new();
-    options.push(Labeled {
-        value: String::new(),
-        label: fluent.get(Tr::SystemDefault),
-    });
-    options.push(Labeled {
-        value: theme::BUNDLED_FONT_NAME.to_string(),
-        label: theme::BUNDLED_FONT_NAME.to_string(),
-    });
-    for family in theme::system_font_families() {
-        let family = family.clone();
-        if family.eq_ignore_ascii_case(theme::BUNDLED_FONT_NAME) {
-            continue;
-        }
-        options.push(Labeled {
-            value: family.clone(),
-            label: family,
-        });
-    }
-    let leaked: FontOptions = Box::leak(options.into_boxed_slice());
-    *cache = Some((fluent.locale, leaked));
-    leaked
 }
 
 fn download_view<'a>(

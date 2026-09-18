@@ -13,6 +13,7 @@ pub mod drop_overlay;
 pub mod expand;
 pub mod file_drop_zone;
 pub mod file_tree;
+pub mod font_picker;
 pub mod key_value_list;
 pub mod logo;
 pub mod number_stepper;
