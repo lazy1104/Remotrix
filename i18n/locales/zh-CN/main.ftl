@@ -170,6 +170,7 @@ reset = 重置
 appearance = 外观
 theme-color = 主题颜色
 custom-color = 自定义颜色
+hex-input-error = 请输入 6 或 8 位 hex（如 #094041FF）
 color-mode = 明暗
 theme-dark = 深色
 theme-light = 浅色

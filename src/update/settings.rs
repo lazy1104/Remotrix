@@ -521,22 +521,20 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                 return Task::none();
             };
             let canonical = theme::color_to_hex(color);
-            if !state
+            if let Some(pos) = state
                 .settings
                 .custom_color_history
                 .iter()
-                .any(|h| h.eq_ignore_ascii_case(&canonical))
+                .position(|h| h.eq_ignore_ascii_case(&canonical))
             {
+                state.settings.custom_color_history.remove(pos);
+            }
+            state.settings.custom_color_history.insert(0, canonical);
+            if state.settings.custom_color_history.len() > MAX_CUSTOM_COLOR_HISTORY {
                 state
                     .settings
                     .custom_color_history
-                    .insert(0, canonical.clone());
-                if state.settings.custom_color_history.len() > MAX_CUSTOM_COLOR_HISTORY {
-                    state
-                        .settings
-                        .custom_color_history
-                        .truncate(MAX_CUSTOM_COLOR_HISTORY);
-                }
+                    .truncate(MAX_CUSTOM_COLOR_HISTORY);
             }
             state.applied_settings.custom_color_history =
                 state.settings.custom_color_history.clone();

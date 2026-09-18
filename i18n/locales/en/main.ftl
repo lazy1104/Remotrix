@@ -170,6 +170,7 @@ reset = Reset
 appearance = Appearance
 theme-color = Theme Color
 custom-color = Custom Color
+hex-input-error = Enter 6 or 8 hex digits (e.g. #094041FF)
 color-mode = Mode
 theme-dark = Dark
 theme-light = Light

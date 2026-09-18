@@ -1065,6 +1065,16 @@ pub mod style {
             }
             s
         }
+
+        pub fn error(t: &iced::Theme, status: text_input::Status) -> text_input::Style {
+            let mut s = text_input::default(t, status);
+            s.border.radius = super::super::RADIUS_BUTTON.into();
+            s.border.color = super::super::danger(t);
+            if matches!(status, text_input::Status::Hovered) {
+                s.border.width = 2.0;
+            }
+            s
+        }
     }
 
     pub mod text_editor {
@@ -1200,6 +1210,12 @@ pub mod style {
         pub fn tertiary(t: &iced::Theme) -> iced::widget::text::Style {
             iced::widget::text::Style {
                 color: Some(super::super::text_weak(t)),
+            }
+        }
+
+        pub fn error(t: &iced::Theme) -> iced::widget::text::Style {
+            iced::widget::text::Style {
+                color: Some(super::super::danger(t)),
             }
         }
     }

@@ -465,12 +465,26 @@ where
     let hue_label = format!("Hue: {:.0}°", ui.hsv.hue);
 
     let hex_placeholder = "#RRGGBB";
+    let hex_style = if ui.hex_valid {
+        theme::style::input::standard
+    } else {
+        theme::style::input::error
+    };
     let hex_input = theme::input_layout(
         text_input(hex_placeholder, &ui.hex_input)
             .on_input(move |s| Message::Settings(on_hex(sanitize_hex_input(&s))))
             .width(Length::Fill)
-            .style(theme::style::input::standard),
+            .style(hex_style),
     );
+
+    let hex_error: Element<'a, Message> = if ui.hex_valid {
+        iced::widget::Space::new().height(Length::Fixed(0.0)).into()
+    } else {
+        text(fluent.get(Tr::HexInputError))
+            .size(FONT_SMALL)
+            .style(theme::style::text::error)
+            .into()
+    };
 
     let cancel_btn = ibutton(text(fluent.get(Tr::Cancel)).size(FONT_BODY))
         .on_press(Message::Settings(on_cancel()))
@@ -495,6 +509,7 @@ where
         row![text("Hex:").size(FONT_SMALL), hex_input]
             .spacing(SPACE_SM)
             .align_y(Alignment::Center),
+        hex_error,
         history_row(history, on_history_select),
         row![
             iced::widget::Space::new().width(Length::Fill),
