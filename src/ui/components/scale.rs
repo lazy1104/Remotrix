@@ -1,41 +1,23 @@
 use iced::advanced::layout::{self, Node};
 use iced::advanced::renderer;
 use iced::advanced::widget::{self, tree, Widget};
-use iced::advanced::{Layout, Renderer};
-use iced::{mouse, Element, Length, Rectangle, Size, Transformation};
-
-use crate::ui::animation::SWAP_MIN;
+use iced::advanced::{Clipboard, Layout, Renderer, Shell};
+use iced::{mouse, Element, Event, Length, Rectangle, Size, Transformation, Vector};
 
 pub fn scale<'a, Message: 'a>(
     content: impl Into<Element<'a, Message>>,
     factor: f32,
 ) -> Element<'a, Message> {
-    scale_with(content, factor, SWAP_MIN, WASH_STRENGTH)
-}
-
-pub fn scale_with<'a, Message: 'a>(
-    content: impl Into<Element<'a, Message>>,
-    factor: f32,
-    min_factor: f32,
-    wash_strength: f32,
-) -> Element<'a, Message> {
     let factor = factor.clamp(0.0, 1.0);
-    let min_factor = min_factor.clamp(0.0, 1.0);
     Element::new(Scale {
         content: content.into(),
         factor,
-        min_factor,
-        wash_strength,
     })
 }
-
-const WASH_STRENGTH: f32 = 0.30;
 
 struct Scale<'a, Message> {
     content: Element<'a, Message>,
     factor: f32,
-    min_factor: f32,
-    wash_strength: f32,
 }
 
 impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Scale<'a, Message> {
@@ -64,6 +46,60 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Scale<'a, Mes
         self.content.as_widget_mut().layout(tree, renderer, limits)
     }
 
+    fn update(
+        &mut self,
+        tree: &mut widget::Tree,
+        event: &Event,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        renderer: &iced::Renderer,
+        clipboard: &mut dyn Clipboard,
+        shell: &mut Shell<'_, Message>,
+        viewport: &Rectangle,
+    ) {
+        self.content.as_widget_mut().update(
+            tree, event, layout, cursor, renderer, clipboard, shell, viewport,
+        );
+    }
+
+    fn operate(
+        &mut self,
+        tree: &mut widget::Tree,
+        layout: Layout<'_>,
+        renderer: &iced::Renderer,
+        operation: &mut dyn widget::Operation<()>,
+    ) {
+        self.content
+            .as_widget_mut()
+            .operate(tree, layout, renderer, operation);
+    }
+
+    fn mouse_interaction(
+        &self,
+        tree: &widget::Tree,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+        renderer: &iced::Renderer,
+    ) -> mouse::Interaction {
+        self.content
+            .as_widget()
+            .mouse_interaction(tree, layout, cursor, viewport, renderer)
+    }
+
+    fn overlay<'b>(
+        &'b mut self,
+        tree: &'b mut widget::Tree,
+        layout: Layout<'b>,
+        renderer: &iced::Renderer,
+        viewport: &Rectangle,
+        translation: Vector,
+    ) -> Option<iced::overlay::Element<'b, Message, iced::Theme, iced::Renderer>> {
+        self.content
+            .as_widget_mut()
+            .overlay(tree, layout, renderer, viewport, translation)
+    }
+
     fn draw(
         &self,
         tree: &widget::Tree,
@@ -90,13 +126,6 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Scale<'a, Mes
             return;
         };
 
-        let wash_t = if self.min_factor < 1.0 {
-            ((self.factor - self.min_factor) / (1.0 - self.min_factor)).clamp(0.0, 1.0)
-        } else {
-            1.0
-        };
-        let wash_alpha = (1.0 - wash_t) * self.wash_strength;
-
         renderer.with_layer(bounds, |renderer| {
             renderer.with_transformation(affine, |renderer| {
                 self.content.as_widget().draw(
@@ -109,21 +138,6 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Scale<'a, Mes
                     &clipped_viewport,
                 );
             });
-            if wash_alpha > 0.001 {
-                let bg = theme
-                    .extended_palette()
-                    .background
-                    .base
-                    .color
-                    .scale_alpha(wash_alpha);
-                renderer.fill_quad(
-                    renderer::Quad {
-                        bounds,
-                        ..renderer::Quad::default()
-                    },
-                    bg,
-                );
-            }
         });
     }
 }
