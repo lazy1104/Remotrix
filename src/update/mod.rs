@@ -107,6 +107,10 @@ pub(crate) fn dispatch(state: &mut Remotrix, message: Message) -> Task<Message> 
             state.filter_pill.update(event);
             Task::none()
         }
+        Message::SwapAnim(event) => {
+            state.swap.update(event);
+            crate::update::nav::on_swap_anim(state, *state.swap.value())
+        }
         Message::AddDialogAnim(event) => {
             state.add_dialog_anim.update(event);
             if state.add_dialog_anim.completed_dismiss() {

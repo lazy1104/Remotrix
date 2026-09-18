@@ -332,6 +332,8 @@ pub struct Remotrix {
     pub(crate) card_anim: HashMap<String, crate::ui::animation::Animated<f32>>,
     pub(crate) pending_removals: HashSet<String>,
     pub(crate) filter_pill: crate::ui::animation::Animated<f32>,
+    pub(crate) swap: crate::ui::animation::Animated<f32>,
+    pub(crate) swap_pending: Option<crate::update::nav::SwapTarget>,
     pub(crate) hud_anim: crate::ui::animation::Animated<f32>,
     pub(crate) add_dialog_anim: crate::ui::animation::DialogAnim,
     pub(crate) about_dialog_anim: crate::ui::animation::DialogAnim,
@@ -485,6 +487,11 @@ pub fn init() -> (Remotrix, Task<Message>) {
             0.0,
             crate::ui::animation::ease_in_out_quad(crate::ui::animation::PILL_MS),
         ),
+        swap: crate::ui::animation::Animated::transition(
+            1.0,
+            crate::ui::animation::ease_out_cubic(crate::ui::animation::SWAP_EXIT_MS),
+        ),
+        swap_pending: None,
         hud_anim: crate::ui::animation::Animated::transition(
             0.0,
             crate::ui::animation::ease_out_cubic(crate::ui::animation::HUD_ANIM_MS),
@@ -1192,7 +1199,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         &state.filter_pill,
     );
 
-    let right_col: Element<'_, Message> = match state.page {
+    let right_col_inner: Element<'_, Message> = match state.page {
         Page::Tasks => {
             let query = state.search_query.trim().to_lowercase();
             let filtered: Vec<&DownloadTask> = state
@@ -1259,6 +1266,13 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             crate::ui::settings_page::view(&ctx)
         }
     };
+
+    let right_col: Element<'_, Message> = crate::ui::animation::animation(
+        &state.swap,
+        crate::ui::components::scale::scale(right_col_inner, *state.swap.value()),
+    )
+    .on_update(Message::SwapAnim)
+    .into();
 
     let content = row![]
         .push(

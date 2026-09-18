@@ -25,6 +25,14 @@ pub const PROGRESS_MS: u64 = 250;
 pub const PILL_MS: u64 = 200;
 /// Modal dialog fade/scale duration.
 pub const DIALOG_ANIM_MS: u64 = 240;
+/// Exit-phase duration for settings/filter tab swaps (`1.0 → SWAP_MIN`).
+pub const SWAP_EXIT_MS: u64 = 110;
+/// Enter-phase duration for settings/filter tab swaps (`SWAP_MIN → 1.0`).
+pub const SWAP_ENTER_MS: u64 = 180;
+/// Minimum scale factor reached during a swap; the right column dips from
+/// `1.0` down to `SWAP_MIN` and back. Controls both the visual scale and
+/// how strongly the content is washed with the background color.
+pub const SWAP_MIN: f32 = 0.9;
 
 /// Build a non-reversible `t -> 1 - (1-t)^2` easing curve lasting
 /// `duration_ms`. Used for element entrance animations where the value

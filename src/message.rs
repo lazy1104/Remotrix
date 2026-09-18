@@ -110,6 +110,7 @@ pub enum Message {
     CardAnim(String, crate::ui::animation::Event<f32>),
     HudAnim(crate::ui::animation::Event<f32>),
     PillAnim(crate::ui::animation::Event<f32>),
+    SwapAnim(crate::ui::animation::Event<f32>),
     AddDialogAnim(crate::ui::animation::Event<f32>),
     AboutDialogAnim(crate::ui::animation::Event<f32>),
     DetailsAnim(crate::ui::animation::Event<f32>),

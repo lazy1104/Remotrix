@@ -332,7 +332,6 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
             port_status,
         ),
     };
-
     let mut body = column![]
         .push(text(settings_title(fluent, *category)).size(FONT_PAGE_TITLE))
         .push(iced::widget::Space::new().height(Length::Fixed(SPACE_LG)))
