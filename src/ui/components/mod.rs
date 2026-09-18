@@ -28,6 +28,7 @@ pub mod speed_hud;
 pub mod speed_popover;
 pub mod spinner;
 pub mod status_dot;
+pub mod swatch_icon;
 pub mod tag_picker;
 pub mod toast;
 pub mod tooltip;

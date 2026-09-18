@@ -32,6 +32,7 @@ use crate::ui::components::font_picker::{self as font_picker, FontPickerOption, 
 use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::path_picker::PathPicker;
 use crate::ui::components::slim_scrollable::slim_scrollable;
+use crate::ui::components::swatch_icon::{swatch_check, swatch_plus, swatch_text_color};
 use crate::ui::components::tag_picker::tag_picker;
 use crate::ui::components::tooltip;
 use crate::ui::dims::*;
@@ -741,11 +742,15 @@ fn theme_color_swatches<'a>(
     let mut swatch_row = row![].spacing(SPACE_XL).align_y(Alignment::Center);
     for (color, name) in theme::candidate_colors() {
         let selected = *color == current;
+        let mark_color = swatch_text_color(*color);
         let swatch = button(
             container(if selected {
-                icon::circle_check().size(FONT_ICON)
+                swatch_check(mark_color)
             } else {
-                text("").size(FONT_ICON)
+                iced::widget::Space::new()
+                    .width(Length::Fixed(0.0))
+                    .height(Length::Fixed(0.0))
+                    .into()
             })
             .width(Length::Fill)
             .height(Length::Fill)
@@ -764,15 +769,11 @@ fn theme_color_swatches<'a>(
         ));
     }
     let add_swatch = button(
-        container(
-            text("+")
-                .size(FONT_HERO)
-                .style(theme::style::text::secondary),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill),
+        container(swatch_plus(swatch_text_color(theme::accent(theme))))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill),
     )
     .on_press(Message::Settings(SettingsMsg::CustomColorPickerToggle))
     .width(Length::Fixed(SWATCH_SIZE))

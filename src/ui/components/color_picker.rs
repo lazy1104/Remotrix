@@ -466,8 +466,6 @@ where
     let preview = container(text("").size(FONT_ICON))
         .width(Length::Fixed(SWATCH_SIZE))
         .height(Length::Fixed(SWATCH_SIZE))
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
         .style(swatch_preview(current_color));
 
     let cancel_btn = ibutton(text(fluent.get(Tr::Cancel)).size(FONT_BODY))
