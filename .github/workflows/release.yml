@@ -32,25 +32,14 @@ jobs:
           command: check ${{ matrix.checks }}
 
   changelog:
-    name: Generate changelog
+    name: Pass through CHANGELOG.md
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Build changelog
-        uses: mikepenz/release-changelog-builder-action@v5
-        with:
-          commitMode: true
-          configuration: .github/changelog-config.json
-          outputFile: CHANGELOG.md
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload changelog artifact
+      - name: Upload CHANGELOG artifact
         uses: actions/upload-artifact@v4
         with:
           name: changelog
