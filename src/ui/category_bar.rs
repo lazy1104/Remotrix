@@ -68,31 +68,46 @@ pub fn content<'a>(
             let make_filter =
                 |label: String, count: usize, target: TaskFilter| -> Element<'a, Message> {
                     let is_active = task_filter == target;
-                    let label_text: String = if count > 0 {
-                        format!("{} ({})", label, count)
-                    } else {
-                        label
-                    };
                     let icon = match target {
                         TaskFilter::All => icon::layers(),
                         TaskFilter::Downloading => icon::download_arrow(),
                         TaskFilter::Completed => icon::circle_check(),
                     };
-                    button(
-                        row![]
-                            .push(icon.size(FONT_ICON).line_height(1.0))
-                            .push(text(label_text).size(FONT_BODY).line_height(1.0))
-                            .push(iced::widget::Space::new().width(Length::Fill))
-                            .spacing(SPACE_LG)
-                            .align_y(Alignment::Center)
-                            .width(Length::Fill),
-                    )
-                    .on_press(Message::Nav(NavMsg::SetTaskFilter(target)))
-                    .padding(PADDING_FILTER)
-                    .height(Length::Fixed(FILTER_ITEM_H))
-                    .width(Length::Fill)
-                    .style(theme::style::button::filter(is_active))
-                    .into()
+                    let mut inner = row![]
+                        .push(icon.size(FONT_ICON).line_height(1.0))
+                        .push(text(label).size(FONT_BODY).line_height(1.0))
+                        .push(iced::widget::Space::new().width(Length::Fill))
+                        .spacing(SPACE_LG)
+                        .align_y(Alignment::Center)
+                        .width(Length::Fill);
+                    if count > 0 {
+                        let display = if count > 99 {
+                            "99+".to_string()
+                        } else {
+                            count.to_string()
+                        };
+                        let badge = container(
+                            text(display)
+                                .size(FONT_TINY)
+                                .line_height(1.0)
+                                .align_x(iced::alignment::Horizontal::Center)
+                                .width(Length::Fill),
+                        )
+                        .width(Length::Fixed(COUNT_BADGE_W))
+                        .height(Length::Fixed(24.0))
+                        .padding(COUNT_BADGE_PAD)
+                        .align_x(Alignment::Center)
+                        .align_y(Alignment::Center)
+                        .style(theme::style::count_badge(is_active));
+                        inner = inner.push(badge);
+                    }
+                    button(inner)
+                        .on_press(Message::Nav(NavMsg::SetTaskFilter(target)))
+                        .padding(PADDING_FILTER)
+                        .height(Length::Fixed(FILTER_ITEM_H))
+                        .width(Length::Fill)
+                        .style(theme::style::button::filter(is_active))
+                        .into()
                 };
 
             column![]

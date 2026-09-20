@@ -531,6 +531,30 @@ pub mod style {
         }
     }
 
+    pub fn count_badge(active: bool) -> impl Fn(&iced::Theme) -> iced::widget::container::Style {
+        move |t: &iced::Theme| -> iced::widget::container::Style {
+            let palette = t.extended_palette();
+            let accent = palette.primary.base.color;
+            iced::widget::container::Style {
+                background: Some(if active {
+                    Color::from_rgba(accent.r, accent.g, accent.b, 0.18).into()
+                } else {
+                    palette.background.base.color.into()
+                }),
+                text_color: Some(if active {
+                    accent
+                } else {
+                    palette.background.base.text
+                }),
+                border: iced::Border {
+                    radius: super::RADIUS_PILL.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        }
+    }
+
     fn capsule_pill(t: &iced::Theme) -> iced::widget::container::Style {
         iced::widget::container::Style {
             background: Some(t.extended_palette().background.base.color.into()),
