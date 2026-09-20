@@ -3,12 +3,12 @@ use std::time::Duration;
 use iced::Task;
 
 use crate::app::{
-    clear_all_local, clear_completed_local, copy_to_clipboard, details_files_tree,
+    clear_completed_local, clear_specific_local, copy_to_clipboard, details_files_tree,
     open_path_in_manager, refresh_tray, schedule_details_select_flush, spawn_toast, Remotrix,
 };
 use crate::engine::EngineCmd;
 use crate::i18n::Tr;
-use crate::message::{AddField, AddTab, ConfirmAction, Message, TaskMsg};
+use crate::message::{AddField, AddTab, ConfirmAction, Message, TaskFilter, TaskMsg};
 use crate::task::TaskStatus;
 use crate::ui::components::toast::{ToastGroup, ToastKind};
 
@@ -129,23 +129,45 @@ pub(crate) fn handle(state: &mut Remotrix, msg: TaskMsg) -> Task<Message> {
             Task::none()
         }
         TaskMsg::StartAll => {
+            if matches!(
+                state.task_filter,
+                TaskFilter::Completed | TaskFilter::Failed
+            ) {
+                return Task::none();
+            }
+            let gids = bulk_downloading_gids(state);
             state.tracking.paused_gids.clear();
-            if state.handle.cmd_tx.send(EngineCmd::ResumeAll).is_err() {
-                tracing::warn!("ui: resume all cmd send failed");
+            for gid in &gids {
+                if state
+                    .handle
+                    .cmd_tx
+                    .send(EngineCmd::Resume(gid.clone()))
+                    .is_err()
+                {
+                    tracing::warn!("ui: resume cmd send failed");
+                }
             }
             refresh_tray(state);
             Task::none()
         }
         TaskMsg::PauseAll => {
-            state.tracking.paused_gids.extend(
-                state
-                    .tasks
-                    .values()
-                    .filter(|t| t.status == TaskStatus::Active)
-                    .map(|t| t.gid.clone()),
-            );
-            if state.handle.cmd_tx.send(EngineCmd::PauseAll).is_err() {
-                tracing::warn!("ui: pause all cmd send failed");
+            if matches!(
+                state.task_filter,
+                TaskFilter::Completed | TaskFilter::Failed
+            ) {
+                return Task::none();
+            }
+            let gids = bulk_downloading_gids(state);
+            state.tracking.paused_gids.extend(gids.iter().cloned());
+            for gid in &gids {
+                if state
+                    .handle
+                    .cmd_tx
+                    .send(EngineCmd::Pause(gid.clone()))
+                    .is_err()
+                {
+                    tracing::warn!("ui: pause cmd send failed");
+                }
             }
             refresh_tray(state);
             Task::none()
@@ -154,15 +176,27 @@ pub(crate) fn handle(state: &mut Remotrix, msg: TaskMsg) -> Task<Message> {
             if state.confirm_anim.is_dismissing() {
                 return Task::none();
             }
-            if state
-                .handle
-                .cmd_tx
-                .send(EngineCmd::RemoveAll { delete_files: true })
-                .is_err()
-            {
-                tracing::warn!("ui: remove all cmd send failed");
+            if matches!(
+                state.task_filter,
+                TaskFilter::Completed | TaskFilter::Failed
+            ) {
+                return Task::none();
             }
-            clear_all_local(state);
+            let gids = bulk_downloading_gids(state);
+            for gid in &gids {
+                if state
+                    .handle
+                    .cmd_tx
+                    .send(EngineCmd::Remove {
+                        gid: gid.clone(),
+                        delete_files: true,
+                    })
+                    .is_err()
+                {
+                    tracing::warn!("ui: remove cmd send failed");
+                }
+            }
+            clear_specific_local(state, &gids);
             state.confirm_anim.begin_exit();
             let _ = spawn_toast(
                 state,
@@ -178,17 +212,27 @@ pub(crate) fn handle(state: &mut Remotrix, msg: TaskMsg) -> Task<Message> {
             if state.confirm_anim.is_dismissing() {
                 return Task::none();
             }
-            if state
-                .handle
-                .cmd_tx
-                .send(EngineCmd::RemoveAll {
-                    delete_files: false,
-                })
-                .is_err()
-            {
-                tracing::warn!("ui: remove all records cmd send failed");
+            if matches!(
+                state.task_filter,
+                TaskFilter::Completed | TaskFilter::Failed
+            ) {
+                return Task::none();
             }
-            clear_all_local(state);
+            let gids = bulk_downloading_gids(state);
+            for gid in &gids {
+                if state
+                    .handle
+                    .cmd_tx
+                    .send(EngineCmd::Remove {
+                        gid: gid.clone(),
+                        delete_files: false,
+                    })
+                    .is_err()
+                {
+                    tracing::warn!("ui: remove cmd send failed");
+                }
+            }
+            clear_specific_local(state, &gids);
             state.confirm_anim.begin_exit();
             let _ = spawn_toast(
                 state,
@@ -204,13 +248,17 @@ pub(crate) fn handle(state: &mut Remotrix, msg: TaskMsg) -> Task<Message> {
             if state.confirm_anim.is_dismissing() {
                 return Task::none();
             }
-            let completed: Vec<String> = state
+            let predicate: fn(&crate::task::DownloadTask) -> bool = match state.task_filter {
+                TaskFilter::Failed => |t| matches!(t.status, TaskStatus::Error),
+                _ => |t| matches!(t.status, TaskStatus::Completed | TaskStatus::Removed),
+            };
+            let gids: Vec<String> = state
                 .tasks
                 .iter()
-                .filter(|(_, t)| matches!(t.status, TaskStatus::Completed | TaskStatus::Removed))
+                .filter(|(_, t)| predicate(t))
                 .map(|(gid, _)| gid.clone())
                 .collect();
-            clear_completed_local(state, &completed);
+            clear_completed_local(state, &gids);
             state.confirm_anim.begin_exit();
             Task::none()
         }
@@ -606,4 +654,18 @@ pub(crate) fn handle(state: &mut Remotrix, msg: TaskMsg) -> Task<Message> {
             copy_to_clipboard(state, content)
         }
     }
+}
+
+fn bulk_downloading_gids(state: &Remotrix) -> Vec<String> {
+    state
+        .tasks
+        .values()
+        .filter(|t| {
+            matches!(
+                t.status,
+                TaskStatus::Active | TaskStatus::Waiting | TaskStatus::Paused
+            )
+        })
+        .map(|t| t.gid.clone())
+        .collect()
 }

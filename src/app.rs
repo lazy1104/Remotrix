@@ -720,20 +720,6 @@ pub(crate) fn sync_global_stat_cache(state: &Remotrix) {
     }
 }
 
-pub(crate) fn clear_all_local(state: &mut Remotrix) {
-    let gids: Vec<String> = state.tasks.keys().cloned().collect();
-    for gid in gids {
-        begin_task_exit(state, &gid, false);
-    }
-    state.tracking.dirty.clear();
-    state.tracking.active_count = 0;
-    state.tracking.paused_gids.clear();
-    if let Some(ref db) = state.db {
-        db.delete_all();
-    }
-    sync_sleep_block(state);
-}
-
 pub(crate) fn begin_task_exit(state: &mut Remotrix, gid: &str, delete_db: bool) {
     if !state.tasks.contains_key(gid) || state.pending_removals.contains(gid) {
         return;
@@ -859,6 +845,13 @@ pub(crate) fn apply_task_name(
             })
         },
     )
+}
+
+pub(crate) fn clear_specific_local(state: &mut Remotrix, gids: &[String]) {
+    for gid in gids {
+        begin_task_exit(state, gid, true);
+    }
+    state.tracking.paused_gids.retain(|g| !gids.contains(g));
 }
 
 pub(crate) fn clear_completed_local(state: &mut Remotrix, gids: &[String]) {
@@ -1239,6 +1232,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                 t,
                 &sorted,
                 !state.tasks.is_empty(),
+                state.task_filter,
                 state.sort_field,
                 state.sort_order,
                 state.sort_menu_open,

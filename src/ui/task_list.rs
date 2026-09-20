@@ -12,7 +12,8 @@ use iced::{mouse, Alignment, Element, Length};
 
 use crate::i18n::{Fluent, Tr};
 use crate::message::{
-    AddMsg, ConfirmAction, CtxTarget, DialogMsg, Message, SortField, SortMsg, SortOrder, TaskMsg,
+    AddMsg, ConfirmAction, CtxTarget, DialogMsg, Message, SortField, SortMsg, SortOrder,
+    TaskFilter, TaskMsg,
 };
 use crate::task::{format_duration, format_size, format_speed, DownloadTask, TaskStatus};
 use crate::ui::animation::{animation, Animated};
@@ -37,6 +38,7 @@ pub fn view<'a>(
     theme: &iced::Theme,
     tasks: &[&DownloadTask],
     has_any_tasks: bool,
+    task_filter: TaskFilter,
     sort_field: SortField,
     sort_order: SortOrder,
     sort_menu_open: bool,
@@ -189,46 +191,60 @@ pub fn view<'a>(
         );
     }
 
+    let refresh_btn = toolbar_btn(
+        icon::refresh().size(FONT_ICON),
+        fluent.get(Tr::Refresh),
+        Message::Task(TaskMsg::Refresh),
+        false,
+    );
+    let start_all_btn = toolbar_btn(
+        icon::play().size(FONT_ICON),
+        fluent.get(Tr::StartAll),
+        Message::Task(TaskMsg::StartAll),
+        false,
+    );
+    let pause_all_btn = toolbar_btn(
+        icon::pause().size(FONT_ICON),
+        fluent.get(Tr::PauseAll),
+        Message::Task(TaskMsg::PauseAll),
+        false,
+    );
+    let delete_all_btn = toolbar_btn(
+        icon::trash().size(FONT_ICON),
+        fluent.get(Tr::DeleteAll),
+        Message::Dialog(DialogMsg::RequestConfirm(ConfirmAction::DeleteAll)),
+        false,
+    );
+    let clear_list_btn = toolbar_btn(
+        icon::eraser().size(FONT_ICON),
+        fluent.get(Tr::ClearList),
+        Message::Dialog(DialogMsg::RequestConfirm(ConfirmAction::ClearCompleted)),
+        false,
+    );
+
+    let mut right_group = row![]
+        .push(refresh_btn)
+        .push(sort_dropdown)
+        .align_y(Alignment::Center)
+        .spacing(SPACE_SM);
+    match task_filter {
+        TaskFilter::Completed | TaskFilter::Failed => {
+            right_group = right_group.push(clear_list_btn);
+        }
+        TaskFilter::All | TaskFilter::Downloading => {
+            right_group = right_group
+                .push(start_all_btn)
+                .push(pause_all_btn)
+                .push(delete_all_btn)
+                .push(clear_list_btn);
+        }
+    }
+
     let toolbar = row![]
         .push(search_group)
         .push(iced::widget::Space::new().width(Length::Fill))
         .push(new_btn)
-        .push(
-            row![]
-                .push(toolbar_btn(
-                    icon::refresh().size(FONT_ICON),
-                    fluent.get(Tr::Refresh),
-                    Message::Task(TaskMsg::Refresh),
-                    false,
-                ))
-                .push(sort_dropdown)
-                .push(toolbar_btn(
-                    icon::play().size(FONT_ICON),
-                    fluent.get(Tr::StartAll),
-                    Message::Task(TaskMsg::StartAll),
-                    false,
-                ))
-                .push(toolbar_btn(
-                    icon::pause().size(FONT_ICON),
-                    fluent.get(Tr::PauseAll),
-                    Message::Task(TaskMsg::PauseAll),
-                    false,
-                ))
-                .push(toolbar_btn(
-                    icon::trash().size(FONT_ICON),
-                    fluent.get(Tr::DeleteAll),
-                    Message::Dialog(DialogMsg::RequestConfirm(ConfirmAction::DeleteAll)),
-                    false,
-                ))
-                .push(toolbar_btn(
-                    icon::eraser().size(FONT_ICON),
-                    fluent.get(Tr::ClearList),
-                    Message::Dialog(DialogMsg::RequestConfirm(ConfirmAction::ClearCompleted)),
-                    false,
-                ))
-                .align_y(Alignment::Center)
-                .spacing(SPACE_SM),
-        )
+        .push(right_group)
         .align_y(Alignment::Center)
         .spacing(SPACE_SM)
         .width(Length::Fill)
