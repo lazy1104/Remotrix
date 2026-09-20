@@ -615,12 +615,6 @@ fn general_view<'a>(
                     SettingKey::Aria2SilentUpdate,
                 ),
                 labeled_hint(fluent.get(Tr::Aria2SilentUpdateHint)),
-                labeled_toggle(
-                    fluent.get(Tr::UpdateBetaChannel),
-                    settings.update.beta_channel,
-                    SettingKey::BetaChannel,
-                ),
-                labeled_hint(fluent.get(Tr::UpdateBetaChannelHint)),
             ])
         } else {
             iced::widget::Space::new().height(Length::Fixed(0.0)).into()
