@@ -19,6 +19,8 @@ pub const CARD_ENTER_MS: u64 = 280;
 pub const CARD_EXIT_MS: u64 = 200;
 /// Heads-up-display fade/slide duration.
 pub const HUD_ANIM_MS: u64 = 220;
+/// Top-border progress bar fade in/out duration.
+pub const BORDER_FADE_MS: u64 = 240;
 /// Progress-bar easing duration.
 pub const PROGRESS_MS: u64 = 250;
 /// Filter-pill slide duration.

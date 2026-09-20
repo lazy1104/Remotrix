@@ -103,6 +103,10 @@ pub(crate) fn dispatch(state: &mut Remotrix, message: Message) -> Task<Message> 
             state.hud_anim.update(event);
             Task::none()
         }
+        Message::BorderAnim(event) => {
+            state.border_anim.update(event);
+            Task::none()
+        }
         Message::PillAnim(event) => {
             state.filter_pill.update(event);
             Task::none()
@@ -154,6 +158,7 @@ pub(crate) fn dispatch(state: &mut Remotrix, message: Message) -> Task<Message> 
             Task::none()
         }
         Message::ScrollAnimTick => Task::none(),
+        Message::BorderAnimTick => Task::none(),
         Message::SpeedLimitDebounceTick => {
             crate::app::handle_speed_limit_debounce_tick(state);
             Task::none()
@@ -167,6 +172,13 @@ pub(crate) fn dispatch(state: &mut Remotrix, message: Message) -> Task<Message> 
     state
         .hud_anim
         .set_target(if state.tracking.active_count > 0 {
+            1.0
+        } else {
+            0.0
+        });
+    state
+        .border_anim
+        .set_target(if crate::app::is_background_busy(state) {
             1.0
         } else {
             0.0

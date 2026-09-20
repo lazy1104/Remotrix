@@ -333,6 +333,7 @@ pub struct Remotrix {
     pub(crate) pending_removals: HashSet<String>,
     pub(crate) filter_pill: crate::ui::animation::Animated<f32>,
     pub(crate) hud_anim: crate::ui::animation::Animated<f32>,
+    pub(crate) border_anim: crate::ui::animation::Animated<f32>,
     pub(crate) add_dialog_anim: crate::ui::animation::DialogAnim,
     pub(crate) about_dialog_anim: crate::ui::animation::DialogAnim,
     pub(crate) details_anim: crate::ui::animation::DialogAnim,
@@ -488,6 +489,10 @@ pub fn init() -> (Remotrix, Task<Message>) {
         hud_anim: crate::ui::animation::Animated::transition(
             0.0,
             crate::ui::animation::ease_out_cubic(crate::ui::animation::HUD_ANIM_MS),
+        ),
+        border_anim: crate::ui::animation::Animated::transition(
+            0.0,
+            crate::ui::animation::ease_out_cubic(crate::ui::animation::BORDER_FADE_MS),
         ),
         add_dialog_anim: Default::default(),
         about_dialog_anim: Default::default(),
@@ -1153,6 +1158,20 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
     crate::update::dispatch(state, message)
 }
 
+pub(crate) fn is_background_busy(state: &Remotrix) -> bool {
+    if state.engine_ui.update_check_in_flight
+        || state.engine_ui.aria2_downloading
+        || state.app_update_in_flight
+        || state.restart.engine_restart_in_progress
+    {
+        return true;
+    }
+    match state.engine_ui.aria2_status.as_ref() {
+        Some((stage, _)) if stage != "ready" => true,
+        _ => state.engine_ui.aria2_fetch_error.is_some(),
+    }
+}
+
 pub fn view(state: &Remotrix) -> Element<'_, Message> {
     let counts = Counts {
         all: state.tasks.len(),
@@ -1315,14 +1334,27 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             .width(Length::Fill)
             .height(Length::Fill)
             .style(theme::style::base_background);
-        let border = container(iced::widget::Space::new())
+        let hairline: iced::Element<'_, Message> = container(iced::widget::Space::new())
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(theme::style::window_border);
+            .style(theme::style::window_border)
+            .into();
+        let border_opacity = *state.border_anim.value();
+        let animated_bar: iced::Element<'_, Message> = if border_opacity > 0.0 {
+            crate::ui::border_bar::view(t, border_opacity)
+        } else {
+            container(iced::widget::Space::new())
+                .width(Length::Fill)
+                .height(Length::Fixed(crate::ui::border_bar::HEIGHT))
+                .into()
+        };
+        let animated_layer = crate::ui::animation::animation(&state.border_anim, animated_bar)
+            .on_update(Message::BorderAnim);
         stack![
             iced::widget::opaque(base),
             crate::ui::resize_frame::view(),
-            border,
+            hairline,
+            animated_layer,
         ]
         .width(Length::Fill)
         .height(Length::Fill)
@@ -1882,6 +1914,12 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         Subscription::none()
     };
 
+    let border_anim_tick = if is_background_busy(state) || state.border_anim.is_animating() {
+        iced::time::every(Duration::from_millis(16)).map(|_| Message::BorderAnimTick)
+    } else {
+        Subscription::none()
+    };
+
     let speed_limit_tick =
         iced::time::every(Duration::from_millis(100)).map(|_| Message::SpeedLimitDebounceTick);
 
@@ -1911,6 +1949,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         ed2k_bootstrap_auto_sync,
         shutdown_tick,
         speed_limit_tick,
+        border_anim_tick,
     ])
 }
 

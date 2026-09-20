@@ -109,6 +109,7 @@ pub enum Message {
     ProgressAnim(String, crate::ui::animation::Event<f32>),
     CardAnim(String, crate::ui::animation::Event<f32>),
     HudAnim(crate::ui::animation::Event<f32>),
+    BorderAnim(crate::ui::animation::Event<f32>),
     PillAnim(crate::ui::animation::Event<f32>),
     AddDialogAnim(crate::ui::animation::Event<f32>),
     AboutDialogAnim(crate::ui::animation::Event<f32>),
@@ -121,6 +122,7 @@ pub enum Message {
     ScrollAnimTick,
     ScrollableScrolled(iced::widget::Id),
     SpeedLimitDebounceTick,
+    BorderAnimTick,
     Noop,
 }
 
