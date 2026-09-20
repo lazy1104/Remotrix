@@ -332,12 +332,6 @@ pub struct Remotrix {
     pub(crate) card_anim: HashMap<String, crate::ui::animation::Animated<f32>>,
     pub(crate) pending_removals: HashSet<String>,
     pub(crate) filter_pill: crate::ui::animation::Animated<f32>,
-    pub(crate) swap: crate::ui::animation::Animated<f32>,
-    pub(crate) swap_pending: Option<crate::update::nav::SwapTarget>,
-    pub(crate) swap_index_delta: i8,
-    pub(crate) page_swap: crate::ui::animation::Animated<f32>,
-    pub(crate) page_swap_pending: Option<crate::message::Page>,
-    pub(crate) page_swap_index_delta: i8,
     pub(crate) hud_anim: crate::ui::animation::Animated<f32>,
     pub(crate) add_dialog_anim: crate::ui::animation::DialogAnim,
     pub(crate) about_dialog_anim: crate::ui::animation::DialogAnim,
@@ -491,18 +485,6 @@ pub fn init() -> (Remotrix, Task<Message>) {
             0.0,
             crate::ui::animation::ease_in_out_quad(crate::ui::animation::PILL_MS),
         ),
-        swap: crate::ui::animation::Animated::transition(
-            1.0,
-            crate::ui::animation::ease_out_cubic(crate::ui::animation::SWAP_EXIT_MS),
-        ),
-        swap_pending: None,
-        swap_index_delta: 0,
-        page_swap: crate::ui::animation::Animated::transition(
-            1.0,
-            crate::ui::animation::ease_out_cubic(crate::ui::animation::SWAP_EXIT_MS),
-        ),
-        page_swap_pending: None,
-        page_swap_index_delta: 0,
         hud_anim: crate::ui::animation::Animated::transition(
             0.0,
             crate::ui::animation::ease_out_cubic(crate::ui::animation::HUD_ANIM_MS),
@@ -1222,19 +1204,8 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         &state.filter_pill,
     );
 
-    let mid_scaled: Element<'_, Message> = crate::ui::animation::animation(
-        &state.page_swap,
-        crate::ui::components::translate_anim::translate_y(
-            mid_content_inner,
-            *state.page_swap.value(),
-            state.page_swap_index_delta,
-        ),
-    )
-    .on_update(Message::PageSwapAnim)
-    .into();
-
     let mid_col: Element<'_, Message> = iced::widget::Stack::new()
-        .push(mid_scaled)
+        .push(mid_content_inner)
         .push_under(mid_bg)
         .width(Length::Fill)
         .height(Length::Fill)
@@ -1309,16 +1280,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         }
     };
 
-    let right_col: Element<'_, Message> = crate::ui::animation::animation(
-        &state.swap,
-        crate::ui::components::translate_anim::translate_y(
-            right_col_inner,
-            *state.swap.value(),
-            state.swap_index_delta,
-        ),
-    )
-    .on_update(Message::SwapAnim)
-    .into();
+    let right_col: Element<'_, Message> = right_col_inner;
 
     let content = row![]
         .push(

@@ -35,7 +35,6 @@ pub mod tooltip;
 pub mod torrent_file_list;
 pub mod torrent_upload;
 pub mod translate;
-pub mod translate_anim;
 pub mod tri_checkbox;
 pub mod truncated_text;
 
