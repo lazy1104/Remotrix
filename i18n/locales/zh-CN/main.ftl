@@ -2,6 +2,7 @@ app-name = Remotrix
 all = 全部
 downloading = 下载中
 completed = 已完成
+failed = 失败
 settings = 设置
 tasks = 任务
 new = 新建

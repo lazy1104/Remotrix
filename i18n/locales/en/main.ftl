@@ -2,6 +2,7 @@ app-name = Remotrix
 all = All
 downloading = Downloading
 completed = Completed
+failed = Failed
 settings = Settings
 tasks = Tasks
 new = New

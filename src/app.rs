@@ -1196,6 +1196,11 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             .values()
             .filter(|t| matches!(t.status, TaskStatus::Completed))
             .count(),
+        failed: state
+            .tasks
+            .values()
+            .filter(|t| matches!(t.status, TaskStatus::Error))
+            .count(),
     };
 
     let t = &state.theme;
@@ -1249,6 +1254,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                         TaskStatus::Active | TaskStatus::Waiting | TaskStatus::Paused
                     ),
                     TaskFilter::Completed => matches!(t.status, TaskStatus::Completed),
+                    TaskFilter::Failed => matches!(t.status, TaskStatus::Error),
                 })
                 .filter(|t| {
                     query.is_empty()

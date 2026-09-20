@@ -19,12 +19,13 @@ use crate::ui::theme;
 
 /// Per-filter counts displayed next to each sidebar entry.
 ///
-/// All three fields are populated by the app each time the task list
+/// All four fields are populated by the app each time the task list
 /// changes; missing entries are simply rendered without a count.
 pub struct Counts {
     pub all: usize,
     pub downloading: usize,
     pub completed: usize,
+    pub failed: usize,
 }
 
 /// Background shell painted with `category_background` style. Sized to
@@ -72,6 +73,7 @@ pub fn content<'a>(
                         TaskFilter::All => icon::layers(),
                         TaskFilter::Downloading => icon::download_arrow(),
                         TaskFilter::Completed => icon::circle_check(),
+                        TaskFilter::Failed => icon::circle_alert(),
                     };
                     let mut inner = row![]
                         .push(icon.size(FONT_ICON).line_height(1.0))
@@ -126,6 +128,11 @@ pub fn content<'a>(
                     fluent.get(Tr::Completed),
                     counts.completed,
                     TaskFilter::Completed,
+                ))
+                .push(make_filter(
+                    fluent.get(Tr::Failed),
+                    counts.failed,
+                    TaskFilter::Failed,
                 ))
                 .into()
         }

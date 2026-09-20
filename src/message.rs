@@ -406,6 +406,7 @@ pub enum TaskFilter {
     All,
     Downloading,
     Completed,
+    Failed,
 }
 
 impl TaskFilter {
@@ -414,6 +415,7 @@ impl TaskFilter {
             TaskFilter::All => 0,
             TaskFilter::Downloading => 1,
             TaskFilter::Completed => 2,
+            TaskFilter::Failed => 3,
         }
     }
 }
@@ -576,12 +578,13 @@ mod tests {
             TaskFilter::All.index(),
             TaskFilter::Downloading.index(),
             TaskFilter::Completed.index(),
+            TaskFilter::Failed.index(),
         ];
         let mut deduped = all.clone();
         deduped.sort();
         deduped.dedup();
-        assert_eq!(all.len(), 3);
-        assert_eq!(deduped.len(), 3, "duplicate index for some variant");
+        assert_eq!(all.len(), 4);
+        assert_eq!(deduped.len(), 4, "duplicate index for some variant");
     }
 
     #[test]
@@ -589,6 +592,7 @@ mod tests {
         assert_eq!(TaskFilter::All.index(), 0);
         assert_eq!(TaskFilter::Downloading.index(), 1);
         assert_eq!(TaskFilter::Completed.index(), 2);
+        assert_eq!(TaskFilter::Failed.index(), 3);
     }
 
     #[test]
