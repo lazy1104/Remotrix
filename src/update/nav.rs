@@ -1,6 +1,6 @@
 use iced::Task;
 
-use crate::app::{pill_to_index, Remotrix};
+use crate::app::{pill_settle_to_index, pill_to_index, Remotrix};
 use crate::message::{ConfirmAction, Message, NavMsg, Page, SettingsCategory, TaskFilter};
 
 #[derive(Debug, Clone, Copy)]
@@ -38,11 +38,7 @@ pub(crate) fn handle(state: &mut Remotrix, msg: NavMsg) -> Task<Message> {
             } else {
                 request_swap(state, SwapTarget::Page(page));
                 request_page_swap(state, page);
-                let pill_index = match page {
-                    Page::Tasks => state.task_filter.index(),
-                    Page::Settings => state.settings_cat.index(),
-                };
-                pill_to_index(state, pill_index);
+                // pill deferred to on_swap_anim commit so it moves with the page swap
             }
             Task::none()
         }
@@ -93,7 +89,14 @@ pub(crate) fn on_swap_anim(state: &mut Remotrix, value: f32) -> Task<Message> {
     }
     let target = state.swap_pending.take().unwrap();
     match target {
-        SwapTarget::Page(p) => state.page = p,
+        SwapTarget::Page(p) => {
+            state.page = p;
+            let pill_index = match p {
+                Page::Tasks => state.task_filter.index(),
+                Page::Settings => state.settings_cat.index(),
+            };
+            pill_settle_to_index(state, pill_index);
+        }
         SwapTarget::Filter(f) => state.task_filter = f,
         SwapTarget::Category(c) => state.settings_cat = c,
     }
