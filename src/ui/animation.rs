@@ -32,7 +32,7 @@ pub const SWAP_ENTER_MS: u64 = 180;
 /// Minimum scale factor reached during a swap; the right column dips from
 /// `1.0` down to `SWAP_MIN` and back. Controls both the visual scale and
 /// how strongly the content is washed with the background color.
-pub const SWAP_MIN: f32 = 0.9;
+pub const SWAP_MIN: f32 = 0.95;
 
 /// Build a non-reversible `t -> 1 - (1-t)^2` easing curve lasting
 /// `duration_ms`. Used for element entrance animations where the value
