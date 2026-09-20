@@ -1,29 +1,44 @@
 use iced::advanced::layout::{self, Node};
-use iced::advanced::renderer::{self, Quad};
+use iced::advanced::renderer;
 use iced::advanced::widget::{self, tree, Widget};
-use iced::advanced::{Clipboard, Layout, Shell};
-use iced::{mouse, Background, Element, Event, Length, Rectangle, Size, Transformation, Vector};
+use iced::advanced::{Clipboard, Layout, Renderer, Shell};
+use iced::{mouse, Element, Event, Length, Rectangle, Size, Transformation, Vector};
 
-const SLIDE_PX: f32 = 14.0;
-const FADE_ALPHA: f32 = 0.40;
+use crate::ui::animation::SWAP_MIN;
 
-pub fn swap_translate_fade<'a, Message: 'a>(
+/// Magnitude of the slide, in pixels, reached when `factor` is at its
+/// minimum (`SWAP_MIN`). Direction (up/down) comes from the sign of
+/// `index_delta` passed to [`translate_y`].
+pub const SLIDE_PX: f32 = 18.0;
+
+/// Slide-only transition wrapper: translates `content` vertically based
+/// on the animated `factor` and the signed `index_delta` of the swap.
+///
+/// `factor = 1.0` → no offset. As `factor` drops toward `SWAP_MIN`, the
+/// content shifts by up to `|index_delta| * SLIDE_PX` pixels. A positive
+/// `index_delta` (`from_index - to_index > 0`, i.e. the user picked an
+/// item above the current one) slides **down**; a negative delta slides
+/// **up**. No scaling, no background wash.
+pub fn translate_y<'a, Message: 'a>(
     content: impl Into<Element<'a, Message>>,
     factor: f32,
+    index_delta: i8,
 ) -> Element<'a, Message> {
     let factor = factor.clamp(0.0, 1.0);
-    Element::new(Swap {
+    let dip = ((1.0 - factor) / (1.0 - SWAP_MIN)).clamp(0.0, 1.0);
+    let offset_y = dip * f32::from(index_delta) * SLIDE_PX;
+    Element::new(TranslateY {
         content: content.into(),
-        factor,
+        offset_y,
     })
 }
 
-struct Swap<'a, Message> {
+struct TranslateY<'a, Message> {
     content: Element<'a, Message>,
-    factor: f32,
+    offset_y: f32,
 }
 
-impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Swap<'a, Message> {
+impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for TranslateY<'a, Message> {
     fn size(&self) -> Size<Length> {
         self.content.as_widget().size()
     }
@@ -113,51 +128,23 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Swap<'a, Mess
         cursor: mouse::Cursor,
         viewport: &Rectangle,
     ) {
-        use iced::advanced::Renderer as _;
-
-        let bounds = layout.bounds();
-        let Some(clipped_viewport) = bounds.intersection(viewport) else {
-            return;
-        };
-
-        if self.factor >= 0.99999 {
+        if self.offset_y.abs() < 0.001 {
             self.content
                 .as_widget()
                 .draw(tree, renderer, theme, style, layout, cursor, viewport);
             return;
         }
-
-        let dip = 1.0 - self.factor;
-        let offset_y = dip * SLIDE_PX;
-        let wash_alpha = dip * FADE_ALPHA;
-        let bg = theme.extended_palette().background.base.color;
-
-        renderer.with_layer(bounds, |renderer| {
-            renderer.with_transformation(Transformation::translate(0.0, offset_y), |renderer| {
-                self.content.as_widget().draw(
-                    tree,
-                    renderer,
-                    theme,
-                    style,
-                    layout,
-                    cursor,
-                    &clipped_viewport,
-                );
-            });
+        let affine = Transformation::translate(0.0, self.offset_y);
+        renderer.with_transformation(affine, |renderer| {
+            self.content
+                .as_widget()
+                .draw(tree, renderer, theme, style, layout, cursor, viewport);
         });
-
-        renderer.fill_quad(
-            Quad {
-                bounds,
-                ..Default::default()
-            },
-            Background::Color(bg.scale_alpha(wash_alpha)),
-        );
     }
 }
 
-impl<'a, Message: 'a> From<Swap<'a, Message>> for Element<'a, Message> {
-    fn from(s: Swap<'a, Message>) -> Self {
-        Element::new(s)
+impl<'a, Message: 'a> From<TranslateY<'a, Message>> for Element<'a, Message> {
+    fn from(t: TranslateY<'a, Message>) -> Self {
+        Element::new(t)
     }
 }

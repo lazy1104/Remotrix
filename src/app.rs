@@ -334,8 +334,10 @@ pub struct Remotrix {
     pub(crate) filter_pill: crate::ui::animation::Animated<f32>,
     pub(crate) swap: crate::ui::animation::Animated<f32>,
     pub(crate) swap_pending: Option<crate::update::nav::SwapTarget>,
+    pub(crate) swap_index_delta: i8,
     pub(crate) page_swap: crate::ui::animation::Animated<f32>,
     pub(crate) page_swap_pending: Option<crate::message::Page>,
+    pub(crate) page_swap_index_delta: i8,
     pub(crate) hud_anim: crate::ui::animation::Animated<f32>,
     pub(crate) add_dialog_anim: crate::ui::animation::DialogAnim,
     pub(crate) about_dialog_anim: crate::ui::animation::DialogAnim,
@@ -494,11 +496,13 @@ pub fn init() -> (Remotrix, Task<Message>) {
             crate::ui::animation::ease_out_cubic(crate::ui::animation::SWAP_EXIT_MS),
         ),
         swap_pending: None,
+        swap_index_delta: 0,
         page_swap: crate::ui::animation::Animated::transition(
             1.0,
             crate::ui::animation::ease_out_cubic(crate::ui::animation::SWAP_EXIT_MS),
         ),
         page_swap_pending: None,
+        page_swap_index_delta: 0,
         hud_anim: crate::ui::animation::Animated::transition(
             0.0,
             crate::ui::animation::ease_out_cubic(crate::ui::animation::HUD_ANIM_MS),
@@ -1155,8 +1159,8 @@ pub(crate) fn set_page(state: &mut Remotrix, page: Page) {
     if state.page != page {
         state.page = page;
         let index = match page {
-            Page::Tasks => crate::ui::category_bar::task_filter_index(state.task_filter),
-            Page::Settings => crate::ui::category_bar::settings_cat_index(state.settings_cat),
+            Page::Tasks => state.task_filter.index(),
+            Page::Settings => state.settings_cat.index(),
         };
         state
             .filter_pill
@@ -1209,7 +1213,11 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
 
     let mid_scaled: Element<'_, Message> = crate::ui::animation::animation(
         &state.page_swap,
-        crate::ui::components::scale::scale(mid_content_inner, *state.page_swap.value()),
+        crate::ui::components::translate_anim::translate_y(
+            mid_content_inner,
+            *state.page_swap.value(),
+            state.page_swap_index_delta,
+        ),
     )
     .on_update(Message::PageSwapAnim)
     .into();
@@ -1291,7 +1299,11 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
 
     let right_col: Element<'_, Message> = crate::ui::animation::animation(
         &state.swap,
-        crate::ui::components::scale::scale(right_col_inner, *state.swap.value()),
+        crate::ui::components::translate_anim::translate_y(
+            right_col_inner,
+            *state.swap.value(),
+            state.swap_index_delta,
+        ),
     )
     .on_update(Message::SwapAnim)
     .into();

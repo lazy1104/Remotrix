@@ -392,11 +392,30 @@ pub enum Page {
     Settings,
 }
 
+impl Page {
+    pub fn index(&self) -> usize {
+        match self {
+            Page::Tasks => 0,
+            Page::Settings => 1,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskFilter {
     All,
     Downloading,
     Completed,
+}
+
+impl TaskFilter {
+    pub fn index(&self) -> usize {
+        match self {
+            TaskFilter::All => 0,
+            TaskFilter::Downloading => 1,
+            TaskFilter::Completed => 2,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -407,6 +426,19 @@ pub enum SettingsCategory {
     Ed2k,
     Network,
     Advanced,
+}
+
+impl SettingsCategory {
+    pub fn index(&self) -> usize {
+        match self {
+            SettingsCategory::General => 0,
+            SettingsCategory::Download => 1,
+            SettingsCategory::BitTorrent => 2,
+            SettingsCategory::Ed2k => 3,
+            SettingsCategory::Network => 4,
+            SettingsCategory::Advanced => 5,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -526,4 +558,63 @@ pub enum SettingKey {
     BetaChannel,
     AppLogLevel,
     EngineLogLevel,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn page_index_bijective() {
+        assert_eq!(Page::Tasks.index(), 0);
+        assert_eq!(Page::Settings.index(), 1);
+    }
+
+    #[test]
+    fn task_filter_index_covers_all_variants() {
+        let all = vec![
+            TaskFilter::All.index(),
+            TaskFilter::Downloading.index(),
+            TaskFilter::Completed.index(),
+        ];
+        let mut deduped = all.clone();
+        deduped.sort();
+        deduped.dedup();
+        assert_eq!(all.len(), 3);
+        assert_eq!(deduped.len(), 3, "duplicate index for some variant");
+    }
+
+    #[test]
+    fn task_filter_index_bijective() {
+        assert_eq!(TaskFilter::All.index(), 0);
+        assert_eq!(TaskFilter::Downloading.index(), 1);
+        assert_eq!(TaskFilter::Completed.index(), 2);
+    }
+
+    #[test]
+    fn settings_cat_index_covers_all_variants() {
+        let all = vec![
+            SettingsCategory::General.index(),
+            SettingsCategory::Download.index(),
+            SettingsCategory::BitTorrent.index(),
+            SettingsCategory::Ed2k.index(),
+            SettingsCategory::Network.index(),
+            SettingsCategory::Advanced.index(),
+        ];
+        let mut deduped = all.clone();
+        deduped.sort();
+        deduped.dedup();
+        assert_eq!(all.len(), 6);
+        assert_eq!(deduped.len(), 6, "duplicate index for some category");
+    }
+
+    #[test]
+    fn settings_cat_index_bijective() {
+        assert_eq!(SettingsCategory::General.index(), 0);
+        assert_eq!(SettingsCategory::Download.index(), 1);
+        assert_eq!(SettingsCategory::BitTorrent.index(), 2);
+        assert_eq!(SettingsCategory::Ed2k.index(), 3);
+        assert_eq!(SettingsCategory::Network.index(), 4);
+        assert_eq!(SettingsCategory::Advanced.index(), 5);
+    }
 }

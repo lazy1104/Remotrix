@@ -27,28 +27,6 @@ pub struct Counts {
     pub completed: usize,
 }
 
-/// Position of `f` in the on-screen task filter list. Useful for animating
-/// the pill to the right row.
-pub fn task_filter_index(f: TaskFilter) -> usize {
-    match f {
-        TaskFilter::All => 0,
-        TaskFilter::Downloading => 1,
-        TaskFilter::Completed => 2,
-    }
-}
-
-/// Position of `c` in the on-screen settings category list.
-pub fn settings_cat_index(c: SettingsCategory) -> usize {
-    match c {
-        SettingsCategory::General => 0,
-        SettingsCategory::Download => 1,
-        SettingsCategory::BitTorrent => 2,
-        SettingsCategory::Ed2k => 3,
-        SettingsCategory::Network => 4,
-        SettingsCategory::Advanced => 5,
-    }
-}
-
 /// Background shell painted with `category_background` style. Sized to
 /// fill whatever bounds the caller provides; contents are empty so it
 /// renders as a flat coloured panel. Kept separate from [`content`] so
@@ -231,68 +209,4 @@ pub fn view<'a>(
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::message::{SettingsCategory, TaskFilter};
-
-    #[test]
-    fn task_filter_index_covers_all_variants() {
-        let all = vec![
-            task_filter_index(TaskFilter::All),
-            task_filter_index(TaskFilter::Downloading),
-            task_filter_index(TaskFilter::Completed),
-        ];
-        let mut deduped = all.clone();
-        deduped.sort();
-        deduped.dedup();
-        assert_eq!(all.len(), 3);
-        assert_eq!(deduped.len(), 3, "duplicate index for some variant");
-    }
-
-    #[test]
-    fn task_filter_index_bijective() {
-        let pairs = [
-            (TaskFilter::All, 0usize),
-            (TaskFilter::Downloading, 1),
-            (TaskFilter::Completed, 2),
-        ];
-        for (variant, expected) in pairs {
-            assert_eq!(task_filter_index(variant), expected);
-        }
-    }
-
-    #[test]
-    fn settings_cat_index_covers_all_variants() {
-        let all = vec![
-            settings_cat_index(SettingsCategory::General),
-            settings_cat_index(SettingsCategory::Download),
-            settings_cat_index(SettingsCategory::BitTorrent),
-            settings_cat_index(SettingsCategory::Ed2k),
-            settings_cat_index(SettingsCategory::Network),
-            settings_cat_index(SettingsCategory::Advanced),
-        ];
-        let mut deduped = all.clone();
-        deduped.sort();
-        deduped.dedup();
-        assert_eq!(all.len(), 6);
-        assert_eq!(deduped.len(), 6, "duplicate index for some category");
-    }
-
-    #[test]
-    fn settings_cat_index_bijective() {
-        let pairs = [
-            (SettingsCategory::General, 0usize),
-            (SettingsCategory::Download, 1),
-            (SettingsCategory::BitTorrent, 2),
-            (SettingsCategory::Ed2k, 3),
-            (SettingsCategory::Network, 4),
-            (SettingsCategory::Advanced, 5),
-        ];
-        for (variant, expected) in pairs {
-            assert_eq!(settings_cat_index(variant), expected);
-        }
-    }
 }
