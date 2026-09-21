@@ -33,6 +33,8 @@ pub const SPACE_4XL: f32 = 16.0; // 区块间距
 pub const SWATCH_SIZE: f32 = 28.0; // 主题色圆点尺寸
 pub const SIDEBAR_LOGO_W: f32 = 40.0; // 侧栏 logo 宽
 pub const SIDEBAR_LOGO_H: f32 = 24.0; // 侧栏 logo 高
+pub const SIDEBAR_W: f32 = 64.0; // 侧栏固定宽度
+pub const CATEGORY_W: f32 = 216.0; // 分类栏固定宽度
 pub const ABOUT_LOGO_SIZE: f32 = 96.0; // About 对话框 logo 边长（方形）
 
 // ---- 内边距 ----

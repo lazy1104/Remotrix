@@ -6,14 +6,13 @@ use crate::message::Message;
 pub(crate) mod add;
 pub(crate) mod engine;
 pub(crate) mod misc;
-pub(crate) mod nav;
 pub(crate) mod settings;
 pub(crate) mod task;
 pub(crate) mod window;
 
 pub(crate) fn dispatch(state: &mut Remotrix, message: Message) -> Task<Message> {
     let task = match message {
-        Message::Nav(msg) => nav::handle(state, msg),
+        Message::Nav(msg) => misc::handle_nav(state, msg),
         Message::Add(msg) => add::handle(state, msg),
         Message::Task(msg) => task::handle(state, msg),
         Message::Settings(msg) => settings::handle(state, msg),

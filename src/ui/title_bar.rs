@@ -10,8 +10,8 @@ use iced::{Alignment, Element, Length};
 
 use crate::message::{Message, WindowCmd, WindowMsg};
 use crate::ui::dims::*;
+use crate::ui::dims::{CATEGORY_W, SIDEBAR_W};
 use crate::ui::icon;
-use crate::ui::icons::{CATEGORY_W, SIDEBAR_W};
 use crate::ui::theme;
 
 /// Logical height of the title bar in pixels; consumed by the outer page

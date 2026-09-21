@@ -3,14 +3,14 @@ use std::time::Duration;
 use iced::Task;
 
 use crate::app::{
-    dismiss_toast, hide_to_tray, mark_settings_dirty, open_add_dialog, refresh_tray,
+    dismiss_toast, hide_to_tray, mark_settings_dirty, open_add_dialog, pill_to_index, refresh_tray,
     reset_shutdown_card, restore_window_from_tray, restore_window_from_tray_wayland,
     send_system_notification, set_page, spawn_toast, Remotrix,
 };
 use crate::i18n::Tr;
 use crate::message::{
-    ConfirmAction, DialogMsg, ExtensionMsg, Message, Page, SettingKey, ShutdownMsg, SortMsg,
-    SortOrder, ToastMsg, TrayMsg,
+    ConfirmAction, DialogMsg, ExtensionMsg, Message, NavMsg, Page, SettingKey, ShutdownMsg,
+    SortMsg, SortOrder, ToastMsg, TrayMsg,
 };
 use crate::ui::components::toast::{ToastGroup, ToastKind};
 
@@ -240,4 +240,49 @@ pub(crate) fn handle_activate_window(state: &mut Remotrix) -> Task<Message> {
         })
         .unwrap_or_else(Task::none);
     restore_window_from_tray(state).chain(attention)
+}
+
+pub(crate) fn handle_nav(state: &mut Remotrix, msg: NavMsg) -> Task<Message> {
+    match msg {
+        NavMsg::NavigatePage(page) => {
+            state.settings_ui.download_picker.close_history();
+            if page == Page::Tasks && state.page == Page::Settings && state.settings_dirty {
+                state.confirm = Some(ConfirmAction::LeaveSettings { target: page });
+                state.confirm_anim.open();
+                return Task::none();
+            }
+            state.page = page;
+            let pill_index = match page {
+                Page::Tasks => state.task_filter.index(),
+                Page::Settings => state.settings_cat.index(),
+            };
+            pill_to_index(state, pill_index);
+            if matches!(page, Page::Settings) {
+                return iced::widget::operation::scroll_to::<Message>(
+                    iced::widget::Id::new(crate::ui::settings_page::SETTINGS_SCROLL_ID),
+                    iced::widget::operation::AbsoluteOffset::<f32>::default(),
+                );
+            }
+            Task::none()
+        }
+        NavMsg::SetTaskFilter(filter) => {
+            state.task_filter = filter;
+            pill_to_index(state, filter.index());
+            Task::none()
+        }
+        NavMsg::SetSettingsCategory(cat) => {
+            state.settings_ui.download_picker.close_history();
+            state.custom_color_picker_open = false;
+            state.settings_cat = cat;
+            pill_to_index(state, cat.index());
+            iced::widget::operation::scroll_to::<Message>(
+                iced::widget::Id::new(crate::ui::settings_page::SETTINGS_SCROLL_ID),
+                iced::widget::operation::AbsoluteOffset::<f32>::default(),
+            )
+        }
+        NavMsg::SelectDetailsTab(tab) => {
+            state.details.active_tab = tab;
+            Task::none()
+        }
+    }
 }
