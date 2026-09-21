@@ -1159,6 +1159,8 @@ pub(crate) fn is_background_busy(state: &Remotrix) -> bool {
         || state.engine_ui.aria2_downloading
         || state.app_update_in_flight
         || state.restart.engine_restart_in_progress
+        || state.settings_ui.syncing_trackers
+        || state.settings_ui.syncing_bootstrap
     {
         return true;
     }

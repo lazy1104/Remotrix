@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 顶部进度条在 BitTorrent tracker 同步和 ED2K bootstrap 同步进行时也会显示。
+
 ### Fixed
 
 ### Removed
