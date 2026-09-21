@@ -7,8 +7,8 @@ use crate::engine::EngineEvent;
 
 const MAX_BOOTSTRAP_FILE_SIZE: u64 = 4 * 1024 * 1024;
 
-const BUNDLED_SERVER_MET: &[u8] = include_bytes!("../assets/ed2k-bootstrap/server.met");
-const BUNDLED_NODES_DAT: &[u8] = include_bytes!("../assets/ed2k-bootstrap/nodes.dat");
+const BUNDLED_SERVER_MET: &[u8] = include_bytes!("../../assets/ed2k-bootstrap/server.met");
+const BUNDLED_NODES_DAT: &[u8] = include_bytes!("../../assets/ed2k-bootstrap/nodes.dat");
 
 static SEARCH_DIRS: OnceLock<std::sync::Mutex<HashMap<String, PathBuf>>> = OnceLock::new();
 
