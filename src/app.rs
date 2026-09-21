@@ -141,6 +141,7 @@ pub(crate) struct EngineUiState {
     pub(crate) aria2_downloading_version: Option<String>,
     pub(crate) aria2_download_progress: Option<(u64, u64)>,
     pub(crate) aria2_download_silent: bool,
+    pub(crate) app_update_progress: Option<(u64, u64)>,
 }
 
 impl EngineUiState {
@@ -158,6 +159,7 @@ impl EngineUiState {
             aria2_downloading_version: None,
             aria2_download_progress: None,
             aria2_download_silent: false,
+            app_update_progress: None,
         }
     }
 }
@@ -537,9 +539,12 @@ pub fn init() -> (Remotrix, Task<Message>) {
 
     (
         state,
-        Task::done(Message::Settings(SettingsMsg::CheckTrackerAutoSync {
-            startup: true,
-        })),
+        Task::batch([
+            Task::done(Message::Settings(SettingsMsg::CheckTrackerAutoSync {
+                startup: true,
+            })),
+            Task::done(Message::Settings(SettingsMsg::CheckPendingUpdates)),
+        ]),
     )
 }
 
@@ -1947,6 +1952,19 @@ pub(crate) fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -
     let slug = crate::updater::platform_slug();
     let app_kind = crate::app_updater::detect_install_kind();
     let timeout_msg = state.fluent.get(Tr::UpdateCheckTimeout);
+    let app_download_dir = state.settings.download_dir.clone();
+
+    let pending_restart_engine = !aria2_downloading
+        && scope.covers("aria2-next")
+        && crate::config::aria2_bin_dir()
+            .map(|d| crate::aria2_fetcher::pending_update(&d).is_some())
+            .unwrap_or(false);
+    let pending_app_update = if scope.covers("remotrix") {
+        crate::app_updater::find_pending_app_update(Some(&app_download_dir))
+    } else {
+        None
+    };
+    let pending_app_update_owned = pending_app_update.clone();
 
     Task::perform(
         async move {
@@ -1955,7 +1973,7 @@ pub(crate) fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -
                 let mut silent_applied = Vec::new();
                 let mut errors = Vec::new();
 
-                if !aria2_downloading && scope.covers("aria2-next") {
+                if !aria2_downloading && scope.covers("aria2-next") && !pending_restart_engine {
                     match crate::updater::fetch_latest_release(
                         "AnInsomniacy/aria2-next",
                         "aria2-next",
@@ -1991,7 +2009,7 @@ pub(crate) fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -
                     }
                 }
 
-                if scope.covers("remotrix") {
+                if scope.covers("remotrix") && pending_app_update_owned.is_none() {
                     let kind = app_kind;
                     match crate::updater::fetch_latest_asset(
                         crate::updater::APP_REPO,
@@ -2019,22 +2037,36 @@ pub(crate) fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -
                     }
                 }
 
-                (offers, silent_applied, errors)
+                (
+                    offers,
+                    silent_applied,
+                    errors,
+                    pending_restart_engine,
+                    pending_app_update_owned,
+                )
             })
             .await;
 
             match fetched {
-                Ok((offers, silent_applied, errors)) => {
-                    Message::Settings(SettingsMsg::UpdateResult {
-                        offers,
-                        silent_applied,
-                        errors,
-                    })
-                }
+                Ok((
+                    offers,
+                    silent_applied,
+                    errors,
+                    pending_restart_engine,
+                    pending_app_update,
+                )) => Message::Settings(SettingsMsg::UpdateResult {
+                    offers,
+                    silent_applied,
+                    errors,
+                    pending_restart_engine,
+                    pending_app_update,
+                }),
                 Err(_) => Message::Settings(SettingsMsg::UpdateResult {
                     offers: Vec::new(),
                     silent_applied: Vec::new(),
                     errors: vec![timeout_msg],
+                    pending_restart_engine,
+                    pending_app_update,
                 }),
             }
         },

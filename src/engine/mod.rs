@@ -24,10 +24,6 @@ static MISSING_CHECK_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(3);
 
-const UPDATE_DOWNLOAD_POLL_INTERVAL: Duration = Duration::from_secs(1);
-const UPDATE_DOWNLOAD_MAX_WAIT: Duration = Duration::from_secs(600);
-const UPDATE_DOWNLOAD_MAX_POLL_FAILURES: u32 = 10;
-
 #[derive(Debug, Clone)]
 pub enum EngineCmd {
     AddDownload {
@@ -108,14 +104,6 @@ pub enum EngineCmd {
         asset_name: String,
         download_url: String,
         sha256: Option<String>,
-    },
-    DownloadAppUpdate {
-        kind: crate::app_updater::InstallKind,
-        version: String,
-        url: String,
-        asset_name: String,
-        sha256: Option<String>,
-        download_dir: PathBuf,
     },
     RetryAria2Fetch,
     RestartEngine,
@@ -222,13 +210,6 @@ pub enum EngineEvent {
     },
     Aria2UpdateStaged {
         version: String,
-    },
-    AppUpdateDownloaded {
-        kind: crate::app_updater::InstallKind,
-        path: Option<PathBuf>,
-    },
-    AppUpdateDownloadFailed {
-        error: String,
     },
     EngineDegraded {
         reason: String,
@@ -1598,7 +1579,6 @@ async fn handle_client_cmd(
         EngineCmd::Shutdown
         | EngineCmd::ForceKill
         | EngineCmd::DownloadAria2Update { .. }
-        | EngineCmd::DownloadAppUpdate { .. }
         | EngineCmd::ReloadSchedules
         | EngineCmd::RetryAria2Fetch
         | EngineCmd::RestartEngine => {
@@ -2110,20 +2090,6 @@ async fn run_supervisor(mut cmd_rx: CmdRx, event_tx: EventTx) {
                             });
                         } else {
                             let _ = event_tx.send(EngineEvent::Aria2UpdateFailed {
-                                error: "aria2-next not available".to_string(),
-                            });
-                        }
-                    }
-                    EngineCmd::DownloadAppUpdate { .. } => {
-                        let tx = event_tx.clone();
-                        let cmd = cmd.clone();
-                        if let Some(ref s) = sidecar {
-                            let client = s.client.clone();
-                            tokio::spawn(async move {
-                                handle_download_app_update_via_engine(&client, cmd, &tx).await;
-                            });
-                        } else {
-                            let _ = event_tx.send(EngineEvent::AppUpdateDownloadFailed {
                                 error: "aria2-next not available".to_string(),
                             });
                         }

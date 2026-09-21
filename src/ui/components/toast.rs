@@ -9,6 +9,15 @@ use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
+/// Optional action attached to a toast. Rendered as a labelled button on
+/// the trailing edge of the toast card; clicking it dispatches the
+/// corresponding engine message and dismisses the toast.
+#[derive(Debug, Clone)]
+pub enum ToastAction {
+    RestartEngine,
+    ApplyAppUpdate(crate::app_updater::AppUpdateOutcome),
+}
+
 const CARD_MAX_WIDTH: f32 = 320.0;
 const MSG_MAX_WIDTH: f32 = 200.0;
 const OVERLAY_PADDING: u16 = 16;
@@ -81,6 +90,8 @@ pub struct Toast {
     pub show_close: bool,
     pub close_after: Option<Duration>,
     pub remaining: Option<Duration>,
+    pub action: Option<ToastAction>,
+    pub action_label: Option<String>,
 }
 
 impl Toast {
@@ -94,6 +105,8 @@ impl Toast {
             show_close: false,
             close_after: Some(Duration::from_secs(3)),
             remaining: None,
+            action: None,
+            action_label: None,
         }
     }
 
@@ -109,6 +122,12 @@ impl Toast {
 
     pub fn close_after(mut self, close_after: Option<Duration>) -> Self {
         self.close_after = close_after;
+        self
+    }
+
+    pub fn action(mut self, action: ToastAction, label: impl Into<String>) -> Self {
+        self.action = Some(action);
+        self.action_label = Some(label.into());
         self
     }
 }
@@ -163,6 +182,17 @@ fn card<'a>(theme: &'a iced::Theme, toast: &'a Toast) -> Element<'a, Message> {
     let mut content = row![icon_col, message_col]
         .spacing(SPACE_LG)
         .align_y(Vertical::Center);
+
+    if let Some(action) = &toast.action {
+        if let Some(label) = toast.action_label.as_deref() {
+            let btn = button(text(label).size(FONT_BODY))
+                .on_press(Message::Toast(ToastMsg::ToastActionPressed(toast.id)))
+                .padding([4, 10])
+                .style(theme::style::button::primary());
+            content = content.push(btn);
+        }
+        let _ = action;
+    }
 
     if toast.show_close {
         let close_btn = button(icon::x().size(FONT_BODY).line_height(1.0))

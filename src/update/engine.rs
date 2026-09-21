@@ -11,9 +11,9 @@ use crate::app::{
 };
 use crate::engine::{EngineCmd, EngineEvent};
 use crate::i18n::Tr;
-use crate::message::{ConfirmAction, EngineMsg, Message, SettingsMsg};
+use crate::message::{ConfirmAction, EngineMsg, Message};
 use crate::task::{DownloadTask, TaskAdvancedOptions, TaskStatus};
-use crate::ui::components::toast::{ToastGroup, ToastKind};
+use crate::ui::components::toast::{Toast, ToastGroup, ToastKind};
 
 pub(crate) fn handle(state: &mut Remotrix, msg: EngineMsg) -> Task<Message> {
     match msg {
@@ -784,14 +784,19 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
             state.engine_ui.aria2_download_progress = None;
             let restart_text = state.fluent.get(crate::i18n::Tr::UpdateEngineRestart);
             if !state.engine_ui.aria2_download_silent {
-                spawn_toast(
-                    state,
-                    ToastGroup::Engine,
+                let label = state.fluent.get(crate::i18n::Tr::RestartEngine);
+                let toast = Toast::new(
                     ToastKind::Normal,
                     format!("aria2-next v{version} - {restart_text}"),
-                    Some(Duration::from_secs(5)),
-                    false,
+                )
+                .group(ToastGroup::Engine)
+                .close_after(None)
+                .show_close()
+                .action(
+                    crate::ui::components::toast::ToastAction::RestartEngine,
+                    label,
                 );
+                state.toasts.push(toast);
                 send_system_notification(
                     state,
                     state.fluent.get(crate::i18n::Tr::Aria2UpdateReadyTitle),
@@ -805,14 +810,6 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
             }
             Task::none()
         }
-        EngineEvent::AppUpdateDownloaded { kind, path } => {
-            Task::done(Message::Settings(SettingsMsg::UpdateDownloadStarted(Ok(
-                crate::app_updater::AppUpdateOutcome { kind, path },
-            ))))
-        }
-        EngineEvent::AppUpdateDownloadFailed { error } => Task::done(Message::Settings(
-            SettingsMsg::UpdateDownloadStarted(Err(error)),
-        )),
         EngineEvent::Aria2FetchFailed { error } => {
             let msg = format!("{}: {error}", state.fluent.get(Tr::EngineStartFailed));
             state.engine_ui.aria2_fetch_error = Some(error);

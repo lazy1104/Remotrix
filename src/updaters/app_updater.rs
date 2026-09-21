@@ -244,6 +244,113 @@ pub fn current_app_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
+/// Scan the install-kind-specific destination for an already-downloaded
+/// package whose filename version is strictly newer than the running app.
+/// Returns the strongest candidate so the UI can offer to apply it
+/// without re-downloading.
+///
+/// The directories and naming patterns mirror [`app_update_dest`]:
+/// - AppImage → the AppImage parent, matching `*.AppImage`.
+/// - Deb → [`packages_dir`] of the configured download directory,
+///   matching `*.deb`.
+/// - Windows → [`std::env::temp_dir`], matching `*setup*.exe`.
+///
+/// Versions are parsed from filenames using the same helper
+/// [`crate::updater::version_tuple`] as the regular update flow. When the
+/// filename carries no parseable version (Windows installer names vary),
+/// any matching installer file is returned as a conservative fallback so
+/// the user is not denied the apply step.
+pub fn find_pending_app_update(download_dir: Option<&Path>) -> Option<AppUpdateOutcome> {
+    let kind = detect_install_kind();
+    let scan_dir: Option<PathBuf> = match kind {
+        InstallKind::AppImage => appimage_path().and_then(|p| p.parent().map(Path::to_path_buf)),
+        InstallKind::Deb => Some(packages_dir(download_dir)),
+        InstallKind::WindowsSetup => Some(std::env::temp_dir()),
+    };
+    let dir = scan_dir?;
+    let entries = std::fs::read_dir(&dir).ok()?;
+    let current = current_app_version();
+    let mut best: Option<(PathBuf, Option<String>, Vec<u64>)> = None;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name_str) = name.to_str() else {
+            continue;
+        };
+        if name_str.starts_with('.') {
+            continue;
+        }
+        if !kind.asset_matches(name_str) {
+            continue;
+        }
+        let path = entry.path();
+        let meta = std::fs::metadata(&path).ok()?;
+        if !meta.is_file() {
+            continue;
+        }
+        let parsed = parse_app_version_from_filename(name_str);
+        let tuple = parsed
+            .as_ref()
+            .map(|v| crate::updater::version_tuple(v))
+            .unwrap_or_default();
+        let replace = match &best {
+            None => true,
+            Some((_, _, prev)) => tuple > *prev,
+        };
+        if replace {
+            best = Some((path, parsed, tuple));
+        }
+    }
+    let (path, parsed, _) = best?;
+    if let Some(v) = parsed.as_deref() {
+        if !crate::updater::version_gt(v, current) {
+            return None;
+        }
+    }
+    Some(AppUpdateOutcome {
+        kind,
+        path: Some(path),
+    })
+}
+
+/// Delete a downloaded installer from disk after the user successfully
+/// applies it. AppImage updates are consumed by [`replace_appimage`] via
+/// rename and so have no file left to delete; [`apply_after_download`]
+/// documents that distinction.
+pub fn remove_app_update_file(path: &Path) {
+    let _ = std::fs::remove_file(path);
+}
+
+/// Parse a version segment out of an installer filename. Supports the
+/// patterns emitted by the release workflow:
+/// - `Remotrix-0.4.0.AppImage`
+/// - `remotrix_0.4.0_amd64.deb`
+/// - `remotrix_0.4.0_x64-setup.exe`
+fn parse_app_version_from_filename(filename: &str) -> Option<String> {
+    let lower = filename.to_ascii_lowercase();
+    let strip_prefixes = ["remotrix-", "remotrix_"];
+    let stripped = strip_prefixes
+        .iter()
+        .find_map(|p| lower.strip_prefix(*p).map(str::to_string))?;
+    let segments: Vec<&str> = stripped
+        .split(|c: char| c == '-' || c == '_' || c == '.')
+        .collect();
+    let mut end = 0;
+    for seg in segments.iter() {
+        if seg.is_empty() || !seg.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+            break;
+        }
+        end += 1;
+    }
+    if end == 0 {
+        return None;
+    }
+    let version = segments[..end].join(".");
+    if crate::updater::version_tuple(&version).is_empty() {
+        return None;
+    }
+    Some(version)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -363,5 +470,41 @@ mod tests {
         std::env::set_var("REMOTRIX_FORCE_INSTALL_KIND", "appimage");
         assert_eq!(detect_install_kind(), InstallKind::AppImage);
         std::env::remove_var("REMOTRIX_FORCE_INSTALL_KIND");
+    }
+
+    #[test]
+    fn parse_app_version_appimage() {
+        assert_eq!(
+            parse_app_version_from_filename("Remotrix-0.4.0.AppImage"),
+            Some("0.4.0".to_string())
+        );
+        assert_eq!(
+            parse_app_version_from_filename("Remotrix-1.10.2.AppImage"),
+            Some("1.10.2".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_app_version_deb() {
+        assert_eq!(
+            parse_app_version_from_filename("remotrix_0.4.0_amd64.deb"),
+            Some("0.4.0".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_app_version_setup() {
+        assert_eq!(
+            parse_app_version_from_filename("remotrix_0.4.0_x64-setup.exe"),
+            Some("0.4.0".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_app_version_non_numeric_rejected() {
+        assert_eq!(
+            parse_app_version_from_filename("Remotrix-beta.AppImage"),
+            None
+        );
     }
 }

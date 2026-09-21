@@ -878,94 +878,140 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
             state.update_dialog_anim.begin_exit();
             Task::none()
         }
-        SettingsMsg::UpdateDownloadStarted(result) => {
+        SettingsMsg::AppUpdateProgress { downloaded, total } => {
+            state.engine_ui.app_update_progress = Some((downloaded, total));
+            Task::none()
+        }
+        SettingsMsg::AppUpdateFailed { error } => {
             state.app_update_in_flight = false;
-            match result {
-                Ok(outcome) => match outcome.kind {
-                    crate::app_updater::InstallKind::AppImage => {
+            state.engine_ui.app_update_progress = None;
+            spawn_toast(
+                state,
+                ToastGroup::General,
+                ToastKind::Error,
+                format!("{}: {error}", state.fluent.get(Tr::UpdateFailed)),
+                Some(Duration::from_secs(6)),
+                true,
+            );
+            Task::none()
+        }
+        SettingsMsg::AppUpdateReady { outcome } => {
+            state.app_update_in_flight = false;
+            state.engine_ui.app_update_progress = None;
+            let label = state.fluent.get(Tr::UpdateApply);
+            let toast = Toast::new(
+                ToastKind::Normal,
+                state.fluent.get(Tr::UpdateReadyClickToApply),
+            )
+            .group(ToastGroup::General)
+            .close_after(None)
+            .show_close()
+            .action(
+                crate::ui::components::toast::ToastAction::ApplyAppUpdate(outcome),
+                label,
+            );
+            state.toasts.push(toast);
+            Task::none()
+        }
+        SettingsMsg::ApplyAppUpdate { outcome } => {
+            let path = outcome.path.clone();
+            let kind = outcome.kind;
+            match kind {
+                crate::app_updater::InstallKind::AppImage => {
+                    let Some(path) = path.as_ref() else {
+                        return Task::none();
+                    };
+                    if let Err(e) = crate::app_updater::apply_after_download(kind, path) {
                         spawn_toast(
                             state,
                             ToastGroup::General,
-                            ToastKind::Success,
-                            state.fluent.get(Tr::UpdateAppimageReplaced),
-                            Some(Duration::from_secs(5)),
-                            false,
+                            ToastKind::Error,
+                            format!("{}: {e}", state.fluent.get(Tr::UpdateFailed)),
+                            Some(Duration::from_secs(6)),
+                            true,
                         );
-                        state.restart_pending = true;
-                        return begin_close(state);
+                        return Task::none();
                     }
-                    crate::app_updater::InstallKind::WindowsSetup => {
-                        spawn_toast(
-                            state,
-                            ToastGroup::General,
-                            ToastKind::Success,
-                            state.fluent.get(Tr::UpdateRunInstaller),
-                            Some(Duration::from_secs(5)),
-                            false,
-                        );
-                    }
-                    crate::app_updater::InstallKind::Deb => {
-                        let path = outcome.path.unwrap_or_default();
-                        let download_dir = path
-                            .parent()
-                            .map(std::path::Path::to_path_buf)
-                            .unwrap_or_default();
-                        let mut args = std::collections::HashMap::new();
-                        args.insert(
-                            std::borrow::Cow::from("path"),
-                            std::borrow::Cow::from(path.to_string_lossy().into_owned()).into(),
-                        );
-                        spawn_toast(
-                            state,
-                            ToastGroup::General,
-                            ToastKind::Success,
-                            state.fluent.get_args(Tr::UpdatePackageDownloaded, &args),
-                            Some(Duration::from_secs(5)),
-                            false,
-                        );
-                        if state.settings.notifications.download_complete {
-                            let title = state.fluent.get(Tr::UpdatePackageDownloadedTitle);
-                            let body = state.fluent.get_args(Tr::UpdatePackageDownloaded, &args);
-                            let path_clone = path.clone();
-                            send_system_notification(
-                                state,
-                                title,
-                                body,
-                                vec![
-                                    (
-                                        state.fluent.get(Tr::Open),
-                                        crate::notify::NotifyAction::OpenFile(path_clone),
-                                    ),
-                                    (
-                                        state.fluent.get(Tr::Locate),
-                                        crate::notify::NotifyAction::RevealDir(
-                                            download_dir.clone(),
-                                        ),
-                                    ),
-                                ],
-                                crate::notify::NotifyAction::OpenFile(path),
-                            );
-                        }
-                        return open_path_in_manager(download_dir);
-                    }
-                },
-                Err(e) => {
                     spawn_toast(
                         state,
                         ToastGroup::General,
-                        ToastKind::Error,
-                        format!("{}: {e}", state.fluent.get(Tr::UpdateFailed)),
-                        Some(Duration::from_secs(6)),
-                        true,
+                        ToastKind::Success,
+                        state.fluent.get(Tr::UpdateAppimageReplaced),
+                        Some(Duration::from_secs(5)),
+                        false,
                     );
+                    state.restart_pending = true;
+                    return begin_close(state);
+                }
+                crate::app_updater::InstallKind::WindowsSetup => {
+                    let Some(path) = path.as_ref() else {
+                        return Task::none();
+                    };
+                    let apply_result = crate::app_updater::apply_after_download(kind, path);
+                    spawn_toast(
+                        state,
+                        ToastGroup::General,
+                        ToastKind::Success,
+                        state.fluent.get(Tr::UpdateRunInstaller),
+                        Some(Duration::from_secs(5)),
+                        false,
+                    );
+                    if apply_result.is_ok() {
+                        crate::app_updater::remove_app_update_file(path);
+                    }
+                    return Task::none();
+                }
+                crate::app_updater::InstallKind::Deb => {
+                    let path = path.unwrap_or_default();
+                    let download_dir = path
+                        .parent()
+                        .map(std::path::Path::to_path_buf)
+                        .unwrap_or_default();
+                    let mut args = std::collections::HashMap::new();
+                    args.insert(
+                        std::borrow::Cow::from("path"),
+                        std::borrow::Cow::from(path.to_string_lossy().into_owned()).into(),
+                    );
+                    spawn_toast(
+                        state,
+                        ToastGroup::General,
+                        ToastKind::Success,
+                        state.fluent.get_args(Tr::UpdatePackageDownloaded, &args),
+                        Some(Duration::from_secs(5)),
+                        false,
+                    );
+                    if state.settings.notifications.download_complete {
+                        let title = state.fluent.get(Tr::UpdatePackageDownloadedTitle);
+                        let body = state.fluent.get_args(Tr::UpdatePackageDownloaded, &args);
+                        let path_clone = path.clone();
+                        send_system_notification(
+                            state,
+                            title,
+                            body,
+                            vec![
+                                (
+                                    state.fluent.get(Tr::Open),
+                                    crate::notify::NotifyAction::OpenFile(path_clone),
+                                ),
+                                (
+                                    state.fluent.get(Tr::Locate),
+                                    crate::notify::NotifyAction::RevealDir(download_dir.clone()),
+                                ),
+                            ],
+                            crate::notify::NotifyAction::OpenFile(path.clone()),
+                        );
+                    }
+                    crate::app_updater::remove_app_update_file(&path);
+                    return open_path_in_manager(download_dir);
                 }
             }
-            Task::none()
         }
         SettingsMsg::UpdateResult {
             offers,
             silent_applied,
             errors,
+            pending_restart_engine,
+            pending_app_update,
         } => {
             state.engine_ui.update_check_in_flight = false;
             let checked_any = state.settings.update.scope.covers("aria2-next")
@@ -982,6 +1028,12 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
             }
             for silent in &silent_applied {
                 send_download_aria2_update(state, silent, true);
+            }
+            if pending_restart_engine {
+                push_pending_engine_toast(state);
+            }
+            if let Some(outcome) = pending_app_update.clone() {
+                push_pending_app_toast(state, outcome);
             }
             if !offers.is_empty() {
                 let offer_count = offers.len();
@@ -1014,7 +1066,11 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                     tasks.push(changelog_fetch_task(state, tab));
                 }
                 return Task::batch(tasks);
-            } else if checked_any && errors.is_empty() {
+            } else if checked_any
+                && errors.is_empty()
+                && !pending_restart_engine
+                && pending_app_update.is_none()
+            {
                 spawn_toast(
                     state,
                     ToastGroup::General,
@@ -1051,13 +1107,28 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                         if state.app_update_in_flight {
                             continue;
                         }
-                        state.app_update_in_flight = true;
                         let kind = crate::app_updater::detect_install_kind();
-                        let version = offer.latest.clone();
-                        let download_url = offer.download_url.clone();
                         let asset_name = offer.asset_name.clone();
-                        let offer_sha256 = offer.sha256.clone();
-                        let download_dir = state.settings.download_dir.clone();
+                        let dest = match crate::app_updater::app_update_dest(
+                            kind,
+                            &asset_name,
+                            Some(&state.settings.download_dir),
+                        ) {
+                            Ok(d) => d,
+                            Err(e) => {
+                                spawn_toast(
+                                    state,
+                                    ToastGroup::General,
+                                    ToastKind::Error,
+                                    format!("{}: {e}", state.fluent.get(Tr::UpdateFailed)),
+                                    Some(Duration::from_secs(6)),
+                                    true,
+                                );
+                                continue;
+                            }
+                        };
+                        state.app_update_in_flight = true;
+                        state.engine_ui.app_update_progress = None;
                         spawn_toast(
                             state,
                             ToastGroup::General,
@@ -1066,14 +1137,33 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                             None,
                             true,
                         );
-                        let _ = state.handle.cmd_tx.send(EngineCmd::DownloadAppUpdate {
-                            kind,
-                            version,
-                            url: download_url,
-                            asset_name,
-                            sha256: offer_sha256,
-                            download_dir,
-                        });
+                        let version = offer.latest.clone();
+                        let download_url = offer.download_url.clone();
+                        let offer_sha256 = offer.sha256.clone();
+                        let asset_name_owned = asset_name.clone();
+                        let proxy = state.settings.aria2.all_proxy_value();
+                        let dest_for_task = dest.clone();
+                        let dest_for_msg = dest;
+                        return Task::perform(
+                            crate::download::perform_app_update_download(
+                                download_url,
+                                dest_for_task,
+                                proxy,
+                                offer_sha256,
+                                version,
+                                kind,
+                                Some(asset_name_owned),
+                                dest_for_msg,
+                            ),
+                            |res| match res {
+                                Ok(outcome) => {
+                                    Message::Settings(SettingsMsg::AppUpdateReady { outcome })
+                                }
+                                Err(error) => {
+                                    Message::Settings(SettingsMsg::AppUpdateFailed { error })
+                                }
+                            },
+                        );
                     }
                 }
             }
@@ -1164,5 +1254,69 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
             }
             Task::none()
         }
+        SettingsMsg::CheckPendingUpdates => {
+            if state.settings.update.scope.covers("aria2-next") {
+                if let Some(dir) = crate::config::aria2_bin_dir() {
+                    if crate::aria2_fetcher::pending_update(&dir).is_some() {
+                        push_pending_engine_toast(state);
+                    }
+                }
+            }
+            if state.settings.update.scope.covers("remotrix") {
+                let outcome =
+                    crate::app_updater::find_pending_app_update(Some(&state.settings.download_dir));
+                if let Some(outcome) = outcome {
+                    push_pending_app_toast(state, outcome);
+                }
+            }
+            Task::none()
+        }
     }
+}
+
+fn push_pending_engine_toast(state: &mut Remotrix) {
+    let already = state.toasts.toasts.iter().any(|t| {
+        matches!(
+            t.action,
+            Some(crate::ui::components::toast::ToastAction::RestartEngine)
+        )
+    });
+    if already {
+        return;
+    }
+    let label = state.fluent.get(Tr::RestartEngine);
+    let toast = Toast::new(ToastKind::Normal, state.fluent.get(Tr::UpdateEngineRestart))
+        .group(ToastGroup::Engine)
+        .close_after(None)
+        .show_close()
+        .action(
+            crate::ui::components::toast::ToastAction::RestartEngine,
+            label,
+        );
+    state.toasts.push(toast);
+}
+
+fn push_pending_app_toast(state: &mut Remotrix, outcome: crate::app_updater::AppUpdateOutcome) {
+    let already = state.toasts.toasts.iter().any(|t| {
+        matches!(
+            &t.action,
+            Some(crate::ui::components::toast::ToastAction::ApplyAppUpdate(_))
+        )
+    });
+    if already {
+        return;
+    }
+    let label = state.fluent.get(Tr::UpdateApply);
+    let toast = Toast::new(
+        ToastKind::Normal,
+        state.fluent.get(Tr::UpdateReadyClickToApply),
+    )
+    .group(ToastGroup::General)
+    .close_after(None)
+    .show_close()
+    .action(
+        crate::ui::components::toast::ToastAction::ApplyAppUpdate(outcome),
+        label,
+    );
+    state.toasts.push(toast);
 }

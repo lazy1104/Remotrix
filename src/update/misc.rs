@@ -9,8 +9,8 @@ use crate::app::{
 };
 use crate::i18n::Tr;
 use crate::message::{
-    ConfirmAction, DialogMsg, ExtensionMsg, Message, NavMsg, Page, SettingKey, ShutdownMsg,
-    SortMsg, SortOrder, ToastMsg, TrayMsg,
+    ConfirmAction, DialogMsg, EngineMsg, ExtensionMsg, Message, NavMsg, Page, SettingKey,
+    SettingsMsg, ShutdownMsg, SortMsg, SortOrder, ToastMsg, TrayMsg,
 };
 use crate::ui::components::toast::{ToastGroup, ToastKind};
 
@@ -107,6 +107,25 @@ pub(crate) fn handle_toast(state: &mut Remotrix, msg: ToastMsg) -> Task<Message>
         ToastMsg::ToastUnhovered(id) => {
             state.toasts.unhover(id);
             Task::none()
+        }
+        ToastMsg::ToastActionPressed(id) => {
+            let action = state.toasts.toasts.iter().find_map(|t| {
+                if t.id == id {
+                    t.action.clone()
+                } else {
+                    None
+                }
+            });
+            dismiss_toast(state, id);
+            match action {
+                Some(crate::ui::components::toast::ToastAction::RestartEngine) => {
+                    Task::done(Message::Engine(EngineMsg::RestartEngine))
+                }
+                Some(crate::ui::components::toast::ToastAction::ApplyAppUpdate(outcome)) => {
+                    Task::done(Message::Settings(SettingsMsg::ApplyAppUpdate { outcome }))
+                }
+                None => Task::none(),
+            }
         }
         ToastMsg::ToastTick => {
             state.toasts.tick();

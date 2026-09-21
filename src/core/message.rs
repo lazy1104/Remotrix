@@ -270,15 +270,30 @@ pub enum SettingsMsg {
     CheckAutoUpdate {
         startup: bool,
     },
+    CheckPendingUpdates,
     UpdateDialogTab(usize),
     UpdateDialogCancel,
     UpdateDialogApply,
     RetryChangelog(usize),
-    UpdateDownloadStarted(Result<crate::app_updater::AppUpdateOutcome, String>),
+    AppUpdateProgress {
+        downloaded: u64,
+        total: u64,
+    },
+    AppUpdateReady {
+        outcome: crate::app_updater::AppUpdateOutcome,
+    },
+    AppUpdateFailed {
+        error: String,
+    },
+    ApplyAppUpdate {
+        outcome: crate::app_updater::AppUpdateOutcome,
+    },
     UpdateResult {
         offers: Vec<crate::ui::update_dialog::UpdateOffer>,
         silent_applied: Vec<crate::ui::update_dialog::UpdateOffer>,
         errors: Vec<String>,
+        pending_restart_engine: bool,
+        pending_app_update: Option<crate::app_updater::AppUpdateOutcome>,
     },
     UpdateChangelogLoaded {
         tab: usize,
@@ -357,6 +372,7 @@ pub enum ToastMsg {
     DismissToast(u64),
     ToastHovered(u64),
     ToastUnhovered(u64),
+    ToastActionPressed(u64),
     ToastTick,
 }
 

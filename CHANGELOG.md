@@ -9,9 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- 后台下载补齐进度节流（~5Hz）、有限次数重试加退避（500ms/1s/2s）、流式 sha256 校验与 `{dest}.part` Range 断点续传；同时被 aria2 更新和应用更新两条路径共享。
+- 应用更新独立于 aria2 sidecar，直接在 UI 任务中通过共享下载器拉取，下载完成后弹带「更新」动作按钮的粘性 toast，由用户点击后再 apply；「立即检查」与启动检查会识别磁盘上已下载但未应用的更新包，复用同一 toast，不重复下载。
+- aria2 更新完成后的应用内 toast 也加上「重启引擎」动作按钮，复用 `EngineMsg::RestartEngine` 确认流程；系统通知按钮和设置页入口保留。
+- 新文案 `update-apply`（应用）、`update-ready-click-to-apply`（更新已就绪，点击应用）。
+
 ### Changed
 
-- 顶部进度条在 BitTorrent tracker 同步和 ED2K bootstrap 同步进行时也会显示。
+- 移除应用更新走 aria2 sidecar 的整套通道（`EngineCmd::DownloadAppUpdate` / `EngineEvent::AppUpdateDownloaded/Failed` / `download_via_engine` / `handle_download_app_update_via_engine`），改用 app 层共享后台下载；不再依赖 engine 处于可用状态。
+- 应用更新的「Apply」由原来的下载完成即自动触发（deb 打开目录、AppImage 立即替换、Windows 立即启动安装器）改为弹 toast 等待用户点击，避免磁盘上残留 `.deb` 时应用后无法定位包。
 
 ### Fixed
 

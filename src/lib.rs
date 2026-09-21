@@ -100,3 +100,7 @@ pub mod app_updater {
 pub mod aria2_fetcher {
     pub use crate::updaters::aria2_fetcher::*;
 }
+
+pub mod download {
+    pub use crate::updaters::download::*;
+}
