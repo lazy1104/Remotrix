@@ -107,7 +107,11 @@ impl PathPicker {
             }
             PathPickerEvent::Changed => None,
             PathPickerEvent::Open => {
-                Some(PathPickerAction::Open(PathBuf::from(self.value.clone())))
+                if self.value.is_empty() {
+                    None
+                } else {
+                    Some(PathPickerAction::Open(PathBuf::from(self.value.clone())))
+                }
             }
             PathPickerEvent::Entered => {
                 self.hovered = true;
@@ -159,14 +163,16 @@ impl PathPicker {
         row = row.push(Self::separator());
 
         let copy_btn: Element<'a, M> = {
-            let mut btn = button(Self::icon_content(
+            let btn = button(Self::icon_content(
                 icon::copy().size(FONT_ICON).color(text_secondary),
             ))
-            .style(theme::style::button::grouped_icon(false, false))
+            .on_press(copy_msg)
+            .style(theme::style::button::grouped_icon(
+                false,
+                false,
+                self.value.is_empty(),
+            ))
             .height(Length::Fill);
-            if !self.value.is_empty() {
-                btn = btn.on_press(copy_msg);
-            }
             tooltip::standard(
                 btn,
                 text(fluent.get(Tr::Copy)),
@@ -176,14 +182,16 @@ impl PathPicker {
         row = row.push(copy_btn);
 
         let reveal_btn: Element<'a, M> = {
-            let mut btn = button(Self::icon_content(
+            let btn = button(Self::icon_content(
                 icon::folder_open().size(FONT_ICON).color(text_secondary),
             ))
-            .style(theme::style::button::grouped_icon(false, false))
+            .on_press(open_msg)
+            .style(theme::style::button::grouped_icon(
+                false,
+                false,
+                self.value.is_empty(),
+            ))
             .height(Length::Fill);
-            if !self.value.is_empty() {
-                btn = btn.on_press(open_msg);
-            }
             tooltip::standard(
                 btn,
                 text(fluent.get(Tr::ShowInFolder)),
@@ -200,7 +208,7 @@ impl PathPicker {
                 icon::folder().size(FONT_ICON).color(text_secondary),
             ))
             .on_press(browse_msg)
-            .style(theme::style::button::grouped_icon(false, false))
+            .style(theme::style::button::grouped_icon(false, false, false))
             .height(Length::Fill),
             text(fluent.get(Tr::Browse)),
             iced::widget::tooltip::Position::Bottom,
@@ -213,7 +221,11 @@ impl PathPicker {
                 let btn = button(Self::icon_content(
                     icon::folder_clock().size(FONT_ICON).color(text_secondary),
                 ))
-                .style(theme::style::button::grouped_icon(true, false))
+                .style(theme::style::button::grouped_icon(
+                    true,
+                    false,
+                    history.is_empty(),
+                ))
                 .height(Length::Fill);
                 if history.is_empty() {
                     btn.into()

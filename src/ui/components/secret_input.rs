@@ -54,7 +54,11 @@ where
             icon::copy().size(FONT_ICON).color(text_secondary),
         ))
         .on_press(on_copy)
-        .style(theme::style::button::grouped_icon(false, false))
+        .style(theme::style::button::grouped_icon(
+            false,
+            false,
+            value.is_empty(),
+        ))
         .height(Length::Fill),
         text(fluent.get(Tr::Copy)),
         iced::widget::tooltip::Position::Bottom,
@@ -67,7 +71,7 @@ where
             icon::dices().size(FONT_ICON).color(text_secondary),
         ))
         .on_press(on_generate)
-        .style(theme::style::button::grouped_icon(true, false))
+        .style(theme::style::button::grouped_icon(true, false, false))
         .height(Length::Fill),
         text(fluent.get(Tr::GenerateSecret)),
         iced::widget::tooltip::Position::Bottom,

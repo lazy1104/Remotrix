@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - 引擎处于降级 / 失败态时，顶部动画进度条不再无限转动；改由静态错误 toast 提示。瞬时忙碌（启动、下载、立即检查等）仍会触发动画条。
+- ED2K 设置页中 server.met 与 nodes.dat 的文件选择组件，路径未填写时「复制」「在文件夹中显示」两个图标按钮现在仍显示为可点击（hover 变手指、点击有响应），并以 35% 透明度的图标呈现禁用态；其余下载路径 / 应用路径 / 日志路径选择器以及数字步进器的「-」「+」按钮沿用同一禁用态风格。
 
 ### Removed
 

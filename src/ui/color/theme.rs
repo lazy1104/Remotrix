@@ -1035,6 +1035,7 @@ pub mod style {
         pub fn grouped_icon<'a>(
             trailing: bool,
             on_field: bool,
+            disabled: bool,
         ) -> impl Fn(&iced::Theme, Status) -> Style + 'a {
             move |t, status| {
                 let base_text = t.extended_palette().background.base.text;
@@ -1048,19 +1049,32 @@ pub mod style {
                 } else {
                     iced::border::Radius::default()
                 };
-                Style {
-                    background: match status {
-                        Status::Hovered => Some(super::lighten(base_bg, 0.08).into()),
-                        Status::Pressed => Some(super::lighten(base_bg, 0.14).into()),
-                        _ => Some(base_bg.into()),
-                    },
-                    text_color: base_text,
-                    border: iced::Border {
-                        radius,
+                if disabled {
+                    Style {
+                        background: Some(base_bg.into()),
+                        text_color: base_text.scale_alpha(0.35),
+                        border: iced::Border {
+                            radius,
+                            ..Default::default()
+                        },
+                        shadow: Shadow::default(),
                         ..Default::default()
-                    },
-                    shadow: Shadow::default(),
-                    ..Default::default()
+                    }
+                } else {
+                    Style {
+                        background: match status {
+                            Status::Hovered => Some(super::lighten(base_bg, 0.08).into()),
+                            Status::Pressed => Some(super::lighten(base_bg, 0.14).into()),
+                            _ => Some(base_bg.into()),
+                        },
+                        text_color: base_text,
+                        border: iced::Border {
+                            radius,
+                            ..Default::default()
+                        },
+                        shadow: Shadow::default(),
+                        ..Default::default()
+                    }
                 }
             }
         }
