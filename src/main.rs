@@ -21,6 +21,12 @@ fn main() -> iced::Result {
 
     let _log_guard = logging::init();
 
+    let effective_font_family = if cfg.font_family.is_empty() {
+        ui::font_autopick::pick_default_family().unwrap_or_default()
+    } else {
+        cfg.font_family.clone()
+    };
+
     config::install_desktop_file();
     #[cfg(target_os = "windows")]
     win_toast::init();
@@ -53,7 +59,7 @@ fn main() -> iced::Result {
         )
         .font(ui::icon::FONT as &[_])
         .font(iced_aw::ICED_AW_FONT_BYTES)
-        .default_font(ui::theme::font_from_family(&cfg.font_family))
+        .default_font(ui::theme::font_from_family(&effective_font_family))
         .window(iced::window::Settings {
             size: iced::Size::new(w, h),
             maximized: cfg.window_maximized,

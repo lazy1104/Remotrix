@@ -5,22 +5,24 @@ use super::settings::Settings;
 
 const LEGACY_BUNDLED_FONT: &str = "HarmonyOS Sans SC";
 
-/// Populate `settings.font_family` on first launch (or upgrade from a
-/// build that defaulted to the bundled CJK font). When the field is
-/// empty or holds the legacy bundled-font value, ask the system-fonts
-/// helper for the OS UI sans family. Persists nothing by itself; the
-/// caller (`main`) saves after this returns.
+/// Reconcile `settings.font_family` on boot:
+///
+/// - Legacy `"HarmonyOS Sans SC"` (carried over from builds that bundled
+///   the CJK font) is rewritten to empty so the OS-following branch
+///   below picks it up.
+/// - Empty means "follow the OS" and is left alone; the boot path
+///   resolves it transiently via `font_autopick::pick_default_family`
+///   without persisting.
+/// - Any other value is a user-explicit family choice and is preserved.
 pub fn migrate_font_family(settings: &mut Settings) {
-    if !settings.font_family.is_empty() && settings.font_family != LEGACY_BUNDLED_FONT {
+    if settings.font_family == LEGACY_BUNDLED_FONT {
+        tracing::info!("legacy bundled font cleared to follow OS at boot");
+        settings.font_family = String::new();
         return;
     }
-    let next = crate::ui::font_autopick::pick_default_family().unwrap_or_default();
-    tracing::info!(
-        from = %settings.font_family,
-        to = %next,
-        "font_family auto-picked on first launch"
-    );
-    settings.font_family = next;
+    if settings.font_family.is_empty() {
+        tracing::info!("font_family empty; will resolve OS sans at boot (not persisted)");
+    }
 }
 
 /// Rewrite the long-deprecated gruk.org default bootstrap URLs to the
