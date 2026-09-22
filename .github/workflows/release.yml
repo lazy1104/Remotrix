@@ -11,26 +11,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deny:
-    name: cargo-deny (${{ matrix.checks }})
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        checks:
-          - advisories
-          - bans licenses sources
-    continue-on-error: ${{ matrix.checks == 'advisories' }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run cargo-deny
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check ${{ matrix.checks }}
-
   changelog:
     name: Pass through CHANGELOG.md
     runs-on: ubuntu-latest

@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- 移除 release workflow 中的 cargo-deny 检查任务及其 `deny.toml` 配置；`bans licenses sources` 的默认配置在大量合法依赖下误报，advisories 路径本来就 `continue-on-error`，整体收益不抵维护成本。
+
 ## [0.4.0] - 2026-09-20
 
 ### Added
