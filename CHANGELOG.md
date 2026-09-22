@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 设置面板移除单独的「aria2-next 静默更新」开关；新增「静默更新范围」下拉（关闭 / 引擎 / 应用 / 应用 + 引擎，4 选项），决定哪个组件在检查到更新时跳过对话框直接后台下载；应用静默只下载，应用动作仍需用户点击 toast 上的「更新」按钮触发（与 aria2 静默「不自动重启引擎」语义一致）。原有 `aria2_silent_update=true` 的旧字段通过一次性迁移映射为「引擎」，`false` 映射为「关闭」。
 - 系统深色模式检测依赖升级到 `dark-light 3`，新版本的 `Mode::Unspecified` 与旧版「无法确定」语义一致，统一回退到浅色主题。
 - 主题模式为「跟随系统」时，OS 深色 / 浅色切换（macOS / Windows / XDG Desktop Portal 支持的桌面环境）现在会在运行时即时应用到 UI，无需重启应用；手动选择「深色」/「浅色」时仍以用户设置为准。
-- 默认字体改为跟随系统 UI 字体；当 `Settings.font_family` 为空（「系统默认」或首次启动）时，每次启动通过 `system_fonts::find_for_system_locale` 重新解析当前系统 sans，结果仅作内存值不入盘；用户在设置中选了具体族名则被锁定到该族。
+- 默认字体改为跟随系统 UI 字体；当 `Settings.font_family` 为空（「系统默认」或首次启动）时，每次启动按平台调 OS-native API 重新解析（Linux 走 `fc-match`、macOS 走 `defaults read -g AppleSystemUIFont`、Windows 走 `SPI_GETNONCLIENTMETRICS.lfMessageFont`），结果仅作内存值不入盘；任一平台 OS-native 查询失败时回退到 `system_fonts::find_for_system_locale`（fontdb locale-aware 枚举）。用户在设置中选了具体族名则被锁定到该族。
 
 ### Fixed
 

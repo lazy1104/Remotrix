@@ -22,6 +22,7 @@ pub mod resize_frame;
 pub mod scroll_anim;
 pub mod settings;
 pub mod sidebar;
+pub mod system_default_font;
 
 pub use settings::*;
 

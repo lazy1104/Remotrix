@@ -22,7 +22,7 @@ fn main() -> iced::Result {
     let _log_guard = logging::init();
 
     let effective_font_family = if cfg.font_family.is_empty() {
-        ui::font_autopick::pick_default_family().unwrap_or_default()
+        ui::system_default_font::query().unwrap_or_default()
     } else {
         cfg.font_family.clone()
     };
