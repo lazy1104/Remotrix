@@ -21,7 +21,7 @@ tracing-appender = "0.2"
 directories = "6"
 rfd = "0.17"
 image = { version = "0.25", default-features = false, features = ["png"] }
-dark-light = "2.0"
+dark-light = { version = "3", default-features = false }
 fluent-templates = "0.15.1"
 futures = "0.3"
 base64 = "0.23"

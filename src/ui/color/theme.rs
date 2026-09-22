@@ -26,7 +26,9 @@ pub enum ThemeMode {
 }
 
 /// Best-effort detection of the OS-level dark-mode preference. Falls back
-/// to `false` (light) when the platform or `dark-light` cannot answer.
+/// to `false` (light) when the platform or `dark-light` cannot answer
+/// (including `dark-light 3`'s `Mode::Unspecified` on platforms without a
+/// confident signal).
 pub fn detect_dark() -> bool {
     matches!(
         dark_light::detect().unwrap_or(dark_light::Mode::Light),
