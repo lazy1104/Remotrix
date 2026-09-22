@@ -293,7 +293,9 @@ impl HttpsFixture {
         let handle_for_shutdown = handle.clone();
         let (cancel_tx, cancel_rx) = oneshot::channel();
         let serve = tokio::spawn(async move {
-            let server = axum_server::from_tcp_rustls(std_listener, cfg).handle(handle);
+            let server = axum_server::from_tcp_rustls(std_listener, cfg)
+                .expect("axum_server tls bind")
+                .handle(handle);
             tokio::spawn(async move {
                 let _ = cancel_rx.await;
                 handle_for_shutdown.shutdown();
