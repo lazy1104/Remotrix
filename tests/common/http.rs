@@ -263,7 +263,7 @@ impl HttpsFixture {
             generate_simple_self_signed(vec!["localhost".to_string(), "127.0.0.1".to_string()])
                 .expect("cert");
         let cert_pem = cert.cert.pem();
-        let key_pem = cert.key_pair.serialize_pem();
+        let key_pem = cert.signing_key.serialize_pem();
         std::fs::create_dir_all(&cert_dir).expect("cert_dir");
         let ca_cert_path = cert_dir.join("ca.pem");
         std::fs::write(&ca_cert_path, &cert_pem).expect("write cert");

@@ -670,14 +670,15 @@ pub fn sha256_file_sync(path: &Path) -> String {
 /// Generate a `size` byte file filled with `rand`-driven bytes. Used by
 /// smoke tests to build a source fixture that the HTTP fixture serves.
 pub fn write_random_fixture(path: &Path, size: usize) {
-    use rand::RngCore;
+    use rand::TryRngCore;
     let mut rng = rand::rngs::OsRng;
     let mut file = std::fs::File::create(path).expect("create fixture");
     let mut buf = vec![0u8; 65536];
     let mut written = 0;
     while written < size {
         let chunk = (size - written).min(buf.len());
-        rng.fill_bytes(&mut buf[..chunk]);
+        rng.try_fill_bytes(&mut buf[..chunk])
+            .expect("os rng fill_bytes");
         use std::io::Write;
         file.write_all(&buf[..chunk]).expect("write fixture");
         written += chunk;
@@ -688,6 +689,8 @@ pub fn write_random_fixture(path: &Path, size: usize) {
 /// (currently unused — Phase 4 might use it for `out=` filenames).
 #[allow(dead_code)]
 pub fn rand_bytes(out: &mut [u8]) {
-    use rand::RngCore;
-    rand::rngs::OsRng.fill_bytes(out);
+    use rand::TryRngCore;
+    rand::rngs::OsRng
+        .try_fill_bytes(out)
+        .expect("os rng fill_bytes");
 }

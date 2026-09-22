@@ -55,7 +55,7 @@ iced_lucide = "0.1"
 winres = "0.1"
 
 [target.'cfg(windows)'.dependencies]
-libloading = "0.8"
+libloading = "0.9"
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_System_Com",
@@ -86,9 +86,9 @@ codegen-units = 16
 axum = "0.7"
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 bytes = "1"
-rand = "0.8"
-rcgen = "0.13"
-serial_test = "3"
-sha1 = "0.10"
+rand = "0.9"
+rcgen = "0.14"
+serial_test = "4"
+sha1 = "0.11"
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "process", "io-util", "sync", "net"] }
