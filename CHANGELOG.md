@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-22
+
 ### Added
 
 - 后台下载补齐进度节流（~5Hz）、有限次数重试加退避（500ms/1s/2s）、流式 sha256 校验与 `{dest}.part` Range 断点续传；同时被 aria2 更新和应用更新两条路径共享。
