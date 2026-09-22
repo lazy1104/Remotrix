@@ -83,7 +83,7 @@ lto = "thin"
 codegen-units = 16
 
 [dev-dependencies]
-axum = "0.7"
+axum = "0.8"
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 bytes = "1"
 rand = "0.9"
