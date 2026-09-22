@@ -887,6 +887,48 @@ impl UpdateScope {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum SilentUpdateScope {
+    #[serde(rename = "off")]
+    Off,
+    #[serde(rename = "engine")]
+    Engine,
+    #[serde(rename = "app")]
+    App,
+    #[default]
+    #[serde(rename = "both")]
+    Both,
+}
+
+impl SilentUpdateScope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Engine => "engine",
+            Self::App => "app",
+            Self::Both => "both",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "off" => Some(Self::Off),
+            "engine" => Some(Self::Engine),
+            "app" => Some(Self::App),
+            "both" => Some(Self::Both),
+            _ => None,
+        }
+    }
+
+    pub fn covers(self, component: &str) -> bool {
+        match (component, self) {
+            ("aria2-next", Self::Engine | Self::Both) => true,
+            ("remotrix", Self::App | Self::Both) => true,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UpdatePrefs {
     #[serde(default = "default_true")]
@@ -899,8 +941,8 @@ pub struct UpdatePrefs {
     pub last_check_time: Option<i64>,
     #[serde(default)]
     pub components: HashMap<String, ComponentUpdatePrefs>,
-    #[serde(default = "default_true")]
-    pub aria2_silent_update: bool,
+    #[serde(default)]
+    pub silent_update_scope: SilentUpdateScope,
     #[serde(default)]
     pub beta_channel: bool,
 }
@@ -913,7 +955,7 @@ impl Default for UpdatePrefs {
             interval_hours: 0,
             last_check_time: None,
             components: HashMap::new(),
-            aria2_silent_update: true,
+            silent_update_scope: SilentUpdateScope::default(),
             beta_channel: false,
         }
     }
@@ -977,7 +1019,18 @@ pub fn load() -> Settings {
         Ok(content) => content,
         Err(_) => return Settings::default(),
     };
-    let mut settings: Settings = serde_json::from_str(&raw).unwrap_or_default();
+    if migrate_legacy_silent_update_scope(&path, &raw) {
+        let raw = match std::fs::read_to_string(&path) {
+            Ok(content) => content,
+            Err(_) => return Settings::default(),
+        };
+        return load_inner(&path, &raw);
+    }
+    load_inner(&path, &raw)
+}
+
+fn load_inner(path: &std::path::Path, raw: &str) -> Settings {
+    let mut settings: Settings = serde_json::from_str(raw).unwrap_or_default();
     let trimmed = settings.theme_color.trim().to_string();
     if trimmed.starts_with('#') && trimmed.len() == 7 {
         let mut upper: String = trimmed.to_ascii_uppercase();
@@ -988,7 +1041,44 @@ pub fn load() -> Settings {
     if fix_dead_ed2k_bootstrap_urls(&mut settings) {
         save(&settings);
     }
+    let _ = path;
     settings
+}
+
+fn migrate_legacy_silent_update_scope(path: &std::path::Path, raw: &str) -> bool {
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return false;
+    };
+    let Some(object) = value.as_object_mut() else {
+        return false;
+    };
+    let needs_migration =
+        object.contains_key("aria2_silent_update") && !object.contains_key("silent_update_scope");
+    if !needs_migration {
+        return false;
+    }
+    let target = if object
+        .get("aria2_silent_update")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        "engine"
+    } else {
+        "off"
+    };
+    object.insert(
+        "silent_update_scope".to_string(),
+        serde_json::Value::String(target.to_string()),
+    );
+    object.remove("aria2_silent_update");
+    let serialized = match serde_json::to_string_pretty(&value) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    std::fs::write(path, serialized).is_ok()
 }
 
 /// Atomically persist `settings` to disk.
@@ -1285,5 +1375,30 @@ mod tests {
             ResolvedPaths::default(),
             "absent last_resolved falls back to default"
         );
+    }
+
+    #[test]
+    fn silent_update_scope_round_trip() {
+        for variant in [
+            SilentUpdateScope::Off,
+            SilentUpdateScope::Engine,
+            SilentUpdateScope::App,
+            SilentUpdateScope::Both,
+        ] {
+            assert_eq!(SilentUpdateScope::from_str(variant.as_str()), Some(variant));
+        }
+        assert_eq!(SilentUpdateScope::from_str("foo"), None);
+    }
+
+    #[test]
+    fn silent_update_scope_covers() {
+        assert!(!SilentUpdateScope::Off.covers("aria2-next"));
+        assert!(!SilentUpdateScope::Off.covers("remotrix"));
+        assert!(!SilentUpdateScope::App.covers("aria2-next"));
+        assert!(SilentUpdateScope::App.covers("remotrix"));
+        assert!(SilentUpdateScope::Engine.covers("aria2-next"));
+        assert!(!SilentUpdateScope::Engine.covers("remotrix"));
+        assert!(SilentUpdateScope::Both.covers("aria2-next"));
+        assert!(SilentUpdateScope::Both.covers("remotrix"));
     }
 }

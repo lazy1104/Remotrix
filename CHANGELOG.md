@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 移除应用更新走 aria2 sidecar 的整套通道（`EngineCmd::DownloadAppUpdate` / `EngineEvent::AppUpdateDownloaded/Failed` / `download_via_engine` / `handle_download_app_update_via_engine`），改用 app 层共享后台下载；不再依赖 engine 处于可用状态。
 - 应用更新的「Apply」由原来的下载完成即自动触发（deb 打开目录、AppImage 立即替换、Windows 立即启动安装器）改为弹 toast 等待用户点击，避免磁盘上残留 `.deb` 时应用后无法定位包。
+- 设置面板移除单独的「aria2-next 静默更新」开关；新增「静默更新范围」下拉（关闭 / 引擎 / 应用 / 应用 + 引擎，4 选项），决定哪个组件在检查到更新时跳过对话框直接后台下载；应用静默只下载，应用动作仍需用户点击 toast 上的「更新」按钮触发（与 aria2 静默「不自动重启引擎」语义一致）。原有 `aria2_silent_update=true` 的旧字段通过一次性迁移映射为「引擎」，`false` 映射为「关闭」。
 
 ### Fixed
 

@@ -162,9 +162,11 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                         }
                     }
                 }
-                SettingKey::Aria2SilentUpdate => {
-                    if let SettingValue::Bool(b) = value {
-                        state.settings.update.aria2_silent_update = b;
+                SettingKey::SilentUpdateScope => {
+                    if let SettingValue::Text(s) = value {
+                        if let Some(scope) = crate::config::SilentUpdateScope::from_str(&s) {
+                            state.settings.update.silent_update_scope = scope;
+                        }
                     }
                 }
                 SettingKey::BetaChannel => {
@@ -1026,8 +1028,18 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                     true,
                 );
             }
+            let mut silent_tasks: Vec<Task<Message>> = Vec::new();
             for silent in &silent_applied {
-                send_download_aria2_update(state, silent, true);
+                match silent.component {
+                    crate::ui::update_dialog::UpdateComponent::Aria2 => {
+                        send_download_aria2_update(state, silent, true);
+                    }
+                    crate::ui::update_dialog::UpdateComponent::App => {
+                        if !state.app_update_in_flight {
+                            silent_tasks.push(kick_off_app_update(state, silent, false));
+                        }
+                    }
+                }
             }
             if pending_restart_engine {
                 push_pending_engine_toast(state);
@@ -1061,12 +1073,16 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                     );
                     tracing::info!(offers = offer_count, "tray update notification sent");
                 }
-                let mut tasks = Vec::new();
+                let mut tasks = silent_tasks;
                 for tab in 0..state.update_dialog.as_ref().unwrap().offers.len() {
                     tasks.push(changelog_fetch_task(state, tab));
                 }
                 return Task::batch(tasks);
-            } else if checked_any
+            }
+            if !silent_tasks.is_empty() {
+                return Task::batch(silent_tasks);
+            }
+            if checked_any
                 && errors.is_empty()
                 && !pending_restart_engine
                 && pending_app_update.is_none()
@@ -1107,63 +1123,7 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                         if state.app_update_in_flight {
                             continue;
                         }
-                        let kind = crate::app_updater::detect_install_kind();
-                        let asset_name = offer.asset_name.clone();
-                        let dest = match crate::app_updater::app_update_dest(
-                            kind,
-                            &asset_name,
-                            Some(&state.settings.download_dir),
-                        ) {
-                            Ok(d) => d,
-                            Err(e) => {
-                                spawn_toast(
-                                    state,
-                                    ToastGroup::General,
-                                    ToastKind::Error,
-                                    format!("{}: {e}", state.fluent.get(Tr::UpdateFailed)),
-                                    Some(Duration::from_secs(6)),
-                                    true,
-                                );
-                                continue;
-                            }
-                        };
-                        state.app_update_in_flight = true;
-                        state.engine_ui.app_update_progress = None;
-                        spawn_toast(
-                            state,
-                            ToastGroup::General,
-                            ToastKind::Normal,
-                            state.fluent.get(Tr::UpdateDownloading),
-                            None,
-                            true,
-                        );
-                        let version = offer.latest.clone();
-                        let download_url = offer.download_url.clone();
-                        let offer_sha256 = offer.sha256.clone();
-                        let asset_name_owned = asset_name.clone();
-                        let proxy = state.settings.aria2.all_proxy_value();
-                        let dest_for_task = dest.clone();
-                        let dest_for_msg = dest;
-                        return Task::perform(
-                            crate::download::perform_app_update_download(
-                                download_url,
-                                dest_for_task,
-                                proxy,
-                                offer_sha256,
-                                version,
-                                kind,
-                                Some(asset_name_owned),
-                                dest_for_msg,
-                            ),
-                            |res| match res {
-                                Ok(outcome) => {
-                                    Message::Settings(SettingsMsg::AppUpdateReady { outcome })
-                                }
-                                Err(error) => {
-                                    Message::Settings(SettingsMsg::AppUpdateFailed { error })
-                                }
-                            },
-                        );
+                        return kick_off_app_update(state, &offer, true);
                     }
                 }
             }
@@ -1319,4 +1279,66 @@ fn push_pending_app_toast(state: &mut Remotrix, outcome: crate::app_updater::App
         label,
     );
     state.toasts.push(toast);
+}
+
+fn kick_off_app_update(
+    state: &mut Remotrix,
+    offer: &crate::ui::update_dialog::UpdateOffer,
+    show_downloading_toast: bool,
+) -> Task<Message> {
+    let kind = crate::app_updater::detect_install_kind();
+    let asset_name = offer.asset_name.clone();
+    let dest = match crate::app_updater::app_update_dest(
+        kind,
+        &asset_name,
+        Some(&state.settings.download_dir),
+    ) {
+        Ok(d) => d,
+        Err(e) => {
+            spawn_toast(
+                state,
+                ToastGroup::General,
+                ToastKind::Error,
+                format!("{}: {e}", state.fluent.get(Tr::UpdateFailed)),
+                Some(Duration::from_secs(6)),
+                true,
+            );
+            return Task::none();
+        }
+    };
+    state.app_update_in_flight = true;
+    state.engine_ui.app_update_progress = None;
+    if show_downloading_toast {
+        spawn_toast(
+            state,
+            ToastGroup::General,
+            ToastKind::Normal,
+            state.fluent.get(Tr::UpdateDownloading),
+            None,
+            true,
+        );
+    }
+    let version = offer.latest.clone();
+    let download_url = offer.download_url.clone();
+    let offer_sha256 = offer.sha256.clone();
+    let asset_name_owned = asset_name.clone();
+    let proxy = state.settings.aria2.all_proxy_value();
+    let dest_for_task = dest.clone();
+    let dest_for_msg = dest;
+    Task::perform(
+        crate::download::perform_app_update_download(
+            download_url,
+            dest_for_task,
+            proxy,
+            offer_sha256,
+            version,
+            kind,
+            Some(asset_name_owned),
+            dest_for_msg,
+        ),
+        |res| match res {
+            Ok(outcome) => Message::Settings(SettingsMsg::AppUpdateReady { outcome }),
+            Err(error) => Message::Settings(SettingsMsg::AppUpdateFailed { error }),
+        },
+    )
 }

@@ -1946,7 +1946,7 @@ pub(crate) fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -
     config::save(&state.applied_settings);
 
     let scope = state.settings.update.scope;
-    let silent = state.settings.update.aria2_silent_update;
+    let silent_scope = state.settings.update.silent_update_scope;
     let beta = state.settings.update.beta_channel;
     let aria2_downloading = state.engine_ui.aria2_downloading;
     let proxy = state.settings.aria2.all_proxy_value();
@@ -2000,7 +2000,7 @@ pub(crate) fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -
                                         sha256: None,
                                         asset_name: latest.asset_name.clone(),
                                     };
-                                    if silent {
+                                    if silent_scope.covers("aria2-next") {
                                         silent_applied.push(offer);
                                     } else {
                                         offers.push(offer);
@@ -2025,7 +2025,7 @@ pub(crate) fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -
                     {
                         Ok(latest) => {
                             if crate::updater::version_gt(&latest.version, &app_current) {
-                                offers.push(crate::ui::update_dialog::UpdateOffer {
+                                let offer = crate::ui::update_dialog::UpdateOffer {
                                     component: crate::ui::update_dialog::UpdateComponent::App,
                                     current: app_current.clone(),
                                     latest: latest.version.clone(),
@@ -2033,7 +2033,12 @@ pub(crate) fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -
                                     download_url: latest.download_url.clone(),
                                     sha256: None,
                                     asset_name: latest.asset_name.clone(),
-                                });
+                                };
+                                if silent_scope.covers("remotrix") {
+                                    silent_applied.push(offer);
+                                } else {
+                                    offers.push(offer);
+                                }
                             }
                         }
                         Err(e) => errors.push(format!("remotrix: {e}")),

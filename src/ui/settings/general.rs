@@ -3,10 +3,10 @@ use iced::widget::{button, column, container, row, text};
 use iced::{Alignment, Element, Length};
 
 use super::{
-    group_title, labeled_hint, labeled_pick, labeled_toggle, setting_row, setting_row_auto,
-    sub_items, Fluent, Labeled, Locale, Message, SettingKey, SettingValue, Settings, SettingsMsg,
-    SettingsUiState, Tr, FONT_BODY, FONT_ICON, FONT_MEDIUM, FONT_SMALL, PADDING_BUTTON_SM,
-    SPACE_LG, SPACE_SM, SPACE_XL, SWATCH_SIZE,
+    group_title, labeled_pick, labeled_toggle, setting_row, setting_row_auto, sub_items, Fluent,
+    Labeled, Locale, Message, SettingKey, SettingValue, Settings, SettingsMsg, SettingsUiState, Tr,
+    FONT_BODY, FONT_ICON, FONT_MEDIUM, FONT_SMALL, PADDING_BUTTON_SM, SPACE_LG, SPACE_SM, SPACE_XL,
+    SWATCH_SIZE,
 };
 use crate::ui::components::copyable_text::copyable_text;
 use crate::ui::components::tooltip;
@@ -195,12 +195,35 @@ pub(super) fn general_view<'a>(
                         ))
                     },
                 ),
-                labeled_toggle(
-                    fluent.get(Tr::Aria2SilentUpdate),
-                    settings.update.aria2_silent_update,
-                    SettingKey::Aria2SilentUpdate,
+                labeled_pick(
+                    fluent,
+                    fluent.get(Tr::SilentUpdateScope),
+                    vec![
+                        Labeled {
+                            value: crate::config::SilentUpdateScope::Off,
+                            label: fluent.get(Tr::ScopeOff),
+                        },
+                        Labeled {
+                            value: crate::config::SilentUpdateScope::Engine,
+                            label: fluent.get(Tr::ScopeEngine),
+                        },
+                        Labeled {
+                            value: crate::config::SilentUpdateScope::App,
+                            label: fluent.get(Tr::ScopeApp),
+                        },
+                        Labeled {
+                            value: crate::config::SilentUpdateScope::Both,
+                            label: fluent.get(Tr::ScopeBoth),
+                        },
+                    ],
+                    Some(settings.update.silent_update_scope),
+                    |opt| {
+                        Message::Settings(SettingsMsg::SettingChanged(
+                            SettingKey::SilentUpdateScope,
+                            SettingValue::Text(opt.value.as_str().into()),
+                        ))
+                    },
                 ),
-                labeled_hint(fluent.get(Tr::Aria2SilentUpdateHint)),
             ])
         } else {
             iced::widget::Space::new().height(Length::Fixed(0.0)).into()

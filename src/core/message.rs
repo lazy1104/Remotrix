@@ -572,7 +572,7 @@ pub enum SettingKey {
     AutoUpdateEnabled,
     UpdateCheckInterval,
     UpdateScope,
-    Aria2SilentUpdate,
+    SilentUpdateScope,
     BetaChannel,
     AppLogLevel,
     EngineLogLevel,
