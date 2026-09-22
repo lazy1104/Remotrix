@@ -91,6 +91,31 @@ jobs:
           fi
           sha256sum "${files[@]}" > checksums.sha256
 
+      - name: Extract release notes for this tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          python3 - "$version" CHANGELOG.md > "$GITHUB_WORKSPACE/.release-notes.md" <<'PY'
+          import sys, pathlib
+          target, path = sys.argv[1], pathlib.Path(sys.argv[2])
+          lines = path.read_text(encoding='utf-8').splitlines(keepends=False)
+          start = end = None
+          for i, ln in enumerate(lines):
+              stripped = ln.strip()
+              if start is None and (stripped == f'## [{target}]' or stripped.startswith(f'## [{target}] -')):
+                  start = i
+              elif start is not None and ln.startswith('## [') and i != start:
+                  end = i
+                  break
+          if start is None:
+              print(f'::error::no section for version {target} in {path}', file=sys.stderr)
+              sys.exit(1)
+          if end is None:
+              end = len(lines)
+          sys.stdout.write('\n'.join(lines[start:end]).rstrip() + '\n')
+          PY
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -101,7 +126,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          body_path: CHANGELOG.md
+          body_path: .release-notes.md
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             target/release/bundle/*.deb
