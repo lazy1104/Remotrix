@@ -34,7 +34,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 open = "5"
 libc = "0.2"
 fontdb = "0.24"
-sys-locale = "0.3"
+system-fonts = "0.1"
 iced_aw = { version = "0.14", default-features = false }
 iced_anim = "=0.3.1"
 app-single-instance = "0.1"

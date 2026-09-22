@@ -186,7 +186,6 @@ font-restart-hint = Font changes take effect after restart
 save-and-restart-app = Save & Restart Now
 font-picker-search = Search fonts…
 font-picker-no-results = No matching fonts
-font-picker-bundled-label = Bundled
 restart-engine = Restart Engine
 confirm-restart-engine-title = Restart engine?
 confirm-restart-engine-body = Restart the aria2-next engine?

@@ -40,7 +40,7 @@ impl Locale {
 }
 
 pub fn detect_locale() -> Locale {
-    match sys_locale::get_locale() {
+    match system_fonts::system_locale() {
         Some(lang) if lang.to_lowercase().starts_with("zh") => Locale::ZhCN,
         _ => Locale::EnUS,
     }
@@ -226,7 +226,6 @@ pub enum Tr {
     SaveAndRestartApp,
     FontPickerSearch,
     FontPickerNoResults,
-    FontPickerBundledLabel,
     RestartEngine,
     ConfirmRestartEngineTitle,
     ConfirmRestartEngineBody,
@@ -671,7 +670,6 @@ impl Tr {
             Tr::SaveAndRestartApp => "save-and-restart-app",
             Tr::FontPickerSearch => "font-picker-search",
             Tr::FontPickerNoResults => "font-picker-no-results",
-            Tr::FontPickerBundledLabel => "font-picker-bundled-label",
             Tr::RestartEngine => "restart-engine",
             Tr::ConfirmRestartEngineTitle => "confirm-restart-engine-title",
             Tr::ConfirmRestartEngineBody => "confirm-restart-engine-body",

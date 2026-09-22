@@ -197,7 +197,7 @@ fn default_theme_color() -> String {
     crate::ui::theme::color_to_hex(crate::ui::theme::DEFAULT_THEME_COLOR)
 }
 fn default_font_family() -> String {
-    crate::ui::theme::BUNDLED_FONT_NAME.into()
+    String::new()
 }
 fn default_window_width() -> f32 {
     1040.0

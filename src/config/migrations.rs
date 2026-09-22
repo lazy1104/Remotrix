@@ -3,6 +3,26 @@ use std::path::PathBuf;
 use super::paths::{copy_dir, copy_dir_contents, copy_file, resolve_from_settings};
 use super::settings::Settings;
 
+const LEGACY_BUNDLED_FONT: &str = "HarmonyOS Sans SC";
+
+/// Populate `settings.font_family` on first launch (or upgrade from a
+/// build that defaulted to the bundled CJK font). When the field is
+/// empty or holds the legacy bundled-font value, ask the system-fonts
+/// helper for the OS UI sans family. Persists nothing by itself; the
+/// caller (`main`) saves after this returns.
+pub fn migrate_font_family(settings: &mut Settings) {
+    if !settings.font_family.is_empty() && settings.font_family != LEGACY_BUNDLED_FONT {
+        return;
+    }
+    let next = crate::ui::font_autopick::pick_default_family().unwrap_or_default();
+    tracing::info!(
+        from = %settings.font_family,
+        to = %next,
+        "font_family auto-picked on first launch"
+    );
+    settings.font_family = next;
+}
+
 /// Rewrite the long-deprecated gruk.org default bootstrap URLs to the
 /// current emule-security mirrors. Only matches the exact old default
 /// strings; user-customised URLs are left untouched. Returns `true` when

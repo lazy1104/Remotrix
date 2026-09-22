@@ -16,6 +16,7 @@ fn main() -> iced::Result {
     if let Err(e) = config::migrate_paths(&mut cfg) {
         eprintln!("remotrix: path migration failed: {e}");
     }
+    config::migrate_font_family(&mut cfg);
     config::save(&cfg);
 
     let _log_guard = logging::init();
@@ -51,7 +52,6 @@ fn main() -> iced::Result {
             app::subscription as fn(&app::Remotrix) -> iced::Subscription<message::Message>,
         )
         .font(ui::icon::FONT as &[_])
-        .font(include_bytes!("../fonts/HarmonyOS_Sans_SC_Regular.ttf") as &[_])
         .font(iced_aw::ICED_AW_FONT_BYTES)
         .default_font(ui::theme::font_from_family(&cfg.font_family))
         .window(iced::window::Settings {

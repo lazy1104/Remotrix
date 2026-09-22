@@ -4389,7 +4389,7 @@ dependencies = [
  "serial_test",
  "sha1 0.11.0",
  "sha2 0.11.0",
- "sys-locale",
+ "system-fonts",
  "tempfile",
  "tokio",
  "tracing",
@@ -5493,6 +5493,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8eab9a99a024a169fe8a903cf9d4a3b3601109bcc13bd9e3c6fff259138626c4"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "system-fonts"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46ba78ea149d4bb0626dacad10aa789eedc83395889890a0e6e7ec69a4577442"
+dependencies = [
+ "fontdb 0.23.0",
+ "sys-locale",
+ "web-sys",
 ]
 
 [[package]]

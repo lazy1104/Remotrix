@@ -43,7 +43,6 @@ impl Default for FontPickerUi {
 #[derive(Debug, Clone)]
 pub enum FontPickerEntry {
     SystemDefault,
-    Bundled,
     Family(String),
 }
 
@@ -51,7 +50,6 @@ impl FontPickerEntry {
     pub fn id(&self) -> &str {
         match self {
             FontPickerEntry::SystemDefault => "",
-            FontPickerEntry::Bundled => theme::BUNDLED_FONT_NAME,
             FontPickerEntry::Family(id) => id.as_str(),
         }
     }
@@ -88,23 +86,14 @@ pub fn build_options(
         .map(|(cached, _)| *cached != fluent.locale)
         .unwrap_or(true);
     if needs_rebuild {
-        let mut out = Vec::with_capacity(families.len() + 2);
+        let mut out = Vec::with_capacity(families.len() + 1);
         let system_label = fluent.get(Tr::SystemDefault);
         out.push(FontPickerOption {
             entry: FontPickerEntry::SystemDefault,
             display: system_label.clone(),
             search_key: system_label,
         });
-        let bundled_label = fluent.get(Tr::FontPickerBundledLabel);
-        out.push(FontPickerOption {
-            entry: FontPickerEntry::Bundled,
-            display: format!("{} ({})", bundled_label, theme::BUNDLED_FONT_NAME),
-            search_key: format!("{} {}", bundled_label, theme::BUNDLED_FONT_NAME),
-        });
         for f in families {
-            if f.id.eq_ignore_ascii_case(theme::BUNDLED_FONT_NAME) {
-                continue;
-            }
             let display = if f.display == f.id {
                 f.display.clone()
             } else {
@@ -200,13 +189,11 @@ where
         filtered.sort_by(|a, b| {
             let a_kind = match a.entry {
                 FontPickerEntry::SystemDefault => 0,
-                FontPickerEntry::Bundled => 1,
-                FontPickerEntry::Family(_) => 2,
+                FontPickerEntry::Family(_) => 1,
             };
             let b_kind = match b.entry {
                 FontPickerEntry::SystemDefault => 0,
-                FontPickerEntry::Bundled => 1,
-                FontPickerEntry::Family(_) => 2,
+                FontPickerEntry::Family(_) => 1,
             };
             a_kind
                 .cmp(&b_kind)

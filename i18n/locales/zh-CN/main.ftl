@@ -186,7 +186,6 @@ font-restart-hint = 字体更改将在重启应用后生效
 save-and-restart-app = 保存并立即重启
 font-picker-search = 搜索字体…
 font-picker-no-results = 没有匹配的字体
-font-picker-bundled-label = 内置字体
 restart-engine = 重启引擎
 confirm-restart-engine-title = 重启引擎？
 confirm-restart-engine-body = 确定要重启 aria2-next 引擎吗？

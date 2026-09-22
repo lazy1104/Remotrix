@@ -16,6 +16,7 @@ pub mod components;
 pub mod confirm_dialog;
 pub mod details_dialog;
 pub mod dims;
+pub mod font_autopick;
 pub mod icon;
 pub mod resize_frame;
 pub mod scroll_anim;
