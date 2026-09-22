@@ -2223,51 +2223,60 @@ pub(crate) fn start_tracker_fetch(state: &mut Remotrix, urls: Vec<String>) -> Ta
     Task::batch([fetch, timeout])
 }
 
-pub(crate) fn pick_path(id: PathPickerId) -> Task<Message> {
-    let task = async move {
+pub(crate) fn pick_path(window_id: Option<Id>, id: PathPickerId) -> Task<Message> {
+    fn configure(id: PathPickerId) -> rfd::AsyncFileDialog {
         let dialog = rfd::AsyncFileDialog::new();
-        let picked = match id {
-            PathPickerId::DownloadDir => dialog.set_title("Select folder").pick_folder().await,
-            PathPickerId::SaveDir => dialog.set_title("Select folder").pick_folder().await,
-            PathPickerId::Torrent => {
-                dialog
-                    .set_title("Select torrent file")
-                    .add_filter("Torrent", &["torrent"])
-                    .pick_file()
-                    .await
-            }
-            PathPickerId::Metalink => {
-                dialog
-                    .set_title("Select metalink file")
-                    .add_filter("Metalink", &["metalink", "meta4"])
-                    .pick_file()
-                    .await
-            }
-            PathPickerId::Ed2kServerList => {
-                dialog
-                    .set_title("Select server.met")
-                    .add_filter("ED2K server list", &["met"])
-                    .add_filter("All files", &["*"])
-                    .pick_file()
-                    .await
-            }
-            PathPickerId::Ed2kNodeList => {
-                dialog
-                    .set_title("Select nodes.dat")
-                    .add_filter("Kad nodes", &["dat"])
-                    .add_filter("All files", &["*"])
-                    .pick_file()
-                    .await
-            }
+        match id {
+            PathPickerId::DownloadDir => dialog.set_title("Select folder"),
+            PathPickerId::SaveDir => dialog.set_title("Select folder"),
+            PathPickerId::Torrent => dialog
+                .set_title("Select torrent file")
+                .add_filter("Torrent", &["torrent"]),
+            PathPickerId::Metalink => dialog
+                .set_title("Select metalink file")
+                .add_filter("Metalink", &["metalink", "meta4"]),
+            PathPickerId::Ed2kServerList => dialog
+                .set_title("Select server.met")
+                .add_filter("ED2K server list", &["met"])
+                .add_filter("All files", &["*"]),
+            PathPickerId::Ed2kNodeList => dialog
+                .set_title("Select nodes.dat")
+                .add_filter("Kad nodes", &["dat"])
+                .add_filter("All files", &["*"]),
             PathPickerId::CustomAria2Dir
             | PathPickerId::CustomAppDataDir
-            | PathPickerId::CustomLogDir => dialog.set_title("Select folder").pick_folder().await,
-        };
-        picked.map(|h| h.path().to_path_buf())
-    };
-    Task::perform(task, move |maybe| {
-        Message::Add(AddMsg::PathPicked(id, maybe))
-    })
+            | PathPickerId::CustomLogDir => dialog.set_title("Select folder"),
+        }
+    }
+
+    fn run(id: PathPickerId, dialog: rfd::AsyncFileDialog) -> Task<Message> {
+        Task::perform(
+            async move {
+                let handle = match id {
+                    PathPickerId::DownloadDir
+                    | PathPickerId::SaveDir
+                    | PathPickerId::CustomAria2Dir
+                    | PathPickerId::CustomAppDataDir
+                    | PathPickerId::CustomLogDir => dialog.pick_folder().await,
+                    PathPickerId::Torrent
+                    | PathPickerId::Metalink
+                    | PathPickerId::Ed2kServerList
+                    | PathPickerId::Ed2kNodeList => dialog.pick_file().await,
+                };
+                handle.map(|h| h.path().to_path_buf())
+            },
+            move |picked| Message::Add(AddMsg::PathPicked(id, picked)),
+        )
+    }
+
+    if let Some(window_id) = window_id {
+        iced::window::run(window_id, move |handle| {
+            run(id, configure(id).set_parent(handle))
+        })
+        .then(|inner| inner)
+    } else {
+        run(id, configure(id))
+    }
 }
 
 pub(crate) fn open_path_in_manager(p: PathBuf) -> Task<Message> {

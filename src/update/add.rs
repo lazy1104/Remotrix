@@ -29,13 +29,13 @@ pub(crate) fn handle(state: &mut Remotrix, msg: AddMsg) -> Task<Message> {
         AddMsg::TorrentUpload(event) => {
             if let Some(TorrentUploadAction::Browse) = state.add_dialog.handle_torrent_event(event)
             {
-                return pick_path(PathPickerId::Torrent);
+                return pick_path(state.window.window_id, PathPickerId::Torrent);
             }
             Task::none()
         }
         AddMsg::MetalinkUpload(event) => {
             if state.add_dialog.handle_torrent_event(event).is_some() {
-                return pick_path(PathPickerId::Metalink);
+                return pick_path(state.window.window_id, PathPickerId::Metalink);
             }
             Task::none()
         }
@@ -112,7 +112,7 @@ pub(crate) fn handle(state: &mut Remotrix, msg: AddMsg) -> Task<Message> {
                     return iced::clipboard::write::<Message>(s);
                 }
                 Some(PathPickerAction::Browse) => {
-                    return pick_path(id);
+                    return pick_path(state.window.window_id, id);
                 }
                 Some(PathPickerAction::Select(p)) => {
                     apply_path(state, id, p);
