@@ -11,6 +11,7 @@ use std::sync::{LazyLock, Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 
+use iced::futures::StreamExt;
 use iced::theme::Palette;
 use iced::{Color, Font, Theme};
 
@@ -34,6 +35,19 @@ pub fn detect_dark() -> bool {
         dark_light::detect().unwrap_or(dark_light::Mode::Light),
         dark_light::Mode::Dark
     )
+}
+
+/// Live stream of OS dark-mode transitions. Returns `None` when the
+/// underlying platform watcher cannot be created (DBus down, portal
+/// service unavailable on Linux, etc.); callers should treat that as
+/// "no live updates" and keep the startup snapshot from [`detect_dark`].
+///
+/// `dark-light 3` filters duplicate modes, so each emitted item is a real
+/// transition. `Mode::Unspecified` is mapped to `false` to match the
+/// [`detect_dark`] fallback.
+pub fn system_dark_stream() -> Option<impl iced::futures::Stream<Item = bool> + Send + 'static> {
+    let inner = dark_light::stream().ok()?;
+    Some(inner.map(|mode| matches!(mode, dark_light::Mode::Dark)))
 }
 
 /// Resolve a [`ThemeMode`] to a concrete `is_dark` boolean. When `mode`

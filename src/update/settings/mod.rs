@@ -483,6 +483,12 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
             state.applied_settings.theme_mode = mode;
             Task::none()
         }
+        SettingsMsg::SystemDarkChanged(_) => {
+            if state.settings.theme_mode == theme::ThemeMode::System {
+                rebuild_theme(state);
+            }
+            Task::none()
+        }
         SettingsMsg::ThemeColorChanged(color) => {
             state.settings.theme_color = crate::ui::theme::color_to_hex(color);
             rebuild_theme(state);

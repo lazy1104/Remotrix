@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -1262,6 +1263,24 @@ fn build_engine_stream(slot: &EventSlot) -> impl iced::futures::Stream<Item = Me
     )
 }
 
+fn build_system_dark_stream() -> Pin<Box<dyn iced::futures::Stream<Item = Message> + Send>> {
+    let Some(stream) = theme::system_dark_stream() else {
+        return Box::pin(iced::futures::stream::empty::<Message>());
+    };
+    Box::pin(iced::futures::stream::unfold(
+        stream,
+        |mut stream| async move {
+            match iced::futures::StreamExt::next(&mut stream).await {
+                Some(dark) => Some((
+                    Message::Settings(SettingsMsg::SystemDarkChanged(dark)),
+                    stream,
+                )),
+                None => None,
+            }
+        },
+    ))
+}
+
 fn signal_stream() -> impl iced::futures::Stream<Item = Message> {
     iced::stream::channel(
         4,
@@ -1387,6 +1406,12 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
 
     let signals = Subscription::run_with((), |_| signal_stream());
 
+    let system_dark = if state.settings.theme_mode == theme::ThemeMode::System {
+        Subscription::run(build_system_dark_stream)
+    } else {
+        Subscription::none()
+    };
+
     let tracker_auto_sync = if state.settings.tracker.auto_sync {
         iced::time::every(Duration::from_secs(3600))
             .map(|_| Message::Settings(SettingsMsg::CheckTrackerAutoSync { startup: false }))
@@ -1464,6 +1489,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         shutdown_tick,
         speed_limit_tick,
         border_anim_tick,
+        system_dark,
     ])
 }
 
