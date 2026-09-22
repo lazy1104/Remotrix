@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 引擎处于降级 / 失败态时，顶部动画进度条不再无限转动；改由静态错误 toast 提示。瞬时忙碌（启动、下载、立即检查等）仍会触发动画条。
+
 ### Removed
 
 ## [0.4.0] - 2026-09-20

@@ -185,9 +185,9 @@ fn card<'a>(theme: &'a iced::Theme, toast: &'a Toast) -> Element<'a, Message> {
 
     if let Some(action) = &toast.action {
         if let Some(label) = toast.action_label.as_deref() {
-            let btn = button(text(label).size(FONT_BODY))
+            let btn = button(text(label).size(FONT_MEDIUM))
                 .on_press(Message::Toast(ToastMsg::ToastActionPressed(toast.id)))
-                .padding([4, 10])
+                .padding(PADDING_TOOLBAR_CAPSULE)
                 .style(theme::style::button::primary());
             content = content.push(btn);
         }

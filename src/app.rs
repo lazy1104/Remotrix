@@ -1160,6 +1160,9 @@ pub fn update(state: &mut Remotrix, message: Message) -> Task<Message> {
 }
 
 pub(crate) fn is_background_busy(state: &Remotrix) -> bool {
+    if state.engine_ui.aria2_fetch_error.is_some() {
+        return false;
+    }
     if state.engine_ui.update_check_in_flight
         || state.engine_ui.aria2_downloading
         || state.app_update_in_flight
@@ -1171,7 +1174,7 @@ pub(crate) fn is_background_busy(state: &Remotrix) -> bool {
     }
     match state.engine_ui.aria2_status.as_ref() {
         Some((stage, _)) if stage != "ready" => true,
-        _ => state.engine_ui.aria2_fetch_error.is_some(),
+        _ => false,
     }
 }
 
