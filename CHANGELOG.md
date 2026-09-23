@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - 「立即检查」在 GitHub release 记录内嵌 `assets` 数组为空时（GitHub 已知 snapshot 不一致，例如发布后再补传资产的 release），回退到该 release 的 `assets_url` 拉取权威资产清单再匹配；之前会让 beta 通道或类似情况下的「最新」漏报。
+- 任务筛选（All / Downloading / Completed / Failed）右侧计数胶囊内边距改为左右对称，去掉原先「上 2px 补偿数字基线」的偏移，让数字视觉中心与左侧图标+文字中心同高。
 
 ## [0.5.1] - 2026-09-23
 

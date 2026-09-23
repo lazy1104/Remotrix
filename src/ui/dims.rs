@@ -59,9 +59,7 @@ pub const FILTER_ITEM_H: f32 = 36.0; // 分类栏筛选/设置项固定高度（
 pub const FILTER_STEP: f32 = FILTER_ITEM_H + SPACE_MD; // 滑动胶囊每项步长
 pub const COUNT_BADGE_W: f32 = 36.0; // 分类栏数量胶囊固定宽度（容纳 "99+"）
 pub const COUNT_BADGE_PAD: iced::Padding = iced::Padding {
-    // 分类栏数量胶囊内边距：上 2px 补偿数字基线偏移（视觉中心 ~0.6-1px 上偏），
-    // 下 0px 让 24px 容器内 11px 文字居中后字形视觉中心落在几何中心。
-    top: 2.0,
+    top: 0.0,
     right: 6.0,
     bottom: 0.0,
     left: 6.0,
