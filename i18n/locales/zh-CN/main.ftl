@@ -267,6 +267,7 @@ aria2-update-starting-title = 正在更新 aria2-next
 aria2-update-starting-body = 正在下载新版本…
 aria2-update-ready-title = aria2-next 更新已就绪
 silent-update-scope = 静默更新范围
+update-beta-channel = 包含应用预发布版本更新 (Beta)
 update-tray-notify-title = 发现可用更新
 update-tray-notify-body = 有新版本可用，点击查看并应用。
 component-app = Remotrix

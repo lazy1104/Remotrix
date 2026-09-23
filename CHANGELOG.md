@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- 重新开放「包含应用预发布更新 (Beta)」设置项（此前在 v0.4.0 被隐藏），可在【设置 → 自动更新】中开启以接收 Remotrix 应用的预发布版本更新（仅影响应用，aria2-next 仍只更新正式版）。
+
 ### Fixed
 
 - 「立即检查」在 GitHub release 记录内嵌 `assets` 数组为空时（GitHub 已知 snapshot 不一致，例如发布后再补传资产的 release），回退到该 release 的 `assets_url` 拉取权威资产清单再匹配；之前会让 beta 通道或类似情况下的「最新」漏报。

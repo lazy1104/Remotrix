@@ -267,6 +267,7 @@ aria2-update-starting-title = Updating aria2-next
 aria2-update-starting-body = Downloading the new version…
 aria2-update-ready-title = aria2-next update ready
 silent-update-scope = Silent update scope
+update-beta-channel = Include app pre-release (Beta) updates
 update-tray-notify-title = Updates available
 update-tray-notify-body = A new version is ready. Click to view and apply.
 component-app = Remotrix

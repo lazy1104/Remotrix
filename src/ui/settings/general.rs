@@ -224,6 +224,11 @@ pub(super) fn general_view<'a>(
                         ))
                     },
                 ),
+                labeled_toggle(
+                    fluent.get(Tr::UpdateBetaChannel),
+                    settings.update.beta_channel,
+                    SettingKey::BetaChannel,
+                ),
             ])
         } else {
             iced::widget::Space::new().height(Length::Fixed(0.0)).into()
