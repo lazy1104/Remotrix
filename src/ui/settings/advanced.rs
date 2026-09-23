@@ -3,9 +3,9 @@ use iced::{Alignment, Element, Length};
 
 use super::{
     group_title, labeled_checkbox, labeled_hint, labeled_number, labeled_pick, labeled_port,
-    labeled_toggle, level_label, setting_row, setting_row_auto, sub_items, Fluent, Labeled,
-    Message, SettingKey, SettingValue, Settings, SettingsMsg, SettingsUiState, Tr, FONT_BODY,
-    FONT_MEDIUM, FONT_SMALL, PADDING_BUTTON_SM, SPACE_2XL, SPACE_LG, SPACE_SM,
+    labeled_toggle, level_label, setting_row, sub_items, Fluent, Labeled, Message, SettingKey,
+    SettingValue, Settings, SettingsMsg, SettingsUiState, Tr, FONT_BODY, FONT_MEDIUM, FONT_SMALL,
+    PADDING_BUTTON_SM, SPACE_2XL, SPACE_LG, SPACE_SM,
 };
 use crate::message::{AddMsg, EngineMsg, ExtensionMsg, PathPickerId};
 use crate::ui::components::path_picker::PathPicker;
@@ -65,7 +65,7 @@ pub(super) fn extension_view<'a>(
                 settings.extension.auto_submit,
                 SettingKey::ExtensionAutoSubmit,
             ),
-            setting_row_auto(
+            setting_row(
                 String::new(),
                 text(fluent.get_args(Tr::ExtensionSetupHint, &{
                     let mut args = std::collections::HashMap::new();

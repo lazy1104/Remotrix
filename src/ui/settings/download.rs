@@ -5,9 +5,8 @@ use iced::{Alignment, Element, Length};
 
 use super::{
     group_title, labeled_hint, labeled_number, labeled_pick, labeled_toggle, setting_row,
-    setting_row_auto, speed_labeled_input, sub_items, time_pick_options, Fluent, Message,
-    SettingKey, SettingValue, Settings, SettingsMsg, SettingsUiState, SpeedUnit, Tr, FONT_MEDIUM,
-    SPACE_LG, SPACE_SM,
+    speed_labeled_input, sub_items, time_pick_options, Fluent, Message, SettingKey, SettingValue,
+    Settings, SettingsMsg, SettingsUiState, SpeedUnit, Tr, FONT_MEDIUM, SPACE_LG, SPACE_SM,
 };
 use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::tag_picker::tag_picker;
@@ -289,7 +288,7 @@ pub(super) fn download_view<'a>(
                             .enumerate()
                             .map(|(i, label)| ((i + 1) as u8, label.clone()))
                             .collect::<Vec<_>>();
-                        setting_row_auto(
+                        setting_row(
                             fluent.get(Tr::ScheduleDays),
                             tag_picker(
                                 options,

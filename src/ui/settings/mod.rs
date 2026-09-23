@@ -448,23 +448,8 @@ pub(super) fn level_label(fluent: &Fluent, level: &str) -> String {
     fluent.get(key)
 }
 
-pub(super) fn setting_row_auto<'a>(
-    label: String,
-    control: Element<'a, Message>,
-) -> Element<'a, Message> {
-    row![]
-        .push(
-            container(text(label).size(FONT_MEDIUM))
-                .width(Length::Fixed(200.0))
-                .center_y(Length::Fixed(36.0)),
-        )
-        .push(control)
-        .align_y(Alignment::Start)
-        .into()
-}
-
 pub(super) fn labeled_hint<'a>(hint: String) -> Element<'a, Message> {
-    setting_row_auto(
+    setting_row(
         String::new(),
         text(hint)
             .size(FONT_SMALL)
@@ -552,10 +537,13 @@ pub(super) fn setting_row<'a>(
     control: Element<'a, Message>,
 ) -> Element<'a, Message> {
     row![]
-        .push(text(label).size(FONT_MEDIUM).width(Length::Fixed(200.0)))
+        .push(
+            container(text(label).size(FONT_MEDIUM))
+                .width(Length::Fixed(200.0))
+                .center_y(Length::Fixed(36.0)),
+        )
         .push(control)
-        .height(Length::Fixed(36.0))
-        .align_y(Alignment::Center)
+        .align_y(Alignment::Start)
         .into()
 }
 

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复 Windows 设置页「网络」「高级」等分类中，行内控件文字比左侧标签字符略高的基线偏移问题（统一通过 `setting_row` 的容器居中标签实现）。
+
 ## [0.5.0] - 2026-09-22
 
 ### Added

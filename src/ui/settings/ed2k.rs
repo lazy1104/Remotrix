@@ -3,9 +3,9 @@ use iced::{Alignment, Element, Length};
 
 use super::{
     group_title, labeled_hint, labeled_number, labeled_pick, labeled_port, labeled_text_input,
-    labeled_toggle, setting_row, setting_row_auto, Ed2kSearchSession, Fluent, Labeled, Message,
-    SettingKey, SettingValue, Settings, SettingsMsg, SettingsUiState, Tr, FONT_BODY, FONT_ICON,
-    FONT_MEDIUM, FONT_SMALL, PADDING_BUTTON_SM, SPACE_SM, SPACE_XS,
+    labeled_toggle, setting_row, Ed2kSearchSession, Fluent, Labeled, Message, SettingKey,
+    SettingValue, Settings, SettingsMsg, SettingsUiState, Tr, FONT_BODY, FONT_ICON, FONT_MEDIUM,
+    FONT_SMALL, PADDING_BUTTON_SM, SPACE_SM, SPACE_XS,
 };
 use crate::message::{AddMsg, PathPickerId};
 use crate::task::format_size;
@@ -164,7 +164,7 @@ pub(super) fn ed2k_view<'a>(
             false,
             &nodes_dat_placeholder,
         ))
-        .push(setting_row_auto(
+        .push(setting_row(
             fluent.get(Tr::Ed2kBootstrapSyncNow),
             column![
                 button(

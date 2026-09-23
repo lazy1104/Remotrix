@@ -4,9 +4,9 @@ use iced::{Alignment, Element, Length};
 
 use super::{
     group_title, labeled_editor, labeled_hint, labeled_number, labeled_pick, labeled_toggle,
-    setting_row, setting_row_auto, sub_items, CtxMirrors, Fluent, Labeled, Message, SettingKey,
-    SettingValue, Settings, SettingsMsg, SettingsUiState, Tr, FONT_BODY, FONT_ICON, FONT_MEDIUM,
-    FONT_SMALL, PADDING_BUTTON_SM, SPACE_SM,
+    setting_row, sub_items, CtxMirrors, Fluent, Labeled, Message, SettingKey, SettingValue,
+    Settings, SettingsMsg, SettingsUiState, Tr, FONT_BODY, FONT_ICON, FONT_MEDIUM, FONT_SMALL,
+    PADDING_BUTTON_SM, SPACE_SM,
 };
 use crate::message::CtxTarget;
 use crate::ui::components::ctx_input;
@@ -69,7 +69,7 @@ pub(super) fn bittorrent_view<'a>(
         ));
     }
     let custom_placeholder = fluent.get(Tr::BtTrackerSourceCustomPlaceholder);
-    tracker_rows.push(setting_row_auto(
+    tracker_rows.push(setting_row(
         fluent.get(Tr::BtTrackerSourceCustom),
         row![
             mouse_area(
@@ -100,7 +100,7 @@ pub(super) fn bittorrent_view<'a>(
         .into(),
     ));
     for url in &settings.tracker.custom_urls {
-        tracker_rows.push(setting_row_auto(
+        tracker_rows.push(setting_row(
             String::new(),
             container(
                 row![
@@ -125,7 +125,7 @@ pub(super) fn bittorrent_view<'a>(
             .into(),
         ));
     }
-    tracker_rows.push(setting_row_auto(
+    tracker_rows.push(setting_row(
         fluent.get(Tr::BtTrackerSync),
         button(
             row![

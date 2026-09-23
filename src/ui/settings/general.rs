@@ -3,9 +3,9 @@ use iced::widget::{button, column, container, row, text};
 use iced::{Alignment, Element, Length};
 
 use super::{
-    group_title, labeled_pick, labeled_toggle, setting_row, setting_row_auto, sub_items, Fluent,
-    Labeled, Locale, Message, SettingKey, SettingValue, Settings, SettingsMsg, SettingsUiState, Tr,
-    FONT_BODY, FONT_ICON, FONT_MEDIUM, FONT_SMALL, PADDING_BUTTON_SM, SPACE_LG, SPACE_SM, SPACE_XL,
+    group_title, labeled_pick, labeled_toggle, setting_row, sub_items, Fluent, Labeled, Locale,
+    Message, SettingKey, SettingValue, Settings, SettingsMsg, SettingsUiState, Tr, FONT_BODY,
+    FONT_ICON, FONT_MEDIUM, FONT_SMALL, PADDING_BUTTON_SM, SPACE_LG, SPACE_SM, SPACE_XL,
     SWATCH_SIZE,
 };
 use crate::ui::components::copyable_text::copyable_text;
@@ -45,7 +45,7 @@ pub(super) fn general_view<'a>(
         .spacing(SPACE_SM)
         .push(crate::ui::components::scroll_top_gap::view())
         .push(group_title(fluent, Tr::SystemInfo, accent))
-        .push(setting_row_auto(
+        .push(setting_row(
             fluent.get(Tr::SystemPlatform),
             copyable_text(
                 crate::updater::platform_display(),
@@ -53,7 +53,7 @@ pub(super) fn general_view<'a>(
             )
             .into(),
         ))
-        .push(setting_row_auto(
+        .push(setting_row(
             fluent.get(Tr::AppVersion),
             copyable_text(
                 format!("v{}", env!("CARGO_PKG_VERSION")),
@@ -61,7 +61,7 @@ pub(super) fn general_view<'a>(
             )
             .into(),
         ))
-        .push(setting_row_auto(
+        .push(setting_row(
             fluent.get(Tr::Aria2Version),
             copyable_text(
                 aria2_version.map_or("--".into(), |v| format!("v{v}")),
@@ -389,7 +389,7 @@ pub(super) fn theme_color_swatches<'a>(
     );
     swatch_row = swatch_row.push(add_swatch);
 
-    setting_row_auto(
+    setting_row(
         fluent.get(Tr::ThemeColor),
         swatch_row
             .width(Length::Fill)
