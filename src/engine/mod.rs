@@ -286,10 +286,35 @@ fn pipe_lines<R: tokio::io::AsyncRead + Unpin + Send + 'static>(reader: R, targe
     tokio::spawn(async move {
         let reader = tokio::io::BufReader::new(reader);
         let mut lines = reader.lines();
+        let mut prev: Option<String> = None;
+        let mut repeats: u32 = 0;
         while let Ok(Some(line)) = lines.next_line().await {
-            tracing::debug!(target, "{line}");
+            let line = line.trim_end().to_string();
+            match prev.as_deref() {
+                Some(p) if p == line => repeats += 1,
+                _ => {
+                    if let Some(p) = prev.take() {
+                        emit_sidecar_line(target, &p, repeats);
+                    }
+                    prev = Some(line);
+                    repeats = 0;
+                }
+            }
+        }
+        if let Some(p) = prev.take() {
+            emit_sidecar_line(target, &p, repeats);
         }
     });
+}
+
+fn emit_sidecar_line(target: &'static str, line: &str, repeats: u32) {
+    if line.trim().is_empty() {
+        return;
+    }
+    tracing::debug!(target, "{line}");
+    if repeats > 0 {
+        tracing::debug!(target, repeats, "suppressed duplicated sidecar line(s)");
+    }
 }
 
 /// Post-spawn cleanup: enumerate aria2's stopped-task list and remove any
