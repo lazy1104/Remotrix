@@ -543,7 +543,7 @@ pub(super) fn setting_row<'a>(
                 .center_y(Length::Fixed(36.0)),
         )
         .push(control)
-        .align_y(Alignment::Start)
+        .align_y(Alignment::Center)
         .into()
 }
 
