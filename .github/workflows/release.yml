@@ -98,6 +98,7 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           python3 - "$version" CHANGELOG.md > "$GITHUB_WORKSPACE/.release-notes.md" <<'PY'
           import sys, pathlib
+          sys.stdout.reconfigure(encoding='utf-8')
           target, path = sys.argv[1], pathlib.Path(sys.argv[2])
           lines = path.read_text(encoding='utf-8').splitlines(keepends=False)
           start = end = None
