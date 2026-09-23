@@ -5,16 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.2] - 2026-09-23
 
 ### Added
 
 - 重新开放「包含应用预发布更新 (Beta)」设置项（此前在 v0.4.0 被隐藏），可在【设置 → 自动更新】中开启以接收 Remotrix 应用的预发布版本更新（仅影响应用，aria2-next 仍只更新正式版）。
 
+### Changed
+
+- 设置页所有开关现在垂直居中对齐（左侧标签 + 右侧开关共用容器居中线），修复部分分类中开关明显高于或低于标签基线的问题。
+
 ### Fixed
 
 - 「立即检查」在 GitHub release 记录内嵌 `assets` 数组为空时（GitHub 已知 snapshot 不一致，例如发布后再补传资产的 release），回退到该 release 的 `assets_url` 拉取权威资产清单再匹配；之前会让 beta 通道或类似情况下的「最新」漏报。
 - 任务筛选（All / Downloading / Completed / Failed）右侧计数胶囊内边距改为左右对称，去掉原先「上 2px 补偿数字基线」的偏移，让数字视觉中心与左侧图标+文字中心同高。
+- aria2 sidecar 子进程日志中，相邻完全相同的行（包括仅时间戳前缀不同的条目）现在只输出一行并以 `<repeated N times>` 标注次数；空行直接丢弃，日志面板可读性显著提升。
 
 ## [0.5.1] - 2026-09-23
 
