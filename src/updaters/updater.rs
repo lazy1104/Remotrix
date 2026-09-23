@@ -46,6 +46,7 @@ pub async fn fetch_latest_release(
 
     if !beta {
         let api_url = format!("https://api.github.com/repos/{repo}/releases/latest");
+        tracing::debug!(%api_url, "update fetch: releases/latest");
         let resp = client
             .get(&api_url)
             .send()
@@ -55,6 +56,7 @@ pub async fn fetch_latest_release(
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
+            tracing::warn!(status = %status, "update fetch: non-success HTTP status");
             return Err(format!("GitHub API HTTP {status}: {body}"));
         }
 
@@ -109,6 +111,7 @@ pub async fn fetch_latest_asset(
         .await
     } else {
         let api_url = format!("https://api.github.com/repos/{repo}/releases/latest");
+        tracing::debug!(%api_url, "update fetch: releases/latest");
         let resp = client
             .get(&api_url)
             .send()
@@ -118,6 +121,7 @@ pub async fn fetch_latest_asset(
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
+            tracing::warn!(status = %status, "update fetch: non-success HTTP status");
             return Err(format!("GitHub API HTTP {status}: {body}"));
         }
 
@@ -148,6 +152,7 @@ async fn fetch_beta_release(
     fetch_checksum: bool,
 ) -> Option<ReleaseInfo> {
     let api_url = format!("https://api.github.com/repos/{repo}/releases?per_page=5&page=1");
+    tracing::debug!(%api_url, "update fetch: releases list");
     let resp = client.get(&api_url).send().await.ok()?;
     if !resp.status().is_success() {
         return None;
@@ -252,36 +257,105 @@ async fn release_from_json(
 ) -> Option<ReleaseInfo> {
     let prerelease = body["prerelease"].as_bool().unwrap_or(false);
     if prerelease && !include_prerelease {
+        tracing::debug!(
+            tag = %body["tag_name"].as_str().unwrap_or(""),
+            "update fetch: skipping prerelease"
+        );
         return None;
     }
     let tag = body["tag_name"].as_str()?.to_string();
     let version = tag.strip_prefix('v').unwrap_or(&tag).to_string();
     let notes = body["body"].as_str().unwrap_or("").to_string();
 
-    let assets = body["assets"].as_array()?;
+    let inline_assets = body["assets"].as_array();
+    let mut assets_slice: Vec<serde_json::Value> = inline_assets.cloned().unwrap_or_default();
+    if matches!(inline_assets, Some(a) if a.is_empty()) {
+        if let Some(url) = body["assets_url"].as_str() {
+            match fetch_authoritative_assets(client, url).await {
+                Ok(authoritative) => {
+                    tracing::warn!(
+                        tag = %tag,
+                        version = %version,
+                        asset_count = authoritative.len(),
+                        "update fetch: inline assets empty; fell back to assets_url"
+                    );
+                    assets_slice = authoritative;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        tag = %tag,
+                        version = %version,
+                        error = %e,
+                        "update fetch: assets_url fallback failed"
+                    );
+                }
+            }
+        }
+    }
+
+    let mut info =
+        build_release_info(tag, version, notes, prerelease, &assets_slice, &asset_match)?;
+    if fetch_checksum {
+        info.sha256 = try_fetch_checksum(client, &info.asset_name, &assets_slice).await;
+    }
+    Some(info)
+}
+
+fn build_release_info(
+    tag: String,
+    version: String,
+    notes: String,
+    prerelease: bool,
+    assets: &[serde_json::Value],
+    asset_match: &dyn Fn(&str, &str) -> bool,
+) -> Option<ReleaseInfo> {
     let asset = assets.iter().find(|a| {
         a["name"]
             .as_str()
             .map(|n| asset_match(n, &version))
             .unwrap_or(false)
     })?;
-
     let download_url = asset["browser_download_url"].as_str()?.to_string();
     let asset_name = asset["name"].as_str()?.to_string();
-    let sha256 = if fetch_checksum {
-        try_fetch_checksum(client, &asset_name, assets).await
-    } else {
-        None
-    };
-
+    tracing::debug!(
+        tag = %tag,
+        version = %version,
+        asset_name = %asset_name,
+        prerelease,
+        "update fetch: release matched"
+    );
     Some(ReleaseInfo {
         tag,
         version,
         notes,
         asset_name,
         download_url,
-        sha256,
+        sha256: None,
     })
+}
+
+async fn fetch_authoritative_assets(
+    client: &reqwest::Client,
+    url: &str,
+) -> Result<Vec<serde_json::Value>, String> {
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("fetch assets_url: {e}"))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        tracing::warn!(status = %status, "update fetch: assets_url non-success HTTP status");
+        return Err(format!("assets_url HTTP {status}: {body}"));
+    }
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("parse assets json: {e}"))?;
+    body.as_array()
+        .cloned()
+        .ok_or_else(|| "expected assets array".to_string())
 }
 
 async fn try_fetch_checksum(
@@ -443,5 +517,118 @@ mod tests {
         let s = platform_display();
         // Always contains a space-separated OS and arch.
         assert!(s.contains(' '), "unexpected format: {s}");
+    }
+
+    fn deb_match(name: &str, _version: &str) -> bool {
+        name.ends_with(".deb")
+    }
+
+    fn deb_asset(name: &str, url: &str) -> serde_json::Value {
+        serde_json::json!({
+            "name": name,
+            "browser_download_url": url,
+            "state": "uploaded",
+        })
+    }
+
+    #[test]
+    fn build_release_info_matches_inline_deb() {
+        let assets = serde_json::json!([
+            deb_asset("remotrix_0.5.1_amd64.deb", "https://x.example/deb"),
+            deb_asset("checksums.sha256", "https://x.example/sha"),
+        ]);
+        let info = build_release_info(
+            "v0.5.1".into(),
+            "0.5.1".into(),
+            String::new(),
+            false,
+            assets.as_array().expect("array"),
+            &deb_match,
+        )
+        .expect("should match inline .deb");
+        assert_eq!(info.version, "0.5.1");
+        assert_eq!(info.tag, "v0.5.1");
+        assert_eq!(info.asset_name, "remotrix_0.5.1_amd64.deb");
+        assert_eq!(info.download_url, "https://x.example/deb");
+        assert!(info.sha256.is_none());
+    }
+
+    #[test]
+    fn build_release_info_handles_empty_assets() {
+        let empty: Vec<serde_json::Value> = vec![];
+        let info = build_release_info(
+            "v0.5.1".into(),
+            "0.5.1".into(),
+            String::new(),
+            false,
+            &empty,
+            &deb_match,
+        );
+        assert!(info.is_none(), "empty assets must not match");
+    }
+
+    #[test]
+    fn build_release_info_returns_none_when_no_asset_matches() {
+        let assets = serde_json::json!([
+            deb_asset("only-exe.exe", "https://x.example/exe"),
+            deb_asset("checksums.sha256", "https://x.example/sha"),
+        ]);
+        let info = build_release_info(
+            "v0.5.1".into(),
+            "0.5.1".into(),
+            String::new(),
+            false,
+            assets.as_array().expect("array"),
+            &deb_match,
+        );
+        assert!(
+            info.is_none(),
+            "no .deb in the assets list should not match a .deb matcher"
+        );
+    }
+
+    #[test]
+    fn build_release_info_matches_authoritative_after_empty_inline() {
+        // Simulates the GitHub quirk where the embedded `assets` array is
+        // empty but the assets themselves exist on the dedicated endpoint.
+        let empty_inline: Vec<serde_json::Value> = vec![];
+        let authoritative = serde_json::json!([deb_asset(
+            "remotrix_0.5.1_amd64.deb",
+            "https://x.example/deb"
+        ),]);
+        let info = build_release_info(
+            "v0.5.1".into(),
+            "0.5.1".into(),
+            String::new(),
+            false,
+            authoritative.as_array().expect("array"),
+            &deb_match,
+        )
+        .expect("authoritative .deb must match");
+        assert_eq!(info.version, "0.5.1");
+        assert_eq!(info.asset_name, "remotrix_0.5.1_amd64.deb");
+        assert_eq!(info.download_url, "https://x.example/deb");
+        // Inline being empty is the caller's signal to swap in this slice;
+        // the matching function itself only sees the slice it was given.
+        let _ = empty_inline;
+    }
+
+    #[test]
+    fn build_release_info_prefers_first_matching_asset() {
+        let assets = serde_json::json!([
+            deb_asset("checksums.sha256", "https://x.example/sha"),
+            deb_asset("remotrix_0.5.1_amd64.deb", "https://x.example/deb"),
+            deb_asset("remotrix_0.5.1_x86_64.AppImage", "https://x.example/img"),
+        ]);
+        let info = build_release_info(
+            "v0.5.1".into(),
+            "0.5.1".into(),
+            String::new(),
+            false,
+            assets.as_array().expect("array"),
+            &deb_match,
+        )
+        .expect("should match the second .deb");
+        assert_eq!(info.asset_name, "remotrix_0.5.1_amd64.deb");
     }
 }

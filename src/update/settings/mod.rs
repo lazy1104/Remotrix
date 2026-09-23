@@ -1022,6 +1022,14 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
             pending_app_update,
         } => {
             state.engine_ui.update_check_in_flight = false;
+            tracing::info!(
+                offers = offers.len(),
+                silent = silent_applied.len(),
+                errors = errors.len(),
+                pending_restart_engine,
+                pending_app_update = pending_app_update.is_some(),
+                "update check complete"
+            );
             let checked_any = state.settings.update.scope.covers("aria2-next")
                 || state.settings.update.scope.covers("remotrix");
             for e in errors.iter() {

@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use iced::futures::SinkExt;
@@ -1166,20 +1166,47 @@ pub(crate) fn is_background_busy(state: &Remotrix) -> bool {
     if state.engine_ui.aria2_fetch_error.is_some() {
         return false;
     }
-    if state.engine_ui.update_check_in_flight
-        || state.engine_ui.aria2_downloading
-        || state.app_update_in_flight
-        || state.restart.engine_restart_in_progress
-        || state.settings_ui.syncing_trackers
-        || state.settings_ui.syncing_bootstrap
-    {
-        return true;
+    let mut active: Vec<&'static str> = Vec::new();
+    if state.engine_ui.update_check_in_flight {
+        active.push("update_check_in_flight");
     }
-    match state.engine_ui.aria2_status.as_ref() {
-        Some((stage, _)) if stage != "ready" => true,
-        _ => false,
+    if state.engine_ui.aria2_downloading {
+        active.push("aria2_downloading");
     }
+    if state.app_update_in_flight {
+        active.push("app_update_in_flight");
+    }
+    if state.restart.engine_restart_in_progress {
+        active.push("engine_restart_in_progress");
+    }
+    if state.settings_ui.syncing_trackers {
+        active.push("syncing_trackers");
+    }
+    if state.settings_ui.syncing_bootstrap {
+        active.push("syncing_bootstrap");
+    }
+    if let Some((stage, _)) = state.engine_ui.aria2_status.as_ref() {
+        if stage != "ready" {
+            active.push("aria2_status");
+        }
+    }
+    let busy = !active.is_empty();
+    let active_str = active.join(",");
+    let cache = LAST_BUSY_TERMS.get_or_init(|| Mutex::new(Some(String::new())));
+    let mut last = cache.lock().expect("busy log mutex poisoned");
+    let changed = last.as_deref() != Some(active_str.as_str());
+    if changed {
+        if busy {
+            tracing::debug!(terms = %active_str, "is_background_busy: true");
+        } else {
+            tracing::debug!("is_background_busy: false");
+        }
+    }
+    *last = Some(active_str);
+    busy
 }
+
+static LAST_BUSY_TERMS: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
 pub fn view(state: &Remotrix) -> Element<'_, Message> {
     crate::ui::view::view(state)
@@ -1984,6 +2011,15 @@ pub(crate) fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -
     let app_kind = crate::app_updater::detect_install_kind();
     let timeout_msg = state.fluent.get(Tr::UpdateCheckTimeout);
     let app_download_dir = state.settings.download_dir.clone();
+    tracing::info!(
+        manual,
+        scope = ?scope,
+        silent_scope = ?silent_scope,
+        beta,
+        app_current = %app_current,
+        engine_current = %engine_current,
+        "update check started"
+    );
 
     let pending_restart_engine = !aria2_downloading
         && scope.covers("aria2-next")
@@ -2016,6 +2052,12 @@ pub(crate) fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -
                     .await
                     {
                         Ok(latest) => {
+                            tracing::info!(
+                                component = "aria2-next",
+                                latest = %latest.version,
+                                current = %engine_current,
+                                "release fetched"
+                            );
                             if crate::updater::version_gt(&latest.version, &engine_current) {
                                 let settings = crate::config::load();
                                 if !settings.update.is_skipped("aria2-next", &latest.version) {
@@ -2036,7 +2078,10 @@ pub(crate) fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -
                                 }
                             }
                         }
-                        Err(e) => errors.push(format!("aria2-next: {e}")),
+                        Err(e) => {
+                            tracing::warn!(component = "aria2-next", error = %e, "release fetch failed");
+                            errors.push(format!("aria2-next: {e}"))
+                        }
                     }
                 }
 
@@ -2052,6 +2097,12 @@ pub(crate) fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -
                     .await
                     {
                         Ok(latest) => {
+                            tracing::info!(
+                                component = "remotrix",
+                                latest = %latest.version,
+                                current = %app_current,
+                                "release fetched"
+                            );
                             if crate::updater::version_gt(&latest.version, &app_current) {
                                 let offer = crate::ui::update_dialog::UpdateOffer {
                                     component: crate::ui::update_dialog::UpdateComponent::App,
@@ -2069,7 +2120,10 @@ pub(crate) fn check_updates(state: &mut Remotrix, startup: bool, manual: bool) -
                                 }
                             }
                         }
-                        Err(e) => errors.push(format!("remotrix: {e}")),
+                        Err(e) => {
+                            tracing::warn!(component = "remotrix", error = %e, "release fetch failed");
+                            errors.push(format!("remotrix: {e}"))
+                        }
                     }
                 }
 
