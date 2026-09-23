@@ -102,6 +102,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                 &state.progress_anim,
                 &state.card_anim,
                 &state.input_cursors,
+                state.hovered_task_gid.as_deref(),
             )
         }
         Page::Settings => {

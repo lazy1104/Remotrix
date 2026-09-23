@@ -167,6 +167,16 @@ pub(crate) fn dispatch(state: &mut Remotrix, message: Message) -> Task<Message> 
             Task::none()
         }
         Message::Noop => Task::none(),
+        Message::TaskRowEntered(gid) => {
+            state.hovered_task_gid = Some(gid);
+            Task::none()
+        }
+        Message::TaskRowLeft(gid) => {
+            if state.hovered_task_gid.as_deref() == Some(gid.as_str()) {
+                state.hovered_task_gid = None;
+            }
+            Task::none()
+        }
     };
     state
         .hud_anim

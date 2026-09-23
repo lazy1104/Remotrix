@@ -457,6 +457,31 @@ pub mod style {
         }
     }
 
+    pub fn task_card(hovered: bool) -> impl Fn(&iced::Theme) -> iced::widget::container::Style {
+        move |t| {
+            let p = t.extended_palette();
+            let border_color = if hovered {
+                p.primary.base.color
+            } else {
+                super::border_color(t)
+            };
+            iced::widget::container::Style {
+                background: Some(p.background.weak.color.into()),
+                border: iced::Border {
+                    color: border_color,
+                    width: 1.0,
+                    radius: iced::border::rounded(super::RADIUS_CARD).radius,
+                },
+                shadow: if hovered {
+                    card_shadow()
+                } else {
+                    Shadow::default()
+                },
+                ..Default::default()
+            }
+        }
+    }
+
     pub fn subtle(t: &iced::Theme) -> iced::widget::container::Style {
         tree_frame(t)
     }

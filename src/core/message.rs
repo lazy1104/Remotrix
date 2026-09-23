@@ -84,6 +84,8 @@ pub enum Message {
     Nav(NavMsg),
     Add(AddMsg),
     Task(TaskMsg),
+    TaskRowEntered(String),
+    TaskRowLeft(String),
     Settings(SettingsMsg),
     Engine(EngineMsg),
     Window(WindowMsg),

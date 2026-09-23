@@ -46,6 +46,7 @@ pub fn view<'a>(
     progress_anim: &'a HashMap<String, Animated<f32>>,
     card_anim: &'a HashMap<String, Animated<f32>>,
     ctx_mirrors: &CtxMirrors,
+    hovered_gid: Option<&str>,
 ) -> Element<'a, Message> {
     let toolbar_btn = |glyph: iced::widget::Text<'a>,
                        tip: String,
@@ -302,10 +303,14 @@ pub fn view<'a>(
 
     for t in tasks {
         let gid = t.gid.clone();
-        let card = container(task_card(fluent, theme, t, progress_anim))
+        let hovered = hovered_gid == Some(gid.as_str());
+        let card = container(task_card(fluent, theme, t, hovered, progress_anim))
             .width(Length::Fill)
-            .style(theme::style::card);
-        let spaced = container(card)
+            .style(theme::style::task_card(hovered));
+        let wrapped = mouse_area(card)
+            .on_enter(Message::TaskRowEntered(gid.clone()))
+            .on_exit(Message::TaskRowLeft(gid.clone()));
+        let spaced = container(wrapped)
             .width(Length::Fill)
             .padding(iced::padding::bottom(SPACE_XL));
         let card_el: Element<'a, Message> = if let Some(anim) = card_anim.get(&gid) {
@@ -344,6 +349,7 @@ fn task_card<'a>(
     fluent: &'a Fluent,
     theme: &iced::Theme,
     t: &DownloadTask,
+    hovered: bool,
     progress_anim: &'a HashMap<String, Animated<f32>>,
 ) -> Element<'a, Message> {
     let text_secondary = theme::text_secondary(theme);
@@ -646,6 +652,6 @@ fn task_card<'a>(
     container(content)
         .width(Length::Fill)
         .padding(PADDING_CARD)
-        .style(theme::style::card)
+        .style(theme::style::task_card(hovered))
         .into()
 }
