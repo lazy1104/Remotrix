@@ -242,6 +242,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         crate::ui::components::dialog::overlay(
             crate::ui::animation::animation(state.add_dialog_anim.anim(), content)
                 .on_update(Message::AddDialogAnim),
+            state.add_dialog_anim.value(),
         )
     } else {
         iced::widget::Space::new().into()
@@ -257,6 +258,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         crate::ui::components::dialog::overlay(
             crate::ui::animation::animation(state.about_dialog_anim.anim(), content)
                 .on_update(Message::AboutDialogAnim),
+            state.about_dialog_anim.value(),
         )
     } else {
         iced::widget::Space::new().into()
@@ -273,6 +275,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             );
             crate::ui::components::dialog::overlay(
                 crate::ui::animation::animation(anim, content).on_update(Message::CloseDialogAnim),
+                *anim.value(),
             )
         } else {
             iced::widget::Space::new().into()
@@ -299,6 +302,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         crate::ui::components::dialog::overlay(
             crate::ui::animation::animation(state.details_anim.anim(), content)
                 .on_update(Message::DetailsAnim),
+            state.details_anim.value(),
         )
     } else {
         iced::widget::Space::new().into()
@@ -310,6 +314,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         crate::ui::components::dialog::overlay(
             crate::ui::animation::animation(state.confirm_anim.anim(), content)
                 .on_update(Message::ConfirmAnim),
+            state.confirm_anim.value(),
         )
     } else {
         iced::widget::Space::new().into()
@@ -327,6 +332,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         crate::ui::components::dialog::overlay(
             crate::ui::animation::animation(state.update_dialog_anim.anim(), content)
                 .on_update(Message::UpdateDialogAnim),
+            state.update_dialog_anim.value(),
         )
     } else {
         iced::widget::Space::new().into()

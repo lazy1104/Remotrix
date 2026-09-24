@@ -5,8 +5,9 @@ use iced::advanced::{
     Clipboard, Layout, Shell, Widget,
 };
 use iced::widget::{button, column, container, row, text, Space};
-use iced::{Alignment, Element, Event, Length, Rectangle, Size, Vector};
+use iced::{Alignment, Background, Color, Element, Event, Length, Rectangle, Size, Vector};
 
+use crate::ui::color::theme as color_theme;
 use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
@@ -16,15 +17,20 @@ where
     Renderer: renderer::Renderer,
 {
     content: Element<'a, Message, Theme, Renderer>,
+    progress: f32,
 }
 
 impl<'a, Message, Theme, Renderer> BlockingOverlay<'a, Message, Theme, Renderer>
 where
     Renderer: renderer::Renderer,
 {
-    fn new(content: impl Into<Element<'a, Message, Theme, Renderer>>) -> Self {
+    fn with_progress(
+        content: impl Into<Element<'a, Message, Theme, Renderer>>,
+        progress: f32,
+    ) -> Self {
         Self {
             content: content.into(),
+            progress: progress.clamp(0.0, 1.0),
         }
     }
 }
@@ -59,6 +65,25 @@ where
         cursor: mouse::Cursor,
         viewport: &Rectangle,
     ) {
+        use iced::advanced::Renderer as _;
+
+        let alpha = color_theme::OVERLAY.a * self.progress;
+        if alpha > 0.0 {
+            let base = color_theme::OVERLAY;
+            renderer.fill_quad(
+                renderer::Quad {
+                    bounds: layout.bounds(),
+                    ..Default::default()
+                },
+                Background::Color(Color {
+                    r: base.r,
+                    g: base.g,
+                    b: base.b,
+                    a: alpha,
+                }),
+            );
+        }
+
         self.content.as_widget().draw(
             &tree.children[0],
             renderer,
@@ -171,16 +196,22 @@ where
 
 /// Wrap `content` in a full-screen translucent overlay that blocks input
 /// to widgets behind it. Used as the modal backdrop for every dialog.
+///
+/// `progress` in `[0, 1]` drives the backdrop alpha; pass the current
+/// `DialogAnim::value()` so the scrim fades in on open and out on close
+/// in lock-step with the dialog body.
 pub fn overlay<'a, Message: Clone + 'a>(
     content: impl Into<Element<'a, Message>>,
+    progress: f32,
 ) -> Element<'a, Message> {
-    Element::new(BlockingOverlay::new(
+    Element::new(BlockingOverlay::with_progress(
         container(content)
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(theme::style::overlay),
+            .style(|_| iced::widget::container::Style::default()),
+        progress,
     ))
 }
 
