@@ -483,6 +483,23 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
             state.applied_settings.theme_mode = mode;
             Task::none()
         }
+        SettingsMsg::FollowSystemAccentToggled(on) => {
+            state.settings.follow_system_accent = on;
+            if on && !crate::ui::theme::system_accent_supported() {
+                state.settings.follow_system_accent = false;
+            }
+            rebuild_theme(state);
+            config::save(&state.settings);
+            state.applied_settings.follow_system_accent = state.settings.follow_system_accent;
+            Task::none()
+        }
+        SettingsMsg::SystemAccentChanged(c) => {
+            state.cached_system_accent = c;
+            if state.settings.follow_system_accent {
+                rebuild_theme(state);
+            }
+            Task::none()
+        }
         SettingsMsg::SystemDarkChanged(_) => {
             if state.settings.theme_mode == theme::ThemeMode::System {
                 rebuild_theme(state);

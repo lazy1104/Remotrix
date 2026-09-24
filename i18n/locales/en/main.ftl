@@ -170,6 +170,7 @@ apply = Apply
 reset = Reset
 appearance = Appearance
 theme-color = Theme Color
+follow-system-accent = Follow system accent color
 custom-color = Custom Color
 hex-input-error = Enter 6 or 8 hex digits (e.g. #094041FF)
 color-mode = Mode

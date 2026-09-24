@@ -731,6 +731,8 @@ pub struct Settings {
     #[serde(default = "default_theme_color")]
     pub theme_color: String,
     #[serde(default)]
+    pub follow_system_accent: bool,
+    #[serde(default)]
     pub theme_mode: ThemeMode,
     #[serde(default)]
     pub locale: Locale,
@@ -817,6 +819,7 @@ impl Default for Settings {
             upload_limit_kb: 0,
             split: 16,
             theme_color: default_theme_color(),
+            follow_system_accent: false,
             theme_mode: ThemeMode::System,
             locale: Locale::default(),
             font_family: default_font_family(),

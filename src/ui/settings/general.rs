@@ -1,5 +1,5 @@
 use chrono::TimeZone;
-use iced::widget::{button, column, container, row, text};
+use iced::widget::{button, column, container, row, text, toggler};
 use iced::{Alignment, Element, Length};
 
 use super::{
@@ -70,8 +70,20 @@ pub(super) fn general_view<'a>(
             .into(),
         ))
         .push(iced::widget::Space::new().height(Length::Fixed(16.0)))
-        .push(group_title(fluent, Tr::Appearance, accent))
-        .push(theme_color_swatches(fluent, theme_, settings))
+        .push(group_title(fluent, Tr::Appearance, accent));
+    if theme::system_accent_supported() {
+        col = col.push(setting_row(
+            fluent.get(Tr::FollowSystemAccent),
+            toggler(settings.follow_system_accent)
+                .on_toggle(|v| Message::Settings(SettingsMsg::FollowSystemAccentToggled(v)))
+                .width(Length::Fixed(50.0))
+                .into(),
+        ));
+    }
+    if !settings.follow_system_accent {
+        col = col.push(theme_color_swatches(fluent, theme_, settings));
+    }
+    col = col
         .push(labeled_pick(
             fluent,
             fluent.get(Tr::ColorMode),

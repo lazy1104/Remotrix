@@ -238,6 +238,8 @@ pub enum SettingsMsg {
     DiscardAndClose,
     ThemeModeChanged(ThemeMode),
     ThemeColorChanged(iced::Color),
+    FollowSystemAccentToggled(bool),
+    SystemAccentChanged(Option<iced::Color>),
     SystemDarkChanged(bool),
     CustomColorPickerToggle,
     CustomColorHsvChanged(crate::ui::components::color_picker::HsvColor),

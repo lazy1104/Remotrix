@@ -26,28 +26,82 @@ pub enum ThemeMode {
     System,
 }
 
-/// Best-effort detection of the OS-level dark-mode preference. Falls back
-/// to `false` (light) when the platform or `dark-light` cannot answer
-/// (including `dark-light 3`'s `Mode::Unspecified` on platforms without a
-/// confident signal).
+/// Best-effort detection of the OS-level dark-mode preference. Maps
+/// mundy's `ColorScheme`: Dark → true, Light → false, NoPreference → false
+/// (light fallback matches the prior `dark-light::Mode::Unspecified`
+/// behavior on platforms without a confident signal). The 2 s timeout
+/// bounds the DBus / portal round-trip on Linux.
 pub fn detect_dark() -> bool {
+    let pref = mundy::Preferences::once_blocking(
+        mundy::Interest::ColorScheme,
+        std::time::Duration::from_secs(2),
+    );
     matches!(
-        dark_light::detect().unwrap_or(dark_light::Mode::Light),
-        dark_light::Mode::Dark
+        pref.map(|p| p.color_scheme)
+            .unwrap_or(mundy::ColorScheme::Light),
+        mundy::ColorScheme::Dark
     )
 }
 
-/// Live stream of OS dark-mode transitions. Returns `None` when the
-/// underlying platform watcher cannot be created (DBus down, portal
-/// service unavailable on Linux, etc.); callers should treat that as
-/// "no live updates" and keep the startup snapshot from [`detect_dark`].
-///
-/// `dark-light 3` filters duplicate modes, so each emitted item is a real
-/// transition. `Mode::Unspecified` is mapped to `false` to match the
-/// [`detect_dark`] fallback.
-pub fn system_dark_stream() -> Option<impl iced::futures::Stream<Item = bool> + Send + 'static> {
-    let inner = dark_light::stream().ok()?;
-    Some(inner.map(|mode| matches!(mode, dark_light::Mode::Dark)))
+/// Live stream of OS dark-mode transitions. mundy's stream emits an
+/// initial snapshot and then a transition on every change (duplicate
+/// preferences are filtered by the wrapper). `ColorScheme::NoPreference`
+/// is mapped to `false` to match the [`detect_dark`] fallback.
+pub fn system_dark_stream() -> impl iced::futures::Stream<Item = bool> + Send + 'static {
+    mundy::Preferences::stream(mundy::Interest::ColorScheme).filter_map(|p| {
+        let dark = matches!(p.color_scheme, mundy::ColorScheme::Dark);
+        iced::futures::future::ready(Some(dark))
+    })
+}
+
+/// True iff the OS currently reports an accent color the app can use.
+/// Cached for the lifetime of the process because the platform-side
+/// capability (macOS 14+ / Windows 11 / GNOME with GSettings) does not
+/// change while the app runs. Computed lazily on first call.
+pub fn system_accent_supported() -> bool {
+    static SUPPORTED: OnceLock<bool> = OnceLock::new();
+    *SUPPORTED.get_or_init(|| {
+        mundy::Preferences::once_blocking(
+            mundy::Interest::AccentColor,
+            std::time::Duration::from_secs(2),
+        )
+        .and_then(|p| p.accent_color.0)
+        .is_some()
+    })
+}
+
+/// One-shot read of the OS accent color in sRGB. Returns `None` when the
+/// platform exposes none (most Linux DEs, macOS < 14, Win10). Alpha is
+/// dropped — OS accents are opaque in practice.
+pub fn detect_system_accent() -> Option<Color> {
+    let srgba = mundy::Preferences::once_blocking(
+        mundy::Interest::AccentColor,
+        std::time::Duration::from_secs(2),
+    )
+    .and_then(|p| p.accent_color.0)?;
+    Some(Color::from_rgb(
+        srgba.red as f32,
+        srgba.green as f32,
+        srgba.blue as f32,
+    ))
+}
+
+/// Live OS-accent stream. Each emitted item is a real transition (mundy
+/// filters duplicate `AccentColor` values). Items with alpha < 1.0 are
+/// normalized to opaque so `Theme::custom` always gets a solid color.
+pub fn system_accent_stream() -> impl iced::futures::Stream<Item = Color> + Send + 'static {
+    mundy::Preferences::stream(mundy::Interest::AccentColor).filter_map(|p| {
+        let a = p.accent_color.0;
+        let srgba = match a {
+            Some(c) => c,
+            None => return iced::futures::future::ready(None),
+        };
+        iced::futures::future::ready(Some(Color::from_rgb(
+            srgba.red as f32,
+            srgba.green as f32,
+            srgba.blue as f32,
+        )))
+    })
 }
 
 /// Resolve a [`ThemeMode`] to a concrete `is_dark` boolean. When `mode`

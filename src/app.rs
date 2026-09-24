@@ -348,11 +348,12 @@ pub struct Remotrix {
     pub(crate) speed_limit_pending_deadlines: HashMap<SettingKey, Instant>,
     pub(crate) custom_color_picker_open: bool,
     pub(crate) custom_color_anchor: iced::Point,
+    pub(crate) cached_system_accent: Option<iced::Color>,
 }
 
 pub fn init() -> (Remotrix, Task<Message>) {
     config::announce();
-    let settings = config::load();
+    let mut settings = config::load();
     std::thread::spawn(|| {
         crate::ui::theme::system_font_families();
     });
@@ -397,8 +398,14 @@ pub fn init() -> (Remotrix, Task<Message>) {
     let add_dialog = AddDialogState::new(settings.download_dir.clone());
     let fluent = Fluent::new(settings.locale);
 
+    let cached_system_accent = theme::detect_system_accent();
+    if !theme::system_accent_supported() && settings.follow_system_accent {
+        settings.follow_system_accent = false;
+        crate::config::save(&settings);
+    }
+
     let theme = theme::build_iced(
-        settings_accent(&settings),
+        settings_accent(&settings, cached_system_accent),
         theme::resolve_mode(settings.theme_mode, None),
     );
     let (db, db_open_failed) = match crate::config::db_path() {
@@ -509,6 +516,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         speed_limit_pending_deadlines: HashMap::new(),
         custom_color_picker_open: false,
         custom_color_anchor: iced::Point::ORIGIN,
+        cached_system_accent,
     };
 
     state.window.hidden_to_tray =
@@ -559,13 +567,21 @@ pub fn theme(state: &Remotrix) -> iced::Theme {
     state.theme.clone()
 }
 
-fn settings_accent(settings: &Settings) -> iced::Color {
+fn settings_accent(settings: &Settings, cached_system_accent: Option<iced::Color>) -> iced::Color {
+    if settings.follow_system_accent {
+        if let Some(c) = cached_system_accent {
+            return c;
+        }
+    }
     theme::accent_color(&settings.theme_color)
 }
 
 pub(crate) fn rebuild_theme(state: &mut Remotrix) {
     let dark = theme::resolve_mode(state.settings.theme_mode, None);
-    state.theme = theme::build_iced(settings_accent(&state.settings), dark);
+    state.theme = theme::build_iced(
+        settings_accent(&state.settings, state.cached_system_accent),
+        dark,
+    );
 }
 
 pub(crate) fn sync_geometry_to_settings(state: &mut Remotrix) {
@@ -1293,9 +1309,7 @@ fn build_engine_stream(slot: &EventSlot) -> impl iced::futures::Stream<Item = Me
 }
 
 fn build_system_dark_stream() -> Pin<Box<dyn iced::futures::Stream<Item = Message> + Send>> {
-    let Some(stream) = theme::system_dark_stream() else {
-        return Box::pin(iced::futures::stream::empty::<Message>());
-    };
+    let stream = theme::system_dark_stream();
     Box::pin(iced::futures::stream::unfold(
         stream,
         |mut stream| async move {
@@ -1306,6 +1320,21 @@ fn build_system_dark_stream() -> Pin<Box<dyn iced::futures::Stream<Item = Messag
                 )),
                 None => None,
             }
+        },
+    ))
+}
+
+fn build_system_accent_stream() -> Pin<Box<dyn iced::futures::Stream<Item = Message> + Send>> {
+    let stream = theme::system_accent_stream();
+    Box::pin(iced::futures::stream::unfold(
+        stream,
+        |mut stream| async move {
+            iced::futures::StreamExt::next(&mut stream).await.map(|c| {
+                (
+                    Message::Settings(SettingsMsg::SystemAccentChanged(Some(c))),
+                    stream,
+                )
+            })
         },
     ))
 }
@@ -1441,6 +1470,12 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         Subscription::none()
     };
 
+    let system_accent = if state.settings.follow_system_accent && theme::system_accent_supported() {
+        Subscription::run(build_system_accent_stream)
+    } else {
+        Subscription::none()
+    };
+
     let tracker_auto_sync = if state.settings.tracker.auto_sync {
         iced::time::every(Duration::from_secs(3600))
             .map(|_| Message::Settings(SettingsMsg::CheckTrackerAutoSync { startup: false }))
@@ -1519,6 +1554,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         speed_limit_tick,
         border_anim_tick,
         system_dark,
+        system_accent,
     ])
 }
 

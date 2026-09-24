@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- 设置 → 主题新增「跟随系统主题色」开关：开启后应用强调色跟随 macOS 14+ / Windows 11 / GNOME 的系统强调色实时变化，关闭后恢复手动色板；不支持的系统（macOS < 14、Windows 10、其他 Linux 桌面）会自动隐藏该开关。
+
+### Changed
+
+- 替换 `dark-light` 依赖为 `mundy` 以统一系统偏好接口，同时支持 OS 强调色读取。
+
 ## [0.5.2] - 2026-09-23
 
 ### Added

@@ -9,7 +9,7 @@ Rust-native desktop download manager inspired by Motrix.app. Built with `iced` G
 | Engine | `aria2-next` sidecar + `aria2-ws 0.5` | C++ aria2 fork, JSON-RPC over WebSocket; spawned as subprocess |
 | Async | `tokio 1.x` (full) | Shared runtime for engine + UI |
 | Persistence | `rusqlite 0.40` (bundled + fallible_uint) | Embedded SQLite for task metadata / progress |
-| Themes | iced `Theme::custom` (built-in) + `dark-light 2.0` | Accent-color swatches; iced auto-generates light/dark palettes (primary + M3-style surface background) from the accent; system detection |
+| Themes | iced `Theme::custom` (built-in) + `mundy 0.2` | Accent-color swatches; iced auto-generates light/dark palettes (primary + M3-style surface background) from the accent; system detection (ColorScheme + optional AccentColor via `mundy`) |
 | i18n | `fluent-templates 0.15` | Fluent translations (zh/en) |
 | File dialog | `rfd 0.17` | Native OS file picker |
 | Config dirs | `directories 6` | XDG/user data paths |
@@ -112,7 +112,7 @@ tracing-appender = "0.2"
 directories = "6"
 rfd = "0.17"
 image = { version = "0.25", default-features = false, features = ["png"] }
-dark-light = "2.0"
+mundy = { version = "0.2", default-features = false, features = ["color-scheme", "accent-color", "async-io"] }
 fluent-templates = "0.15.1"
 futures = "0.3"
 base64 = "0.23"
