@@ -106,6 +106,11 @@ pub(crate) fn dispatch(state: &mut Remotrix, message: Message) -> Task<Message> 
             state.border_anim.update(event);
             Task::none()
         }
+        Message::ThemeTick(now) => {
+            state.theme_anim.tick(now);
+            state.theme = state.theme_anim.value().clone();
+            Task::none()
+        }
         Message::PillAnim(event) => {
             state.filter_pill.update(event);
             Task::none()

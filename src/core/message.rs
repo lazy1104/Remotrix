@@ -125,6 +125,7 @@ pub enum Message {
     ScrollableScrolled(iced::widget::Id),
     SpeedLimitDebounceTick,
     BorderAnimTick,
+    ThemeTick(std::time::Instant),
     Noop,
 }
 

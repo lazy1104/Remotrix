@@ -301,6 +301,7 @@ pub struct Remotrix {
     pub(crate) settings: Settings,
     pub(crate) fluent: Fluent,
     pub(crate) theme: iced::Theme,
+    pub(crate) theme_anim: crate::ui::animation::Animated<iced::Theme>,
     pub(crate) sort_menu_open: bool,
     pub(crate) sort_field: SortField,
     pub(crate) sort_order: SortOrder,
@@ -463,7 +464,11 @@ pub fn init() -> (Remotrix, Task<Message>) {
         restart_pending: false,
         settings,
         fluent,
-        theme,
+        theme: theme.clone(),
+        theme_anim: crate::ui::animation::Animated::transition(
+            theme,
+            crate::ui::animation::ease_in_out_quad(crate::ui::animation::THEME_TRANSITION_MS),
+        ),
         sort_menu_open: false,
         sort_field: SortField::AddedTime,
         sort_order: SortOrder::Desc,
@@ -578,10 +583,12 @@ fn settings_accent(settings: &Settings, cached_system_accent: Option<iced::Color
 
 pub(crate) fn rebuild_theme(state: &mut Remotrix) {
     let dark = theme::resolve_mode(state.settings.theme_mode, None);
-    state.theme = theme::build_iced(
+    let target = theme::build_iced(
         settings_accent(&state.settings, state.cached_system_accent),
         dark,
     );
+    state.theme_anim.set_target(target);
+    state.theme = state.theme_anim.value().clone();
 }
 
 pub(crate) fn sync_geometry_to_settings(state: &mut Remotrix) {
@@ -1523,6 +1530,12 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         Subscription::none()
     };
 
+    let theme_tick = if state.theme_anim.is_animating() {
+        iced::time::every(Duration::from_millis(16)).map(Message::ThemeTick)
+    } else {
+        Subscription::none()
+    };
+
     let speed_limit_tick =
         iced::time::every(Duration::from_millis(100)).map(|_| Message::SpeedLimitDebounceTick);
 
@@ -1553,6 +1566,7 @@ pub fn subscription(state: &Remotrix) -> Subscription<Message> {
         shutdown_tick,
         speed_limit_tick,
         border_anim_tick,
+        theme_tick,
         system_dark,
         system_accent,
     ])
