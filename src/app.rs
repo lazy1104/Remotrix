@@ -58,6 +58,9 @@ impl ToastManager {
             Some(h)
                 if self.toasts.iter().any(|t| t.id == h && t.position == pos && t.group == group && t.close_after.is_some())
         );
+        // The retained toasts at this position+group are evicted instantly
+        // (no scale-out) so the new toast can fade in over the same slot
+        // without two animations overlapping.
         self.toasts
             .retain(|t| !(t.position == pos && t.group == group && t.close_after.is_some()));
         if removed_hovered {
@@ -71,6 +74,9 @@ impl ToastManager {
         }
         toast.remaining = toast.close_after;
         self.toasts.push(toast);
+        if let Some(t) = self.toasts.last_mut() {
+            t.open();
+        }
         id
     }
 
@@ -92,9 +98,14 @@ impl ToastManager {
     }
 
     fn dismiss(&mut self, id: u64) {
-        self.toasts.retain(|t| t.id != id);
-        if self.hovered_toast_id == Some(id) {
-            self.hovered_toast_id = None;
+        for t in &mut self.toasts {
+            if t.id == id && !t.dismissing {
+                t.begin_exit();
+                if self.hovered_toast_id == Some(id) {
+                    self.hovered_toast_id = None;
+                }
+                return;
+            }
         }
     }
 
@@ -113,7 +124,7 @@ impl ToastManager {
         let mut expired = Vec::new();
         for toast in self.toasts.iter_mut() {
             if let Some(rem) = toast.remaining.as_mut() {
-                if Some(toast.id) != self.hovered_toast_id {
+                if Some(toast.id) != self.hovered_toast_id && !toast.dismissing {
                     if *rem <= TICK {
                         *rem = Duration::ZERO;
                         expired.push(toast.id);
@@ -126,6 +137,43 @@ impl ToastManager {
         for id in expired {
             self.dismiss(id);
         }
+    }
+
+    /// Forward an `iced_anim` event to the matching toast's anim. Ignored
+    /// if the toast has already been removed.
+    pub(crate) fn forward_anim(&mut self, id: u64, event: crate::ui::animation::Event<f32>) {
+        for t in &mut self.toasts {
+            if t.id == id {
+                t.update(event);
+                return;
+            }
+        }
+    }
+
+    /// Drop toasts whose exit animation has finished. Returns `true` if any
+    /// toast is still animating (used to keep the per-toast subscription
+    /// alive; in practice the `animation()` widget drives itself).
+    pub(crate) fn prune_completed(&mut self) -> bool {
+        let mut any_animating = false;
+        let mut changed = false;
+        self.toasts.retain(|t| {
+            if t.dismissing && !t.is_animating() {
+                changed = true;
+                return false;
+            }
+            if t.is_animating() {
+                any_animating = true;
+            }
+            true
+        });
+        if changed {
+            if let Some(h) = self.hovered_toast_id {
+                if !self.toasts.iter().any(|t| t.id == h) {
+                    self.hovered_toast_id = None;
+                }
+            }
+        }
+        any_animating
     }
 }
 

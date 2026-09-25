@@ -131,6 +131,11 @@ pub(crate) fn handle_toast(state: &mut Remotrix, msg: ToastMsg) -> Task<Message>
             state.toasts.tick();
             Task::none()
         }
+        ToastMsg::ToastAnim(id, event) => {
+            state.toasts.forward_anim(id, event);
+            state.toasts.prune_completed();
+            Task::none()
+        }
     }
 }
 

@@ -5,6 +5,9 @@ use iced::widget::{button, column, container, mouse_area, row, stack, text};
 use iced::{Element, Length};
 
 use crate::message::{Message, ToastMsg};
+use crate::ui::animation::{
+    ease_out_cubic, scale_factor_from_value, Animated, Easing, Event, TOAST_ENTER_MS, TOAST_EXIT_MS,
+};
 use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
@@ -92,6 +95,8 @@ pub struct Toast {
     pub remaining: Option<Duration>,
     pub action: Option<ToastAction>,
     pub action_label: Option<String>,
+    pub anim: Animated<f32>,
+    pub dismissing: bool,
 }
 
 impl Toast {
@@ -107,6 +112,8 @@ impl Toast {
             remaining: None,
             action: None,
             action_label: None,
+            anim: Animated::transition(0.0, toast_enter_easing()),
+            dismissing: false,
         }
     }
 
@@ -130,6 +137,55 @@ impl Toast {
         self.action_label = Some(label.into());
         self
     }
+
+    /// Start the open transition (scale up from `0.0` to `1.0`). Safe to
+    /// call repeatedly; if the toast is currently dismissing, the close
+    /// transition is cancelled and a fresh enter easing replaces the
+    /// current anim so the visible value snaps back to the bottom of the
+    /// curve and re-plays the open.
+    pub fn open(&mut self) {
+        self.anim = Animated::transition(0.0, toast_enter_easing());
+        self.anim.set_target(1.0);
+        self.dismissing = false;
+    }
+
+    /// Start the exit transition (scale down from current size to `0.0`).
+    /// Sets `dismissing` so [`Self::completed_dismiss`] can report
+    /// completion once the anim finishes.
+    pub fn begin_exit(&mut self) {
+        self.anim = Animated::transition(self.anim.value().clamp(0.0, 1.0), toast_exit_easing());
+        self.anim.set_target(0.0);
+        self.dismissing = true;
+    }
+
+    /// The visible scale factor for this frame, in `[0.0, 1.0]`. Returns
+    /// `0.0` for an unseen (just spawned or fully dismissed) toast.
+    pub fn visible_scale(&self) -> f32 {
+        scale_factor_from_value(*self.anim.value(), 0.0)
+    }
+
+    /// Forward an `iced_anim` event into the underlying anim.
+    pub fn update(&mut self, event: Event<f32>) {
+        self.anim.update(event);
+    }
+
+    /// `true` once the exit transition has played to completion.
+    pub fn completed_dismiss(&mut self) -> bool {
+        self.dismissing && !self.anim.is_animating()
+    }
+
+    /// `true` while any anim (open or exit) is in flight.
+    pub fn is_animating(&self) -> bool {
+        self.anim.is_animating()
+    }
+}
+
+fn toast_enter_easing() -> Easing {
+    ease_out_cubic(TOAST_ENTER_MS)
+}
+
+fn toast_exit_easing() -> Easing {
+    ease_out_cubic(TOAST_EXIT_MS)
 }
 
 pub fn view<'a>(theme: &'a iced::Theme, toasts: &'a [Toast]) -> Element<'a, Message> {
@@ -202,7 +258,7 @@ fn card<'a>(theme: &'a iced::Theme, toast: &'a Toast) -> Element<'a, Message> {
         content = content.push(close_btn);
     }
 
-    mouse_area(
+    let card = mouse_area(
         container(content)
             .width(Length::Shrink)
             .max_width(CARD_MAX_WIDTH)
@@ -210,8 +266,13 @@ fn card<'a>(theme: &'a iced::Theme, toast: &'a Toast) -> Element<'a, Message> {
             .style(theme::style::toast),
     )
     .on_enter(Message::Toast(ToastMsg::ToastHovered(toast.id)))
-    .on_exit(Message::Toast(ToastMsg::ToastUnhovered(toast.id)))
-    .into()
+    .on_exit(Message::Toast(ToastMsg::ToastUnhovered(toast.id)));
+
+    let scaled = crate::ui::components::scale::scale(card, toast.visible_scale());
+    let id = toast.id;
+    crate::ui::animation::animation(&toast.anim, scaled)
+        .on_update(move |e| Message::Toast(ToastMsg::ToastAnim(id, e)))
+        .into()
 }
 
 fn kind_color(theme: &iced::Theme, kind: ToastKind) -> iced::Color {

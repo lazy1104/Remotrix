@@ -8,7 +8,7 @@ pub fn scale<'a, Message: 'a>(
     content: impl Into<Element<'a, Message>>,
     factor: f32,
 ) -> Element<'a, Message> {
-    let factor = factor.clamp(0.0, 1.0);
+    let factor = factor.clamp(0.0, 1.5);
     Element::new(Scale {
         content: content.into(),
         factor,

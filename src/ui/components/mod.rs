@@ -20,6 +20,7 @@ pub mod number_stepper;
 pub mod path_picker;
 pub mod piece_map;
 pub mod popover;
+pub mod scale;
 pub mod scroll_top_gap;
 pub mod secret_input;
 pub mod shutdown_popover;

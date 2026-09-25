@@ -380,6 +380,7 @@ pub enum ToastMsg {
     ToastUnhovered(u64),
     ToastActionPressed(u64),
     ToastTick,
+    ToastAnim(u64, crate::ui::animation::Event<f32>),
 }
 
 #[derive(Debug, Clone)]

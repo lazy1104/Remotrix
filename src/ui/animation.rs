@@ -37,6 +37,10 @@ pub const SWAP_ENTER_MS: u64 = 180;
 pub const SWAP_MIN: f32 = 0.95;
 /// Theme colour / light-dark transition duration.
 pub const THEME_TRANSITION_MS: u64 = 320;
+/// Toast card scale-in duration in milliseconds.
+pub const TOAST_ENTER_MS: u64 = 200;
+/// Toast card scale-out duration in milliseconds.
+pub const TOAST_EXIT_MS: u64 = 160;
 
 /// Build a non-reversible `t -> 1 - (1-t)^2` easing curve lasting
 /// `duration_ms`. Used for element entrance animations where the value
@@ -68,6 +72,19 @@ pub fn ease_in_out_quad(duration_ms: u64) -> Easing {
     }))
     .with_duration(Duration::from_millis(duration_ms))
     .reversible(false)
+}
+
+/// Map a normalised animation value in `[0.0, 1.0]` to a toast card scale
+/// factor. Used by [`crate::ui::components::toast`] to translate the
+/// abstract enter/exit progress into a `Transformation` argument; values
+/// outside `[0.0, 1.0]` (clamping artefacts) collapse to the endpoints so
+/// the visual never goes past `1.0` or under `0.0` (invisible).
+///
+/// The second argument is retained for API symmetry with future widgets
+/// that may need a non-zero floor; toasts pass `0.0` so the card grows
+/// from nothing on enter and collapses to nothing on exit.
+pub fn scale_factor_from_value(value: f32, _min_scale: f32) -> f32 {
+    value.clamp(0.0, 1.0)
 }
 
 /// State machine backing an enter/exit dialog animation.

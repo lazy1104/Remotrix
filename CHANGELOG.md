@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 替换 `dark-light` 依赖为 `mundy` 以统一系统偏好接口，同时支持 OS 强调色读取。
 - 弹窗背景遮罩现在跟随内容一起淡入/淡出：打开时从透明平滑过渡到 0.55 黑色，关闭时反向播放，与原有的对话框缩放/淡出动画同步。
+- Toast 通知增加进入与退出缩放动画：新弹出时从 0 平滑放大至 100%（200 ms ease-out），用户关闭或自动到期时反向从 100% 缩回 0（160 ms ease-out）后移除。
 
 ## [0.5.2] - 2026-09-23
 
