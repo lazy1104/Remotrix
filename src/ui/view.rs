@@ -240,7 +240,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             &state.input_cursors,
         );
         crate::ui::components::dialog::overlay(
-            crate::ui::animation::animation(state.add_dialog_anim.anim(), content)
+            crate::ui::animation::animation(state.add_dialog_anim.phase_anim(), content)
                 .on_update(Message::AddDialogAnim),
             state.add_dialog_anim.value(),
         )
@@ -256,7 +256,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             state.about_dialog_anim.value(),
         );
         crate::ui::components::dialog::overlay(
-            crate::ui::animation::animation(state.about_dialog_anim.anim(), content)
+            crate::ui::animation::animation(state.about_dialog_anim.phase_anim(), content)
                 .on_update(Message::AboutDialogAnim),
             state.about_dialog_anim.value(),
         )
@@ -300,7 +300,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             &state.progress_anim,
         );
         crate::ui::components::dialog::overlay(
-            crate::ui::animation::animation(state.details_anim.anim(), content)
+            crate::ui::animation::animation(state.details_anim.phase_anim(), content)
                 .on_update(Message::DetailsAnim),
             state.details_anim.value(),
         )
@@ -312,7 +312,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         let content =
             crate::ui::confirm_dialog::view(&state.fluent, t, action, state.confirm_anim.value());
         crate::ui::components::dialog::overlay(
-            crate::ui::animation::animation(state.confirm_anim.anim(), content)
+            crate::ui::animation::animation(state.confirm_anim.phase_anim(), content)
                 .on_update(Message::ConfirmAnim),
             state.confirm_anim.value(),
         )
@@ -330,7 +330,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             state.update_dialog_anim.value(),
         );
         crate::ui::components::dialog::overlay(
-            crate::ui::animation::animation(state.update_dialog_anim.anim(), content)
+            crate::ui::animation::animation(state.update_dialog_anim.phase_anim(), content)
                 .on_update(Message::UpdateDialogAnim),
             state.update_dialog_anim.value(),
         )

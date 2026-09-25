@@ -25,8 +25,6 @@ pub const BORDER_FADE_MS: u64 = 240;
 pub const PROGRESS_MS: u64 = 250;
 /// Filter-pill slide duration.
 pub const PILL_MS: u64 = 200;
-/// Modal dialog fade/scale duration.
-pub const DIALOG_ANIM_MS: u64 = 240;
 /// Exit-phase duration for settings/filter tab swaps (`1.0 → SWAP_MIN`).
 pub const SWAP_EXIT_MS: u64 = 110;
 /// Enter-phase duration for settings/filter tab swaps (`SWAP_MIN → 1.0`).
@@ -37,10 +35,14 @@ pub const SWAP_ENTER_MS: u64 = 180;
 pub const SWAP_MIN: f32 = 0.95;
 /// Theme colour / light-dark transition duration.
 pub const THEME_TRANSITION_MS: u64 = 320;
-/// Toast card scale-in duration in milliseconds.
-pub const TOAST_ENTER_MS: u64 = 200;
-/// Toast card scale-out duration in milliseconds.
-pub const TOAST_EXIT_MS: u64 = 160;
+/// Shared overlay enter-animation duration. Used by toast cards and the
+/// overlay dialogs (Add / About / Close / Confirm / Update) so they feel
+/// like one family of animations.
+pub const OVERLAY_ENTER_MS: u64 = 220;
+/// Shared overlay exit-animation duration. Asymmetric with
+/// [`OVERLAY_ENTER_MS`] — exits are 27% faster than enters, matching the
+/// project-wide convention (`CARD_ENTER/CARD_EXIT`, `SWAP_ENTER/SWAP_EXIT`).
+pub const OVERLAY_EXIT_MS: u64 = 160;
 
 /// Build a non-reversible `t -> 1 - (1-t)^2` easing curve lasting
 /// `duration_ms`. Used for element entrance animations where the value
@@ -89,18 +91,22 @@ pub fn scale_factor_from_value(value: f32, _min_scale: f32) -> f32 {
 
 /// State machine backing an enter/exit dialog animation.
 ///
-/// The inner [`Animated`] field drives the visible value in `[0.0, 1.0]`,
-/// while `dismissing` remembers whether we are currently playing the
-/// closing transition so the host can decide when to drop the widget.
+/// Two [`Animated`] fields drive the visible value in `[0.0, 1.0]`:
+/// `anim` runs the enter transition (target `1.0`) and `exit_anim` runs
+/// the exit transition (target `0.0`) at a shorter duration. `dismissing`
+/// remembers which side is currently active so the host can decide when
+/// to drop the widget.
 pub struct DialogAnim {
     anim: Animated<f32>,
+    exit_anim: Animated<f32>,
     dismissing: bool,
 }
 
 impl Default for DialogAnim {
     fn default() -> Self {
         Self {
-            anim: Animated::transition(0.0, ease_out_cubic(DIALOG_ANIM_MS)),
+            anim: Animated::transition(0.0, ease_out_cubic(OVERLAY_ENTER_MS)),
+            exit_anim: Animated::transition(0.0, ease_out_cubic(OVERLAY_EXIT_MS)),
             dismissing: false,
         }
     }
@@ -114,23 +120,38 @@ impl DialogAnim {
         self.dismissing = false;
     }
 
-    /// Start the exit transition. Sets `dismissing` so
-    /// [`Self::completed_dismiss`] can later report completion.
+    /// Start the exit transition. Anchors the exit easing at the current
+    /// visible value so there's no jump when dismissed mid-enter. Sets
+    /// `dismissing` so [`Self::completed_dismiss`] can later report
+    /// completion.
     pub fn begin_exit(&mut self) {
-        self.anim.set_target(0.0);
+        let current = self.value();
+        self.exit_anim =
+            Animated::transition(current.clamp(0.0, 1.0), ease_out_cubic(OVERLAY_EXIT_MS));
+        self.exit_anim.set_target(0.0);
         self.dismissing = true;
     }
 
     /// The current visible value, in `[0.0, 1.0]`. Returns `0.0` before the
     /// open transition has played and again after the exit has finished.
     pub fn value(&self) -> f32 {
-        *self.anim.value()
+        if self.dismissing {
+            *self.exit_anim.value()
+        } else {
+            *self.anim.value()
+        }
     }
 
-    /// Borrow the underlying [`Animated`] to drive it from an
-    /// `iced_anim::animation` subscription.
-    pub fn anim(&self) -> &Animated<f32> {
-        &self.anim
+    /// Borrow the [`Animated`] that should currently drive the
+    /// `iced_anim::animation` subscription. Returns the enter transition
+    /// while the dialog is open/closing-in and the exit transition while
+    /// it's dismissing.
+    pub fn phase_anim(&self) -> &Animated<f32> {
+        if self.dismissing {
+            &self.exit_anim
+        } else {
+            &self.anim
+        }
     }
 
     /// Returns `true` between [`Self::begin_exit`] and
@@ -139,15 +160,19 @@ impl DialogAnim {
         self.dismissing
     }
 
-    /// Forward an `iced_anim` event into the underlying value.
+    /// Forward an `iced_anim` event into the currently active transition.
     pub fn update(&mut self, event: Event<f32>) {
-        self.anim.update(event);
+        if self.dismissing {
+            self.exit_anim.update(event);
+        } else {
+            self.anim.update(event);
+        }
     }
 
     /// Call after each `update`; returns `true` once the exit animation has
     /// finished, resetting the dismissing flag.
     pub fn completed_dismiss(&mut self) -> bool {
-        if self.dismissing && !self.anim.is_animating() {
+        if self.dismissing && !self.exit_anim.is_animating() {
             self.dismissing = false;
             return true;
         }

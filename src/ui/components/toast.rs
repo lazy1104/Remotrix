@@ -6,7 +6,8 @@ use iced::{Element, Length};
 
 use crate::message::{Message, ToastMsg};
 use crate::ui::animation::{
-    ease_out_cubic, scale_factor_from_value, Animated, Easing, Event, TOAST_ENTER_MS, TOAST_EXIT_MS,
+    ease_out_cubic, scale_factor_from_value, Animated, Easing, Event, OVERLAY_ENTER_MS,
+    OVERLAY_EXIT_MS,
 };
 use crate::ui::dims::*;
 use crate::ui::icon;
@@ -181,11 +182,11 @@ impl Toast {
 }
 
 fn toast_enter_easing() -> Easing {
-    ease_out_cubic(TOAST_ENTER_MS)
+    ease_out_cubic(OVERLAY_ENTER_MS)
 }
 
 fn toast_exit_easing() -> Easing {
-    ease_out_cubic(TOAST_EXIT_MS)
+    ease_out_cubic(OVERLAY_EXIT_MS)
 }
 
 pub fn view<'a>(theme: &'a iced::Theme, toasts: &'a [Toast]) -> Element<'a, Message> {
