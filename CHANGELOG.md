@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0-beta.1] - 2026-09-25
+
 ### Added
 
 - 设置 → 主题新增「跟随系统主题色」开关：开启后应用强调色跟随 macOS 14+ / Windows 11 / GNOME 的系统强调色实时变化，关闭后恢复手动色板；不支持的系统（macOS < 14、Windows 10、其他 Linux 桌面）会自动隐藏该开关。
