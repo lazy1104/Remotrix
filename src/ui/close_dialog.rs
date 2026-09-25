@@ -9,19 +9,17 @@ use iced::{Alignment, Element};
 use crate::i18n::{Fluent, Tr};
 use crate::message::{CloseDialogChoice, Message, WindowMsg};
 use crate::ui::components::dialog::Dialog;
-use crate::ui::components::expand::expand_pinned;
 use crate::ui::dims::*;
 use crate::ui::theme;
 
 /// Build the close-confirmation dialog. `tray_available` enables the
-/// hide-to-tray button + checkbox, `progress` drives the pin enter/exit
-/// animation, and `close_to_tray` is the persisted preference.
+/// hide-to-tray button + checkbox and `close_to_tray` is the persisted
+/// preference.
 pub fn view<'a>(
     fluent: &'a Fluent,
     _theme: &iced::Theme,
     tray_available: bool,
     close_to_tray: bool,
-    progress: f32,
 ) -> Element<'a, Message> {
     let body_text = text(fluent.get(Tr::ConfirmCloseBody))
         .size(FONT_MEDIUM)
@@ -68,15 +66,12 @@ pub fn view<'a>(
         .spacing(SPACE_XL)
         .align_y(Alignment::Center);
 
-    expand_pinned(
-        Dialog::new()
-            .title(fluent.get(Tr::ConfirmCloseTitle))
-            .with_close(Message::Window(WindowMsg::CloseDialog(
-                CloseDialogChoice::Cancel,
-            )))
-            .body(body)
-            .footer(buttons)
-            .build(),
-        progress,
-    )
+    Dialog::new()
+        .title(fluent.get(Tr::ConfirmCloseTitle))
+        .with_close(Message::Window(WindowMsg::CloseDialog(
+            CloseDialogChoice::Cancel,
+        )))
+        .body(body)
+        .footer(buttons)
+        .build()
 }

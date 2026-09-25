@@ -7,7 +7,6 @@ use iced::{Element, Event, Length, Rectangle, Size, Vector};
 pub struct Expand<'a, Message> {
     content: Element<'a, Message>,
     progress: f32,
-    pinned: bool,
 }
 
 impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Message> {
@@ -41,9 +40,6 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Me
             .content
             .as_widget_mut()
             .layout(tree, renderer, &limits.loose());
-        if self.pinned {
-            return node;
-        }
         let t = self.progress.clamp(0.0, 1.0);
         if t >= 1.0 {
             return node;
@@ -69,33 +65,23 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Me
             self.content
                 .as_widget()
                 .draw(tree, renderer, theme, style, layout, cursor, viewport);
-        } else {
-            let bounds = layout.bounds();
-            let layer = if self.pinned {
-                self.visible_rect(bounds)
-            } else {
-                bounds
-            };
-            let Some(clipped_viewport) = layer.intersection(viewport) else {
-                return;
-            };
-            renderer.with_layer(layer, |renderer| {
-                let child = if self.pinned {
-                    layout
-                } else {
-                    layout.children().next().unwrap()
-                };
-                self.content.as_widget().draw(
-                    tree,
-                    renderer,
-                    theme,
-                    style,
-                    child,
-                    cursor,
-                    &clipped_viewport,
-                );
-            });
+            return;
         }
+        let bounds = layout.bounds();
+        let Some(clipped_viewport) = bounds.intersection(viewport) else {
+            return;
+        };
+        renderer.with_layer(bounds, |renderer| {
+            self.content.as_widget().draw(
+                tree,
+                renderer,
+                theme,
+                style,
+                layout.children().next().unwrap(),
+                cursor,
+                &clipped_viewport,
+            );
+        });
     }
 
     fn update(
@@ -109,15 +95,7 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Me
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
-        if self.pinned && self.progress < 1.0 {
-            if let Event::Mouse(_) | Event::Touch(_) = event {
-                let bounds = layout.bounds();
-                if !cursor.is_over(self.visible_rect(bounds)) {
-                    return;
-                }
-            }
-        }
-        let child = if self.pinned || self.progress >= 1.0 {
+        let child = if self.progress >= 1.0 {
             layout
         } else {
             layout.children().next().unwrap()
@@ -134,7 +112,7 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Me
         renderer: &iced::Renderer,
         operation: &mut dyn widget::Operation,
     ) {
-        let child = if self.pinned || self.progress >= 1.0 {
+        let child = if self.progress >= 1.0 {
             layout
         } else {
             layout.children().next().unwrap()
@@ -152,13 +130,7 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Me
         viewport: &Rectangle,
         renderer: &iced::Renderer,
     ) -> mouse::Interaction {
-        if self.pinned && self.progress < 1.0 {
-            let bounds = layout.bounds();
-            if !cursor.is_over(self.visible_rect(bounds)) {
-                return mouse::Interaction::None;
-            }
-        }
-        let child = if self.pinned || self.progress >= 1.0 {
+        let child = if self.progress >= 1.0 {
             layout
         } else {
             layout.children().next().unwrap()
@@ -176,7 +148,7 @@ impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for Expand<'a, Me
         viewport: &Rectangle,
         translation: Vector,
     ) -> Option<iced::overlay::Element<'b, Message, iced::Theme, iced::Renderer>> {
-        let child = if self.pinned || self.progress >= 1.0 {
+        let child = if self.progress >= 1.0 {
             layout
         } else {
             layout.children().next().unwrap()
@@ -193,23 +165,6 @@ impl<'a, Message: 'a> From<Expand<'a, Message>> for Element<'a, Message> {
     }
 }
 
-impl<'a, Message> Expand<'a, Message> {
-    fn visible_rect(&self, bounds: Rectangle) -> Rectangle {
-        let t = self.progress.clamp(0.0, 1.0);
-        if self.pinned && t < 1.0 {
-            let h = bounds.height * t;
-            Rectangle {
-                x: bounds.x,
-                y: bounds.y + (bounds.height - h) / 2.0,
-                width: bounds.width,
-                height: h,
-            }
-        } else {
-            bounds
-        }
-    }
-}
-
 pub fn expand<'a, Message: 'a>(
     content: impl Into<Element<'a, Message>>,
     progress: f32,
@@ -217,19 +172,6 @@ pub fn expand<'a, Message: 'a>(
     Expand {
         content: content.into(),
         progress,
-        pinned: false,
-    }
-    .into()
-}
-
-pub fn expand_pinned<'a, Message: 'a>(
-    content: impl Into<Element<'a, Message>>,
-    progress: f32,
-) -> Element<'a, Message> {
-    Expand {
-        content: content.into(),
-        progress,
-        pinned: true,
     }
     .into()
 }

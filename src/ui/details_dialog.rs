@@ -20,7 +20,6 @@ use crate::task::{
 use crate::ui::animation::{animation, Animated};
 use crate::ui::components::ctx_input;
 use crate::ui::components::ctx_menu::CtxMirrors;
-use crate::ui::components::expand::expand_pinned;
 use crate::ui::components::file_tree;
 use crate::ui::components::key_value_list::key_value_list;
 use crate::ui::components::slim_scrollable::slim_scrollable;
@@ -166,13 +165,11 @@ pub const DETAILS_SUMMARY_ID: &str = "details_summary";
 pub const DETAILS_ADVANCED_ID: &str = "details_advanced";
 
 /// Build the details dialog for `task` (or an empty shell if `None`).
-/// `progress` drives the pin enter/exit animation.
 pub fn view<'a>(
     fluent: &'a Fluent,
     theme: &'a iced::Theme,
     task: Option<&'a DownloadTask>,
     state: &'a DetailsDialogState,
-    progress: f32,
     ctx_mirrors: &CtxMirrors,
     progress_anim: &'a HashMap<String, Animated<f32>>,
 ) -> Element<'a, Message> {
@@ -289,19 +286,17 @@ pub fn view<'a>(
         content = content.push(footer);
     }
 
-    expand_pinned(
-        container(
-            content
-                .spacing(SPACE_LG)
-                .width(Length::Fill)
-                .height(Length::Fill),
-        )
-        .width(Length::Fixed(DETAILS_WIDTH))
-        .height(Length::Fixed(480.0))
-        .padding(PADDING_DETAILS)
-        .style(theme::style::card),
-        progress,
+    container(
+        content
+            .spacing(SPACE_LG)
+            .width(Length::Fill)
+            .height(Length::Fill),
     )
+    .width(Length::Fixed(DETAILS_WIDTH))
+    .height(Length::Fixed(480.0))
+    .padding(PADDING_DETAILS)
+    .style(theme::style::card)
+    .into()
 }
 
 fn summary_tab<'a>(

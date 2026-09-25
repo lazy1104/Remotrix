@@ -236,7 +236,6 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             t,
             &state.add_dialog,
             &state.settings.path_history,
-            state.add_dialog_anim.value(),
             &state.input_cursors,
         );
         crate::ui::components::dialog::overlay(
@@ -271,7 +270,6 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                 t,
                 state.tray.enabled(),
                 state.settings.close_to_tray,
-                *anim.value(),
             );
             crate::ui::components::dialog::overlay(
                 crate::ui::animation::animation(anim, content).on_update(Message::CloseDialogAnim),
@@ -295,7 +293,6 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             t,
             task,
             &state.details,
-            state.details_anim.value(),
             &state.input_cursors,
             &state.progress_anim,
         );
@@ -309,8 +306,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
     };
 
     let confirm_layer: iced::Element<'_, Message> = if let Some(action) = &state.confirm {
-        let content =
-            crate::ui::confirm_dialog::view(&state.fluent, t, action, state.confirm_anim.value());
+        let content = crate::ui::confirm_dialog::view(&state.fluent, t, action);
         crate::ui::components::dialog::overlay(
             crate::ui::animation::animation(state.confirm_anim.phase_anim(), content)
                 .on_update(Message::ConfirmAnim),
@@ -327,7 +323,6 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
             &dialog.offers,
             &dialog.changelogs,
             dialog.active_tab,
-            state.update_dialog_anim.value(),
         );
         crate::ui::components::dialog::overlay(
             crate::ui::animation::animation(state.update_dialog_anim.phase_anim(), content)

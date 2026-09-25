@@ -9,17 +9,14 @@ use iced::{Alignment, Element};
 use crate::i18n::{Fluent, Tr};
 use crate::message::{ConfirmAction, DialogMsg, EngineMsg, Message, SettingsMsg, TaskMsg};
 use crate::ui::components::dialog::Dialog;
-use crate::ui::components::expand::expand_pinned;
 use crate::ui::dims::*;
 use crate::ui::theme;
 
-/// Build the confirm dialog for `action`. `progress` drives the pin
-/// enter/exit animation.
+/// Build the confirm dialog for `action`.
 pub fn view<'a>(
     fluent: &'a Fluent,
     _theme: &iced::Theme,
     action: &'a ConfirmAction,
-    progress: f32,
 ) -> Element<'a, Message> {
     let (title_key, body_key) = match action {
         ConfirmAction::DeleteTask(_) => (Tr::ConfirmDeleteTitle, Tr::ConfirmDeleteBody),
@@ -166,13 +163,10 @@ pub fn view<'a>(
             .into(),
     };
 
-    expand_pinned(
-        Dialog::new()
-            .title(fluent.get(title_key))
-            .with_close(Message::Dialog(DialogMsg::ConfirmCancel))
-            .body(body)
-            .footer(buttons)
-            .build(),
-        progress,
-    )
+    Dialog::new()
+        .title(fluent.get(title_key))
+        .with_close(Message::Dialog(DialogMsg::ConfirmCancel))
+        .body(body)
+        .footer(buttons)
+        .build()
 }

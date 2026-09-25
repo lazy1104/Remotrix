@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 弹窗背景遮罩现在跟随内容一起淡入/淡出：打开时从透明平滑过渡到 0.55 黑色，关闭时反向播放，与原有的对话框缩放/淡出动画同步。
 - Toast 通知增加进入与退出缩放动画：新弹出时从 0 平滑放大至 100%（220 ms ease-out），用户关闭或自动到期时反向从 100% 缩回 0（160 ms ease-out）后移除。
 - 弹窗与 Toast 通知统一使用同一组进入/退出动画时长（进入 220 ms、退出 160 ms，均为 ease-out cubic），视觉上属于同一族动画；之前弹窗为 240/240 ms 对称、Toast 为 200/160 ms 不对称。
+- 弹窗（Add / About / Close / Confirm / Update / Details）现在与 Toast 通知一起使用 0 → 100% 缩放过渡（220 ms 进入、160 ms 退出，均为 ease-out cubic），与背景遮罩同步淡入淡出。
+- 弹窗移除内部「高度展开/收缩」动画（expand_pinned），仅保留与 Toast 一致的整体缩放过渡（220 ms 进入、160 ms 退出，均为 ease-out cubic），每次打开都播放缩放进入动画，与背景遮罩同步淡入淡出。Toast 通知仍每次都播放缩放进出动画。
 
 ## [0.5.2] - 2026-09-23
 

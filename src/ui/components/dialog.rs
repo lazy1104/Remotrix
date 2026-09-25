@@ -5,7 +5,9 @@ use iced::advanced::{
     Clipboard, Layout, Shell, Widget,
 };
 use iced::widget::{button, column, container, row, text, Space};
-use iced::{Alignment, Background, Color, Element, Event, Length, Rectangle, Size, Vector};
+use iced::{
+    Alignment, Background, Color, Element, Event, Length, Rectangle, Size, Transformation, Vector,
+};
 
 use crate::ui::color::theme as color_theme;
 use crate::ui::dims::*;
@@ -84,15 +86,43 @@ where
             );
         }
 
-        self.content.as_widget().draw(
-            &tree.children[0],
-            renderer,
-            theme,
-            style,
-            layout,
-            cursor,
-            viewport,
-        );
+        if self.progress >= 0.99999 {
+            self.content.as_widget().draw(
+                &tree.children[0],
+                renderer,
+                theme,
+                style,
+                layout,
+                cursor,
+                viewport,
+            );
+            return;
+        }
+
+        let factor = crate::ui::animation::scale_factor_from_value(self.progress, 0.0);
+        let bounds = layout.bounds();
+        let center_x = bounds.x + bounds.width / 2.0;
+        let center_y = bounds.y + bounds.height / 2.0;
+        let affine = Transformation::translate(center_x, center_y)
+            * Transformation::scale(factor)
+            * Transformation::translate(-center_x, -center_y);
+        let Some(clipped_viewport) = bounds.intersection(viewport) else {
+            return;
+        };
+
+        renderer.with_layer(bounds, |renderer| {
+            renderer.with_transformation(affine, |renderer| {
+                self.content.as_widget().draw(
+                    &tree.children[0],
+                    renderer,
+                    theme,
+                    style,
+                    layout,
+                    cursor,
+                    &clipped_viewport,
+                );
+            });
+        });
     }
 
     fn children(&self) -> Vec<Tree> {

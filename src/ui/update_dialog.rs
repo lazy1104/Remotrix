@@ -7,7 +7,6 @@ use iced::{Alignment, Element, Font, Length};
 use crate::i18n::{Fluent, Tr};
 use crate::message::{Message, SettingsMsg};
 use crate::ui::components::dialog::Dialog;
-use crate::ui::components::expand::expand_pinned;
 use crate::ui::components::slim_scrollable::slim_scrollable;
 use crate::ui::dims::*;
 use crate::ui::icon;
@@ -63,17 +62,16 @@ fn tab_button<'a>(label: String, active: bool, on_press: Message) -> Element<'a,
 pub const UPDATE_CHANGELOG_ID: &str = "update_changelog";
 
 /// Build the update dialog for the supplied `offers` and per-offer
-/// changelog state. `progress` drives the pin enter/exit animation.
+/// changelog state.
 pub fn view<'a>(
     fluent: &'a Fluent,
     theme: &iced::Theme,
     offers: &'a [UpdateOffer],
     changelogs: &'a [ChangelogState],
     active_tab: usize,
-    progress: f32,
 ) -> Element<'a, Message> {
     if offers.is_empty() {
-        return expand_pinned(iced::widget::Space::new(), progress);
+        return iced::widget::Space::new().into();
     }
     let active_tab = active_tab.min(offers.len().saturating_sub(1));
     let offer = &offers[active_tab];
@@ -130,9 +128,7 @@ pub fn view<'a>(
     body = body.push(transition);
 
     body = body.push(text(fluent.get(Tr::UpdateDialogChangelog)).size(FONT_MEDIUM));
-    let changelog: Element<'a, Message> = if progress < 1.0 {
-        iced::widget::Space::new().into()
-    } else if changelogs[active_tab].loading {
+    let changelog: Element<'a, Message> = if changelogs[active_tab].loading {
         container(
             row![
                 crate::ui::components::spinner::Spinner::refresh(
@@ -219,14 +215,11 @@ pub fn view<'a>(
     .spacing(SPACE_2XL)
     .align_y(Alignment::Center);
 
-    expand_pinned(
-        Dialog::new()
-            .width(460.0)
-            .title(fluent.get(Tr::UpdateDialogTitle))
-            .with_close(Message::Settings(SettingsMsg::UpdateDialogCancel))
-            .body(body)
-            .footer(footer)
-            .build(),
-        progress,
-    )
+    Dialog::new()
+        .width(460.0)
+        .title(fluent.get(Tr::UpdateDialogTitle))
+        .with_close(Message::Settings(SettingsMsg::UpdateDialogCancel))
+        .body(body)
+        .footer(footer)
+        .build()
 }

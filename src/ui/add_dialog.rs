@@ -13,7 +13,6 @@ use crate::task::format_size;
 use crate::ui::components::ctx_input;
 use crate::ui::components::ctx_menu::CtxMirrors;
 use crate::ui::components::dialog::Dialog;
-use crate::ui::components::expand::expand_pinned;
 use crate::ui::components::file_drop_zone::{FileDropEvent, FileDropZone};
 use crate::ui::components::file_tree::{self, FileTreeNode};
 use crate::ui::components::number_stepper::number_stepper;
@@ -332,14 +331,12 @@ impl AddDialogState {
 /// animation registry keeps state across frames.
 pub const ADD_DIALOG_BODY_ID: &str = "add_dialog_body";
 
-/// Build the "Add download" dialog. `progress` drives the pin enter/exit
-/// animation.
+/// Build the "Add download" dialog.
 pub fn view<'a>(
     fluent: &'a Fluent,
     theme: &'a iced::Theme,
     state: &'a AddDialogState,
     path_history: &'a HashMap<String, Vec<String>>,
-    progress: f32,
     ctx_mirrors: &CtxMirrors,
 ) -> Element<'a, Message> {
     let placeholder = fluent.get(Tr::UrlPlaceholder);
@@ -576,17 +573,14 @@ pub fn view<'a>(
         .spacing(SPACE_XL)
         .align_y(Alignment::Center);
 
-    expand_pinned(
-        Dialog::new()
-            .width(520.0)
-            .spacing(SPACE_3XL)
-            .title(fluent.get(Tr::NewDownload))
-            .with_close(Message::Add(AddMsg::CancelAdd))
-            .body(content)
-            .footer(buttons)
-            .build(),
-        progress,
-    )
+    Dialog::new()
+        .width(520.0)
+        .spacing(SPACE_3XL)
+        .title(fluent.get(Tr::NewDownload))
+        .with_close(Message::Add(AddMsg::CancelAdd))
+        .body(content)
+        .footer(buttons)
+        .build()
 }
 
 fn advanced_field<'a>(

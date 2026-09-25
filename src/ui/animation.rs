@@ -113,11 +113,14 @@ impl Default for DialogAnim {
 }
 
 impl DialogAnim {
-    /// Start the open transition. Safe to call repeatedly; resets the
-    /// `dismissing` flag so an in-progress close is cancelled.
+    /// Start the open transition. Rebuilds `anim` from `0.0` so the
+    /// scale ramp `0.0 → 1.0` plays in full on every call, regardless
+    /// of any previous enter/exit cycle. Safe to call from any state;
+    /// resets the `dismissing` flag so an in-progress close is cancelled.
     pub fn open(&mut self) {
-        self.anim.set_target(1.0);
         self.dismissing = false;
+        self.anim = Animated::transition(0.0, ease_out_cubic(OVERLAY_ENTER_MS));
+        self.anim.set_target(1.0);
     }
 
     /// Start the exit transition. Anchors the exit easing at the current
@@ -278,6 +281,20 @@ mod tests {
         assert!(a.is_dismissing());
         a.open();
         assert!(!a.is_dismissing());
+    }
+
+    #[test]
+    fn dialog_anim_open_replays_enter() {
+        let mut a = DialogAnim::default();
+        a.open();
+        a.update(Event::Settle);
+        assert_eq!(a.value(), 1.0);
+        // Second open rebuilds the enter anim from 0.0 and re-plays the
+        // full 0 → 1 scale ramp.
+        a.open();
+        assert!(a.anim.is_animating());
+        a.update(Event::Settle);
+        assert_eq!(a.value(), 1.0);
     }
 
     #[test]
