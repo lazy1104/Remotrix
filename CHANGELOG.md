@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 弹窗（Add / About / Close / Confirm / Update / Details）现在与 Toast 通知一起使用 0 → 100% 缩放过渡（220 ms 进入、160 ms 退出，均为 ease-out cubic），与背景遮罩同步淡入淡出。
 - 弹窗移除内部「高度展开/收缩」动画（expand_pinned），仅保留与 Toast 一致的整体缩放过渡（220 ms 进入、160 ms 退出，均为 ease-out cubic），每次打开都播放缩放进入动画，与背景遮罩同步淡入淡出。Toast 通知仍每次都播放缩放进出动画。
 - 动画时长常量统一为 7 个 token（`ANIM_HEAVY_/STANDARD_/LIGHT_/_ENTER_MS` + `_EXIT_MS` + `ANIM_THEME_MS`），命名与 Microsoft Fluent 的 `ControlNormal/Fast/Faster` 对齐；删除无引用的 SWAP_* 死代码；3 处实际生效的数值微调（顶部进度边框 240→220、任务进度条 250→220、侧栏 filter pill 200→180），差异均在不可察觉范围内。AGENTS.md 新增「Animation」一节，强制新动画只能复用现有 token，禁止新增本地常量。
+- 右键菜单 / 关机卡片 / 速度限制 popover / 自定义颜色选择器等所有 popover 的卡片外区域现在会穿透到下层 UI：点击空白处仍然关闭 popover，但同时点击会落到被点的控件；之前会把整屏 pointer 事件吞掉，导致打开 popover 后似乎无法操作任务列表、按钮等。
 
 ## [0.5.2] - 2026-09-23
 

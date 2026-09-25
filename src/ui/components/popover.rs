@@ -1,6 +1,9 @@
-//! Anchored modal popover: fills the viewport, places a card at a chosen
-//! anchor via `translate`, and treats the area outside the card as a
-//! click-to-close backdrop that blocks input from reaching layers below.
+//! Anchored popover card: places a card at a chosen anchor inside the
+//! viewport via `translate`. Clicks on the card stay on the card (card
+//! widgets capture as usual; presses on card padding are also absorbed so
+//! they do not leak to widgets beneath). Clicks outside the card publish
+//! the supplied `on_outside` message and fall through to the layers
+//! below, so the rest of the UI remains usable while the popover is open.
 
 use iced::advanced::{
     layout::{Limits, Node},
@@ -145,27 +148,23 @@ where
             return;
         }
 
+        let card_bounds = child_layout.bounds();
         let is_press = matches!(
             event,
             Event::Mouse(mouse::Event::ButtonPressed(_))
                 | Event::Touch(touch::Event::FingerPressed { .. })
         );
-        let is_pointer = matches!(event, Event::Mouse(_) | Event::Touch(_));
 
-        if is_pointer {
-            shell.capture_event();
+        if cursor.is_over(card_bounds) {
+            if is_press {
+                shell.capture_event();
+            }
+            return;
         }
 
         if is_press {
             if let Some(msg) = self.on_outside.clone() {
-                let card_bounds = layout
-                    .children()
-                    .next()
-                    .map(|c| c.bounds())
-                    .unwrap_or(Rectangle::INFINITE);
-                if !cursor.is_over(card_bounds) {
-                    shell.publish(msg);
-                }
+                shell.publish(msg);
             }
         }
     }
@@ -178,25 +177,29 @@ where
         viewport: &Rectangle,
         renderer: &iced::Renderer,
     ) -> mouse::Interaction {
-        if cursor.is_over(layout.bounds()) {
-            let child_layout = layout
-                .children()
-                .next()
-                .expect("popover: content layout has no children");
-            let interaction = self.content.as_widget().mouse_interaction(
-                &tree.children[0],
-                child_layout,
-                cursor,
-                viewport,
-                renderer,
-            );
-            if interaction != mouse::Interaction::None {
-                interaction
-            } else {
-                mouse::Interaction::Idle
-            }
+        if !cursor.is_over(layout.bounds()) {
+            return mouse::Interaction::None;
+        }
+
+        let child_layout = layout
+            .children()
+            .next()
+            .expect("popover: content layout has no children");
+        if !cursor.is_over(child_layout.bounds()) {
+            return mouse::Interaction::None;
+        }
+
+        let interaction = self.content.as_widget().mouse_interaction(
+            &tree.children[0],
+            child_layout,
+            cursor,
+            viewport,
+            renderer,
+        );
+        if interaction != mouse::Interaction::None {
+            interaction
         } else {
-            mouse::Interaction::None
+            mouse::Interaction::Idle
         }
     }
 
