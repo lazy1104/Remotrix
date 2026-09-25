@@ -515,7 +515,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         theme: theme.clone(),
         theme_anim: crate::ui::animation::Animated::transition(
             theme,
-            crate::ui::animation::ease_in_out_quad(crate::ui::animation::THEME_TRANSITION_MS),
+            crate::ui::animation::ease_in_out_quad(crate::ui::animation::ANIM_THEME_MS),
         ),
         sort_menu_open: false,
         sort_field: SortField::AddedTime,
@@ -545,15 +545,15 @@ pub fn init() -> (Remotrix, Task<Message>) {
         pending_removals: HashSet::new(),
         filter_pill: crate::ui::animation::Animated::transition(
             0.0,
-            crate::ui::animation::ease_in_out_quad(crate::ui::animation::PILL_MS),
+            crate::ui::animation::ease_in_out_quad(crate::ui::animation::ANIM_LIGHT_ENTER_MS),
         ),
         hud_anim: crate::ui::animation::Animated::transition(
             0.0,
-            crate::ui::animation::ease_out_cubic(crate::ui::animation::HUD_ANIM_MS),
+            crate::ui::animation::ease_out_cubic(crate::ui::animation::ANIM_STANDARD_ENTER_MS),
         ),
         border_anim: crate::ui::animation::Animated::transition(
             0.0,
-            crate::ui::animation::ease_out_cubic(crate::ui::animation::BORDER_FADE_MS),
+            crate::ui::animation::ease_out_cubic(crate::ui::animation::ANIM_STANDARD_ENTER_MS),
         ),
         add_dialog_anim: Default::default(),
         about_dialog_anim: Default::default(),
@@ -816,7 +816,7 @@ pub(crate) fn begin_task_exit(state: &mut Remotrix, gid: &str, delete_db: bool) 
                 gid.to_string(),
                 crate::ui::animation::Animated::transition(
                     1.0,
-                    crate::ui::animation::ease_out_quad(crate::ui::animation::CARD_EXIT_MS),
+                    crate::ui::animation::ease_out_quad(crate::ui::animation::ANIM_HEAVY_EXIT_MS),
                 )
                 .to(0.0),
             );
@@ -2466,7 +2466,7 @@ pub(crate) fn open_close_dialog(state: &mut Remotrix) {
     state.window.close_dialog_anim = Some(
         crate::ui::animation::Animated::transition(
             0.0,
-            crate::ui::animation::ease_out_cubic(crate::ui::animation::CARD_ENTER_MS),
+            crate::ui::animation::ease_out_cubic(crate::ui::animation::ANIM_HEAVY_ENTER_MS),
         )
         .to(1.0),
     );

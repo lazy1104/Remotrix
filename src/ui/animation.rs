@@ -1,9 +1,10 @@
 //! Shared animation primitives for the UI: easing curves, periodic clocks,
 //! and a small [`DialogAnim`] state machine for enter/exit transitions.
 //!
-//! Times are kept in milliseconds via the `*_MS` constants and wrapped in
-//! [`Easing`] helpers below. Periodic helpers ([`cycle`], [`spin`]) use a
-//! process-wide `OnceLock` epoch because the GUI thread is the only writer.
+//! Times are kept in milliseconds via the `ANIM_*` token constants and
+//! wrapped in [`Easing`] helpers below. Periodic helpers ([`cycle`],
+//! [`spin`]) use a process-wide `OnceLock` epoch because the GUI thread is
+//! the only writer.
 
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -13,36 +14,32 @@ pub use iced_anim::event::Event;
 pub use iced_anim::transition::{Curve, Easing};
 pub use iced_anim::Animated;
 
-/// Card slide-in duration in milliseconds.
-pub const CARD_ENTER_MS: u64 = 280;
-/// Card slide-out duration in milliseconds.
-pub const CARD_EXIT_MS: u64 = 200;
-/// Heads-up-display fade/slide duration.
-pub const HUD_ANIM_MS: u64 = 220;
-/// Top-border progress bar fade in/out duration.
-pub const BORDER_FADE_MS: u64 = 240;
-/// Progress-bar easing duration.
-pub const PROGRESS_MS: u64 = 250;
-/// Filter-pill slide duration.
-pub const PILL_MS: u64 = 200;
-/// Exit-phase duration for settings/filter tab swaps (`1.0 → SWAP_MIN`).
-pub const SWAP_EXIT_MS: u64 = 110;
-/// Enter-phase duration for settings/filter tab swaps (`SWAP_MIN → 1.0`).
-pub const SWAP_ENTER_MS: u64 = 180;
-/// Minimum scale factor reached during a swap; the right column dips from
-/// `1.0` down to `SWAP_MIN` and back. Controls both the visual scale and
-/// how strongly the content is washed with the background color.
-pub const SWAP_MIN: f32 = 0.95;
-/// Theme colour / light-dark transition duration.
-pub const THEME_TRANSITION_MS: u64 = 320;
-/// Shared overlay enter-animation duration. Used by toast cards and the
-/// overlay dialogs (Add / About / Close / Confirm / Update) so they feel
-/// like one family of animations.
-pub const OVERLAY_ENTER_MS: u64 = 220;
-/// Shared overlay exit-animation duration. Asymmetric with
-/// [`OVERLAY_ENTER_MS`] — exits are 27% faster than enters, matching the
-/// project-wide convention (`CARD_ENTER/CARD_EXIT`, `SWAP_ENTER/SWAP_EXIT`).
-pub const OVERLAY_EXIT_MS: u64 = 160;
+/// Standard animations. The default tier for modal dialogs, toasts, the
+/// speed HUD, the top-border progress, and the task progress bar. Exit is
+/// ~27% faster than enter, matching the project's enter-vs-exit asymmetry
+/// rule (mirrors iOS HIG / Material 3 / Fluent).
+pub const ANIM_STANDARD_ENTER_MS: u64 = 220;
+/// Standard animations. Exit phase — see [`ANIM_STANDARD_ENTER_MS`].
+pub const ANIM_STANDARD_EXIT_MS: u64 = 160;
+
+/// Light / responsive animations. High-frequency UI feedback (sidebar
+/// filter pill, scroll-driven transitions, ripple-equivalents). Same 33%
+/// asymmetry, shorter overall.
+pub const ANIM_LIGHT_ENTER_MS: u64 = 180;
+/// Light / responsive animations. Exit phase — see
+/// [`ANIM_LIGHT_ENTER_MS`].
+pub const ANIM_LIGHT_EXIT_MS: u64 = 120;
+
+/// Heavy / prominent animations. Reserved for transitions that own the
+/// user's attention — currently just the task-card slide in/out. Same
+/// 28% asymmetry, the longest enter in the system.
+pub const ANIM_HEAVY_ENTER_MS: u64 = 280;
+/// Heavy / prominent animations. Exit phase — see [`ANIM_HEAVY_ENTER_MS`].
+pub const ANIM_HEAVY_EXIT_MS: u64 = 200;
+
+/// Theme colour / accent / light-dark continuous transition. Not an
+/// enter/exit pair — used once per theme change.
+pub const ANIM_THEME_MS: u64 = 320;
 
 /// Build a non-reversible `t -> 1 - (1-t)^2` easing curve lasting
 /// `duration_ms`. Used for element entrance animations where the value
@@ -105,8 +102,8 @@ pub struct DialogAnim {
 impl Default for DialogAnim {
     fn default() -> Self {
         Self {
-            anim: Animated::transition(0.0, ease_out_cubic(OVERLAY_ENTER_MS)),
-            exit_anim: Animated::transition(0.0, ease_out_cubic(OVERLAY_EXIT_MS)),
+            anim: Animated::transition(0.0, ease_out_cubic(ANIM_STANDARD_ENTER_MS)),
+            exit_anim: Animated::transition(0.0, ease_out_cubic(ANIM_STANDARD_EXIT_MS)),
             dismissing: false,
         }
     }
@@ -119,7 +116,7 @@ impl DialogAnim {
     /// resets the `dismissing` flag so an in-progress close is cancelled.
     pub fn open(&mut self) {
         self.dismissing = false;
-        self.anim = Animated::transition(0.0, ease_out_cubic(OVERLAY_ENTER_MS));
+        self.anim = Animated::transition(0.0, ease_out_cubic(ANIM_STANDARD_ENTER_MS));
         self.anim.set_target(1.0);
     }
 
@@ -129,8 +126,10 @@ impl DialogAnim {
     /// completion.
     pub fn begin_exit(&mut self) {
         let current = self.value();
-        self.exit_anim =
-            Animated::transition(current.clamp(0.0, 1.0), ease_out_cubic(OVERLAY_EXIT_MS));
+        self.exit_anim = Animated::transition(
+            current.clamp(0.0, 1.0),
+            ease_out_cubic(ANIM_STANDARD_EXIT_MS),
+        );
         self.exit_anim.set_target(0.0);
         self.dismissing = true;
     }

@@ -302,7 +302,9 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
                     gid.clone(),
                     crate::ui::animation::Animated::transition(
                         0.0,
-                        crate::ui::animation::ease_out_cubic(crate::ui::animation::CARD_ENTER_MS),
+                        crate::ui::animation::ease_out_cubic(
+                            crate::ui::animation::ANIM_HEAVY_ENTER_MS,
+                        ),
                     )
                     .to(1.0),
                 );
@@ -430,7 +432,9 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
                     gid.clone(),
                     crate::ui::animation::Animated::transition(
                         0.0,
-                        crate::ui::animation::ease_out_cubic(crate::ui::animation::CARD_ENTER_MS),
+                        crate::ui::animation::ease_out_cubic(
+                            crate::ui::animation::ANIM_HEAVY_ENTER_MS,
+                        ),
                     )
                     .to(1.0),
                 );
@@ -491,7 +495,9 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
                     .or_insert_with(|| {
                         crate::ui::animation::Animated::transition(
                             pct,
-                            crate::ui::animation::ease_out_quad(crate::ui::animation::PROGRESS_MS),
+                            crate::ui::animation::ease_out_quad(
+                                crate::ui::animation::ANIM_STANDARD_ENTER_MS,
+                            ),
                         )
                     })
                     .set_target(pct);
