@@ -274,7 +274,7 @@ Remotrix exposes a local HTTP server (default port `29110`, loopback only) that 
 2. In Remotrix Settings → "Advanced" → "Browser Takeover", enable it and copy the port and secret.
 3. In the extension options page, point it at `http://127.0.0.1:<port>` and enter the secret; `checkConnection` should pass.
 
-By default `/add` **silently auto-submits** the task and fires a system notification; you can switch to a confirmation dialog in Settings instead. Leaving the secret empty disables authentication (loopback only). Only global pause / resume is exposed; manage individual tasks back in the Remotrix main window.
+By default `/add` **silently auto-submits** the task and fires a system notification; you can switch to a confirmation dialog in Settings instead. **The secret is always required**: if none is set, one is auto-generated and persisted at startup; `/stat`, `/add`, `/pause-all`, and `/resume-all` all require `Authorization: Bearer <secret>` (the `/ping` heartbeat stays open). Only global pause / resume is exposed; manage individual tasks back in the Remotrix main window.
 
 After changing **Enabled / port / secret / auto-submit**, clicking **Apply** **hot-restarts** the extension service immediately (no app restart needed) and shows a toast ("Restarting… / restarted / restart failed"); toggling the enable switch off stops the service and shows a "stopped" toast. This only happens on Apply — editing the toggles or inputs alone does not restart.
 

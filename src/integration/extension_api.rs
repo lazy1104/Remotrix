@@ -134,9 +134,13 @@ pub fn spawn_server(
     }
     *SHARED.lock().unwrap_or_else(|e| e.into_inner()) = None;
 
-    let settings = crate::config::load();
+    let mut settings = crate::config::load();
     if !settings.extension.enabled {
         return None;
+    }
+    if settings.extension.secret.trim().is_empty() {
+        settings.extension.secret = generate_secret();
+        crate::config::save(&settings);
     }
     let port = settings
         .extension
@@ -200,7 +204,7 @@ fn extension_origin(
 
 fn is_authorized(req: &Request, secret: &str) -> bool {
     if secret.is_empty() {
-        return true;
+        return false;
     }
     let expected = format!("Bearer {secret}");
     req.headers()
@@ -387,8 +391,9 @@ mod tests {
     }
 
     #[test]
-    fn auth_passes_without_secret() {
-        assert!(is_authorized(&request_with_auth(""), ""));
+    fn auth_rejects_when_secret_unconfigured() {
+        assert!(!is_authorized(&request_with_auth(""), ""));
+        assert!(!is_authorized(&request_with_auth("anything"), ""));
     }
 
     #[test]
@@ -397,7 +402,6 @@ mod tests {
         assert!(is_authorized(&request_with_auth("s3cret"), "s3cret"));
         assert!(!is_authorized(&request_with_auth("wrong"), "s3cret"));
         assert!(!is_authorized(&request_with_auth(""), "s3cret"));
-        assert!(is_authorized(&request_with_auth(""), ""));
     }
 
     #[test]

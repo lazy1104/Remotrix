@@ -403,6 +403,10 @@ pub struct Remotrix {
 pub fn init() -> (Remotrix, Task<Message>) {
     config::announce();
     let mut settings = config::load();
+    if settings.extension.secret.trim().is_empty() {
+        settings.extension.secret = crate::extension_api::generate_secret();
+        crate::config::save(&settings);
+    }
     std::thread::spawn(|| {
         crate::ui::theme::system_font_families();
     });

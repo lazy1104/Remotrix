@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- 浏览器接管 API 改为强制密钥鉴权：未配置时自动生成随机密钥并持久化，所有数据接口（`/stat`、`/add`、`/pause-all`、`/resume-all`）均要求 `Authorization: Bearer <密钥>`，`/ping` 心跳除外。已升级用户需在设置 → 高级 → 浏览器接管查看新密钥并更新浏览器扩展配置。
+
 ## [0.6.0-beta.2] - 2026-09-30
 
 ### Added
