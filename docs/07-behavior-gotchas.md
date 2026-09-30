@@ -102,6 +102,20 @@ Settings → Appearance → Font. Verify the binary shrank with
 `strings target/release/remotrix | grep -c HarmonyOSSansSC` — should be 0 (was nonzero before this
 change).
 
+## Path overrides: `aria2/` and `logs/` nest under the effective app data dir
+The effective path resolvers (`resolved_paths()` / `resolve_from_settings()` in
+`src/config/paths.rs`) default `aria2` and `logs` to sub-directories of the *effective*
+app data dir — i.e. the user `app_data_dir` override if set, otherwise the ProjectDirs
+default. This means changing only 应用缓存目录 re-homes the aria2 binary/session cache and
+the logs along with it; `migrate_paths` (`src/config/migrations.rs`) copies them over on
+the next boot. An explicit `aria2_bin_dir` / `log_dir` override still wins over the nested
+default. Path changes are staged as a pending change and only take effect after restart
+via 保存并重启; the per-row 重置默认 restores the draft to the last-resolved value.
+
+Gotcha: if the app data dir is placed on a `noexec` mount, the nested `aria2-next` binary
+can no longer be executed. Point `aria2_bin_dir` at an exec-capable location as an escape
+hatch.
+
 ## `default_app_data_dir()` does NOT honour `XDG_DATA_HOME`
 `default_app_data_dir()` (`src/config/paths.rs`) does NOT honour `XDG_DATA_HOME` — only `data_home()`
 does. The integration test harness works around this by redirecting `$HOME`, but prod callers that

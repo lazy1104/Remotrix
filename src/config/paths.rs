@@ -1,18 +1,10 @@
 use std::path::{Path, PathBuf};
 
-use super::settings::{ResolvedPaths, Settings};
+use super::settings::{PathOverrides, ResolvedPaths, Settings};
 
 pub(crate) fn default_app_data_dir() -> Option<PathBuf> {
     let proj = directories::ProjectDirs::from("dev", "remotrix", "Remotrix")?;
     Some(proj.data_dir().to_path_buf())
-}
-
-pub(crate) fn default_aria2_bin_dir() -> Option<PathBuf> {
-    default_app_data_dir().map(|d| d.join("aria2"))
-}
-
-pub(crate) fn default_log_dir() -> Option<PathBuf> {
-    default_app_data_dir().map(|d| d.join("logs"))
 }
 
 /// Resolve the per-user XDG data directory, honouring `XDG_DATA_HOME` if
@@ -33,28 +25,13 @@ pub(crate) fn data_home() -> Option<PathBuf> {
 /// once `config::save` has persisted them. The resolver call sites are
 /// infrequent (engine spawn, db open, log init), so a single `load()` per
 /// call is acceptable.
+///
+/// The default `aria2` and `logs` locations nest under the effective app
+/// data dir, so overriding only the app data dir re-homes them too. Once
+/// an explicit override is provided for a sub-directory it wins.
 fn resolved_paths() -> ResolvedPaths {
     let s = super::settings::load();
-    ResolvedPaths {
-        aria2_bin_dir: s
-            .paths
-            .aria2_bin_dir
-            .clone()
-            .or_else(default_aria2_bin_dir)
-            .unwrap_or_else(|| PathBuf::from(".")),
-        app_data_dir: s
-            .paths
-            .app_data_dir
-            .clone()
-            .or_else(default_app_data_dir)
-            .unwrap_or_else(|| PathBuf::from(".")),
-        log_dir: s
-            .paths
-            .log_dir
-            .clone()
-            .or_else(default_log_dir)
-            .unwrap_or_else(|| PathBuf::from(".")),
-    }
+    resolve_from_override(&s.paths)
 }
 
 fn aria2_bin_dir_internal() -> Option<PathBuf> {
@@ -123,25 +100,30 @@ pub fn announce() {
 /// `migrate_paths` during boot) and want to compute the effective set
 /// without re-reading from disk.
 pub(crate) fn resolve_from_settings(settings: &Settings) -> ResolvedPaths {
+    resolve_from_override(&settings.paths)
+}
+
+/// Shared resolver: app data dir is the override (or the default), and the
+/// `aria2`/`logs` sub-directories default to being nested under it unless
+/// overridden independently.
+fn resolve_from_override(paths: &PathOverrides) -> ResolvedPaths {
+    let app_data_dir = paths
+        .app_data_dir
+        .clone()
+        .or_else(default_app_data_dir)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let aria2_bin_dir = match paths.aria2_bin_dir.clone() {
+        Some(d) => d,
+        None => app_data_dir.join("aria2"),
+    };
+    let log_dir = match paths.log_dir.clone() {
+        Some(d) => d,
+        None => app_data_dir.join("logs"),
+    };
     ResolvedPaths {
-        aria2_bin_dir: settings
-            .paths
-            .aria2_bin_dir
-            .clone()
-            .or_else(default_aria2_bin_dir)
-            .unwrap_or_else(|| PathBuf::from(".")),
-        app_data_dir: settings
-            .paths
-            .app_data_dir
-            .clone()
-            .or_else(default_app_data_dir)
-            .unwrap_or_else(|| PathBuf::from(".")),
-        log_dir: settings
-            .paths
-            .log_dir
-            .clone()
-            .or_else(default_log_dir)
-            .unwrap_or_else(|| PathBuf::from(".")),
+        aria2_bin_dir,
+        app_data_dir,
+        log_dir,
     }
 }
 

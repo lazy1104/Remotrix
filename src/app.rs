@@ -670,6 +670,18 @@ pub(crate) fn revert_apply_settings(state: &mut Remotrix) {
         .settings_ui
         .ed2k_node_list_picker
         .set_value(state.settings.aria2.ed2k_node_list.clone());
+    state
+        .settings_ui
+        .aria2_dir_picker
+        .set_value(state.settings.last_resolved.aria2_bin_dir.to_string_lossy());
+    state
+        .settings_ui
+        .app_data_dir_picker
+        .set_value(state.settings.last_resolved.app_data_dir.to_string_lossy());
+    state
+        .settings_ui
+        .log_dir_picker
+        .set_value(state.settings.last_resolved.log_dir.to_string_lossy());
     state.ua_editor = text_editor::Content::with_text(&state.settings.aria2.user_agent);
     state.bt_tracker_editor = text_editor::Content::with_text(&crate::trackers::to_lines(
         &state.settings.aria2.bt_tracker,
@@ -1737,41 +1749,32 @@ pub(crate) fn apply_path(state: &mut Remotrix, id: PathPickerId, p: PathBuf) {
         }
         PathPickerId::CustomAria2Dir => {
             state.settings.record_path(id.history_key(), &s);
-            state.applied_settings.record_path(id.history_key(), &s);
             state.settings.paths.aria2_bin_dir = Some(p.clone());
-            state.applied_settings.paths.aria2_bin_dir = Some(p.clone());
             state
                 .settings_ui
                 .aria2_dir_picker
                 .set_value(p.to_string_lossy());
             state.settings_ui.aria2_dir_picker.close_history();
-            state.restart_pending = true;
             mark_settings_dirty(state);
         }
         PathPickerId::CustomAppDataDir => {
             state.settings.record_path(id.history_key(), &s);
-            state.applied_settings.record_path(id.history_key(), &s);
             state.settings.paths.app_data_dir = Some(p.clone());
-            state.applied_settings.paths.app_data_dir = Some(p.clone());
             state
                 .settings_ui
                 .app_data_dir_picker
                 .set_value(p.to_string_lossy());
             state.settings_ui.app_data_dir_picker.close_history();
-            state.restart_pending = true;
             mark_settings_dirty(state);
         }
         PathPickerId::CustomLogDir => {
             state.settings.record_path(id.history_key(), &s);
-            state.applied_settings.record_path(id.history_key(), &s);
             state.settings.paths.log_dir = Some(p.clone());
-            state.applied_settings.paths.log_dir = Some(p.clone());
             state
                 .settings_ui
                 .log_dir_picker
                 .set_value(p.to_string_lossy());
             state.settings_ui.log_dir_picker.close_history();
-            state.restart_pending = true;
             mark_settings_dirty(state);
         }
     }

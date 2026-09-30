@@ -6,9 +6,9 @@ use iced::Task;
 
 use crate::app::{
     apply_settings, begin_close, changelog_fetch_task, check_updates, concat_changelog,
-    continue_close_flow, dismiss_toast, mark_settings_dirty, open_path_in_manager, rebuild_theme,
-    revert_apply_settings, send_download_aria2_update, send_system_notification, set_page,
-    spawn_toast, start_tracker_fetch, Remotrix, UpdateDialogState,
+    continue_close_flow, dismiss_toast, mark_settings_dirty, open_path_in_manager, picker_mut,
+    rebuild_theme, revert_apply_settings, send_download_aria2_update, send_system_notification,
+    set_page, spawn_toast, start_tracker_fetch, Remotrix, UpdateDialogState,
 };
 use crate::config;
 use crate::config::MAX_CUSTOM_COLOR_HISTORY;
@@ -1165,22 +1165,24 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
             Task::none()
         }
         SettingsMsg::RestoreDefaultPath(id) => {
-            match id {
+            let default = match id {
                 PathPickerId::CustomAria2Dir => {
                     state.settings.paths.aria2_bin_dir = None;
-                    state.applied_settings.paths.aria2_bin_dir = None;
+                    Some(state.settings.last_resolved.aria2_bin_dir.clone())
                 }
                 PathPickerId::CustomAppDataDir => {
                     state.settings.paths.app_data_dir = None;
-                    state.applied_settings.paths.app_data_dir = None;
+                    Some(state.settings.last_resolved.app_data_dir.clone())
                 }
                 PathPickerId::CustomLogDir => {
                     state.settings.paths.log_dir = None;
-                    state.applied_settings.paths.log_dir = None;
+                    Some(state.settings.last_resolved.log_dir.clone())
                 }
-                _ => {}
+                _ => None,
+            };
+            if let Some(default) = default {
+                picker_mut(state, id).set_value(default.to_string_lossy());
             }
-            state.restart_pending = true;
             mark_settings_dirty(state);
             Task::none()
         }

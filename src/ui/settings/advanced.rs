@@ -389,18 +389,18 @@ pub(super) fn paths_section<'a>(
     col = col.push(paths_row(
         fluent,
         theme,
-        &fluent.get(Tr::PathAria2DirLabel),
-        &settings_ui.aria2_dir_picker,
-        PathPickerId::CustomAria2Dir,
-        settings.paths.aria2_bin_dir.is_some(),
-    ));
-    col = col.push(paths_row(
-        fluent,
-        theme,
         &fluent.get(Tr::PathAppDataDirLabel),
         &settings_ui.app_data_dir_picker,
         PathPickerId::CustomAppDataDir,
         settings.paths.app_data_dir.is_some(),
+    ));
+    col = col.push(paths_row(
+        fluent,
+        theme,
+        &fluent.get(Tr::PathAria2DirLabel),
+        &settings_ui.aria2_dir_picker,
+        PathPickerId::CustomAria2Dir,
+        settings.paths.aria2_bin_dir.is_some(),
     ));
     col = col.push(paths_row(
         fluent,
@@ -446,6 +446,7 @@ pub(super) fn paths_row<'a>(
         button(text(fluent.get(Tr::PathRestoreDefault)).size(FONT_SMALL))
             .on_press(Message::Settings(SettingsMsg::RestoreDefaultPath(id)))
             .padding(PADDING_BUTTON_SM)
+            .height(Length::Fixed(crate::ui::components::CONTROL_HEIGHT))
             .style(theme::style::button::secondary())
             .into()
     } else {

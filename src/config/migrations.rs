@@ -55,12 +55,14 @@ pub(crate) fn fix_dead_ed2k_bootstrap_urls(settings: &mut Settings) -> bool {
 /// - `aria2_bin_dir` and `log_dir`: full recursive copy of every file
 ///   under the old directory. Skips any individual file that already
 ///   exists at the destination (so a non-empty target is partially
-///   honoured rather than overwritten).
+///   honoured rather than overwritten). By default these nest under the
+///   app data dir, so they follow a cache-dir override automatically;
+///   they only stay put when their own override is set.
 /// - `app_data_dir`: only a fixed whitelist of files/dirs (`remotrix.db`,
 ///   `remotrix.db-journal`, `ed2k-bootstrap`, `ed2k-search`) is moved.
-///   The internal `aria2/` and `logs/` directories are intentionally
-///   skipped — they have their own override switches and are migrated
-///   by the two preceding rules.
+///   The internal `aria2/` and `logs/` sub-directories are handled by the
+///   two preceding rules (they re-root when not independently overridden)
+///   and are deliberately skipped here to avoid a double copy.
 ///
 /// Errors are returned as `String` so the caller can surface them
 /// without dragging `anyhow` into the boot path; missing source paths
@@ -234,7 +236,7 @@ mod tests {
     }
 
     #[test]
-    fn migrate_paths_app_data_whitelist() {
+    fn migrate_paths_app_data_reroots_nested_children() {
         let old = unique_tmp("appdata-old");
         let new = unique_tmp("appdata-new");
         std::fs::create_dir_all(&old).unwrap();
@@ -246,9 +248,9 @@ mod tests {
 
         let mut settings = Settings {
             last_resolved: ResolvedPaths {
-                aria2_bin_dir: old.clone(),
+                aria2_bin_dir: old.join("aria2"),
                 app_data_dir: old.clone(),
-                log_dir: old.clone(),
+                log_dir: old.join("logs"),
             },
             ..Settings::default()
         };
@@ -256,14 +258,17 @@ mod tests {
 
         migrate_paths(&mut settings).unwrap();
 
-        assert!(new.join("remotrix.db").exists());
         assert!(
-            !new.join("aria2").exists(),
-            "aria2/ must not be migrated here"
+            new.join("remotrix.db").exists(),
+            "whitelist db must migrate"
         );
         assert!(
-            !new.join("logs").exists(),
-            "logs/ must not be migrated here"
+            new.join("aria2").join("keep.bin").exists(),
+            "nested aria2/ must re-root under the new app_data"
+        );
+        assert!(
+            new.join("logs").join("keep.log").exists(),
+            "nested logs/ must re-root under the new app_data"
         );
 
         let _ = std::fs::remove_dir_all(&old);
