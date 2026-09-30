@@ -90,11 +90,13 @@ may include breaking changes until `1.0.0`).
 - All runtime assets are compile-time embedded — packages ship only the binary. aria2-next is NOT bundled
   (fetched at runtime).
 - The app also installs a per-user `.desktop` at runtime (`src/config/install.rs::install_desktop_file()`); a
-  packaged `.deb` provides its own desktop entry. The runtime entry now writes `Icon=remotrix` and
-  additionally installs a fallback `remotrix.png` under `$XDG_DATA_HOME/icons/hicolor/256x256/apps/`
-  (sourced from `include_bytes!("../../assets/icon.png")`) so the icon resolves in GNOME whether or
-  not the deb's system-scope hicolor icon is present. The user-scope entry still shadows the deb entry
-  by XDG precedence; this is intentional (it points `Exec` at the dev/installed binary and refreshes
-  `StartupWMClass`). The content-equality short-circuit in `install_desktop_file` rewrites the file
-  whenever the template changes, so upgrading an old icon-less entry self-heals on the next launch —
-  no manual `rm ~/.local/share/applications/remotrix.desktop` is required.
+  packaged `.deb` provides its own desktop entry. The runtime entry now writes `Icon=remotrix`,
+  `MimeType=x-scheme-handler/remotrix;`, and `Exec="<exe>" %u` (for the `remotrix://` URL scheme, see
+  `docs/07-behavior-gotchas.md`), and additionally installs a fallback `remotrix.png` under
+  `$XDG_DATA_HOME/icons/hicolor/256x256/apps/` (sourced from `include_bytes!("../../assets/icon.png")`)
+  so the icon resolves in GNOME whether or not the deb's system-scope hicolor icon is present. The
+  user-scope entry still shadows the deb entry by XDG precedence; this is intentional (it points `Exec`
+  at the dev/installed binary and refreshes `StartupWMClass`). The content-equality short-circuit in
+  `install_desktop_file` rewrites the file whenever the template changes, so upgrading an old
+  icon-less or scheme-less entry self-heals on the next launch — no manual
+  `rm ~/.local/share/applications/remotrix.desktop` is required.

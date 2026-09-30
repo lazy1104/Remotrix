@@ -29,7 +29,10 @@ fn main() -> iced::Result {
 
     config::install_desktop_file();
     #[cfg(target_os = "windows")]
-    win_toast::init();
+    {
+        config::install_url_scheme();
+        win_toast::init();
+    }
 
     if std::env::var_os("REMOTRIX_RESTART").is_none()
         && app_single_instance::notify_if_running(APP_ID)
@@ -46,7 +49,11 @@ fn main() -> iced::Result {
     if let Err(e) = autostart::set_enabled(cfg.autostart_enabled) {
         tracing::warn!(error = %e, "autostart sync failed");
     }
-    let hidden_start = autostart::is_autostart_launch() && cfg.start_hidden_on_autostart;
+    let open_requested = std::env::args()
+        .nth(1)
+        .is_some_and(|a| a.starts_with("remotrix://"));
+    let hidden_start =
+        autostart::is_autostart_launch() && cfg.start_hidden_on_autostart && !open_requested;
 
     let w = cfg.window_width.max(800.0);
     let h = cfg.window_height.max(560.0);

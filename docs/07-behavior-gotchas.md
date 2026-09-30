@@ -122,6 +122,55 @@ does. The integration test harness works around this by redirecting `$HOME`, but
 set `XDG_DATA_HOME` while expecting ProjectDirs-style paths will silently land in the default
 location. Track as a real-config bug.
 
+## `remotrix://` OS custom URL scheme
+
+The companion browser extension's popup "Open Application" button navigates to
+`remotrix://open`. The URL is delivered to the desktop app by the OS handler
+that each platform registers at first launch:
+
+| Platform | Registration site | Effect |
+|---|---|---|
+| Linux   | `src/config/install.rs::install_desktop_file` rewrites `~/.local/share/applications/remotrix.desktop` with `MimeType=x-scheme-handler/remotrix;` and `Exec="<exe>" %u`, then runs `xdg-mime default remotrix.desktop x-scheme-handler/remotrix` (best-effort, logs `warn!` on failure but never blocks startup). AppImage runtime ships its own entry, so the function no-ops there. | `xdg-open remotrix://open` launches the binary with the URL as `argv[1]`. |
+| Windows | `src/config/install.rs::install_url_scheme` writes `HKEY_CLASSES_ROOT\remotrix\shell\open\command = "<exe>" "%1"` via the `windows` crate (`RegCreateKeyExW` + `RegSetValueExW`), mirroring `src/platform/autostart.rs::windows_set_enabled`. Called from `src/main.rs` once per launch; failure is `warn!`-logged. | `start remotrix://open` (or any shell/browser handoff) launches the binary with the URL as `argv[1]`. |
+| macOS   | Bundle `Info.plist` must declare `CFBundleURLTypes` with `CFBundleURLSchemes = ["remotrix"]`. The repo currently ships **no macOS bundle** (release pipeline is deb/AppImage/NSIS only); the exact fragment is committed at `assets/macos-info.plist.fragment.xml` for future packaging integration. | When `.app` packaging lands, LaunchServices routes the URL via the `kAEGetURL` AppleEvent. |
+
+The desktop CLI parser in `src/main.rs` treats **any** first argument starting
+with `remotrix://` as the "open application" gesture (only the prefix is
+inspected — the URL body is not parsed). With the app already running, a
+second invocation is short-circuited by `app_single_instance::notify_if_running`
+(`src/main.rs:34`) and the primary instance is woken via
+`Message::ShowRequested`. The handler in `src/update/misc.rs::handle_show_requested`
+delegates to `handle_activate_window`, which calls `restore_window_from_tray`
+(restoring any hidden-to-tray or autostart-hidden window) and chains
+`iced::window::request_user_attention(..., Critical)` + `gain_focus` —
+so the running instance reliably raises the window to the front in every state
+(tray-hidden, start-hidden, visible-but-occluded). When the app is not
+running, the URL launches a fresh process whose `hidden_start` flag is forced
+`false` by the `!open_requested` clause in `src/main.rs:52-53`, ensuring the
+window appears even if `start_hidden_on_autostart` is set.
+
+`install_desktop_file`'s content-equality short-circuit auto-rewrites the
+file the first time it sees the new `MimeType`/`%u` lines — users do not need
+to delete `~/.local/share/applications/remotrix.desktop` manually. Existing
+installs upgrade silently on the next boot.
+
+**Gotchas:**
+
+- `xdg-mime` may be missing on minimal containers; the failure is logged at
+  `warn!` and the URL handler simply won't be the system-wide default until
+  the user (or distro) sets it. The desktop file's `MimeType` line is still
+  written, so desktop-environment browsers that honour per-file MIME still
+  resolve the scheme.
+- macOS `.app` bundles receive URL handoff via AppleEvent, **not** via
+  `argv`; the current `argv[1]` parser in `src/main.rs` will not see the URL
+  until macOS bundle packaging + an `NSApplication` URL handler are wired up.
+  This is tracked as out-of-scope of the current task; the plist fragment is
+  pre-committed so the macOS side only needs packaging integration.
+- `HKEY_CLASSES_ROOT` writes may require elevation on locked-down Windows
+  hosts. The `install_url_scheme` failure is non-fatal (warn-only) so a
+  user without admin can still launch the app manually; only the
+  extension-button path is degraded.
+
 ## Anchored popovers toggle via their anchor button only when closed
 The speed-limit / shutdown / custom-color popovers (`src/ui/components/popover.rs`) are
 `Length::Fill` layers above the UI. Clicking their anchor button while open fires both the

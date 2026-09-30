@@ -1,0 +1,30 @@
+<!--
+macOS Info.plist fragment required for the `remotrix://` custom URL scheme.
+
+The repo currently does NOT produce macOS bundles (release pipeline builds
+deb / AppImage / NSIS only); this file documents the exact Info.plist keys
+to inject when macOS packaging is wired up (e.g. via `packager.toml`
+`bundle.macOS.info_plist_path`).
+
+When packaged as a `.app`, LaunchServices routes `remotrix://open` URLs to
+this bundle. Note that `.app` URL handoff arrives via the AppleEvent
+`kAEGetURL` (NSApplication delegate), **not** via `argv`; the runtime
+argv-based CLI parsing in `src/main.rs` may not see the URL until macOS
+URL handling is added (out of scope for the current task). See
+`docs/07-behavior-gotchas.md` for details.
+-->
+<plist version="1.0">
+  <dict>
+    <key>CFBundleURLTypes</key>
+    <array>
+      <dict>
+        <key>CFBundleURLName</key>
+        <string>Remotrix</string>
+        <key>CFBundleURLSchemes</key>
+        <array>
+          <string>remotrix</string>
+        </array>
+      </dict>
+    </array>
+  </dict>
+</plist>

@@ -39,11 +39,16 @@ pub fn install_desktop_file() {
     };
     let content = format!(
         "{}StartupWMClass=remotrix\n",
-        desktop_entry_header(&format!("\"{}\"", escape_exec(&exe.display().to_string())))
+        desktop_entry_header(&format!(
+            "\"{}\" %u",
+            escape_exec(&exe.display().to_string())
+        ))
     );
     if path.exists() {
         if let Ok(existing) = std::fs::read_to_string(&path) {
             if existing == content {
+                #[cfg(target_os = "linux")]
+                set_default_url_handler();
                 return;
             }
         }
@@ -53,6 +58,26 @@ pub fn install_desktop_file() {
         if std::fs::rename(&tmp, &path).is_ok() {
             install_user_icon(&data_home);
         }
+    }
+    #[cfg(target_os = "linux")]
+    set_default_url_handler();
+}
+
+#[cfg(target_os = "linux")]
+fn set_default_url_handler() {
+    let status = std::process::Command::new("xdg-mime")
+        .arg("default")
+        .arg("remotrix.desktop")
+        .arg("x-scheme-handler/remotrix")
+        .status();
+    match status {
+        Ok(s) if !s.success() => {
+            tracing::warn!("xdg-mime default returned non-zero");
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "xdg-mime unavailable");
+        }
+        _ => {}
     }
 }
 
@@ -123,7 +148,8 @@ pub(crate) fn desktop_entry_header(exec: &str) -> String {
          Exec={exec}\n\
          Icon=remotrix\n\
          Terminal=false\n\
-         Categories=Network;FileTransfer;\n"
+         Categories=Network;FileTransfer;\n\
+         MimeType=x-scheme-handler/remotrix;\n"
     )
 }
 
@@ -132,6 +158,63 @@ pub(crate) fn desktop_entry_header(exec: &str) -> String {
 /// surrounding quotes before passing it to [`desktop_entry_header`].
 pub(crate) fn escape_exec(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Register the `remotrix://` URL scheme under `HKEY_CLASSES_ROOT` so that
+/// `start remotrix://open` (or any shell/browser handoff) launches this
+/// binary with the URL as `argv[1]`. Mirrors the `RegCreateKeyExW` /
+/// `RegSetValueExW` pattern from `src/platform/autostart.rs`.
+#[cfg(target_os = "windows")]
+pub fn install_url_scheme() {
+    use windows::core::HSTRING;
+    use windows::Win32::Foundation::ERROR_SUCCESS;
+    use windows::Win32::System::Registry::{
+        RegCloseKey, RegCreateKeyExW, RegSetValueExW, HKEY, HKEY_CLASSES_ROOT, KEY_SET_VALUE,
+        REG_CREATE_KEY_DISPOSITION, REG_OPTION_NON_VOLATILE, REG_SZ,
+    };
+
+    let Some(exe) = app_launch_exe() else { return };
+    let command = format!("\"{}\" \"%1\"", exe.display());
+
+    let mut data_utf16: Vec<u16> = command.encode_utf16().collect();
+    data_utf16.push(0);
+    let data_bytes = unsafe {
+        std::slice::from_raw_parts(data_utf16.as_ptr() as *const u8, data_utf16.len() * 2)
+    };
+
+    let mut key = HKEY::default();
+    let mut disposition = REG_CREATE_KEY_DISPOSITION(0);
+    let create_status = unsafe {
+        RegCreateKeyExW(
+            HKEY_CLASSES_ROOT,
+            &HSTRING::from("remotrix\\shell\\open\\command"),
+            None,
+            None,
+            REG_OPTION_NON_VOLATILE,
+            KEY_SET_VALUE,
+            None,
+            &mut key,
+            Some(&mut disposition),
+        )
+    };
+    if create_status != ERROR_SUCCESS {
+        tracing::warn!(
+            status = ?create_status,
+            "failed to open HKCR\\remotrix\\shell\\open\\command"
+        );
+        return;
+    }
+    let set_status =
+        unsafe { RegSetValueExW(key, &HSTRING::from(""), None, REG_SZ, Some(data_bytes)) };
+    unsafe {
+        let _ = RegCloseKey(key);
+    }
+    if set_status != ERROR_SUCCESS {
+        tracing::warn!(
+            status = ?set_status,
+            "failed to write HKCR\\remotrix\\shell\\open\\command default"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -161,6 +244,7 @@ mod tests {
         assert!(h.contains("Icon=remotrix"));
         assert!(h.contains("Terminal=false"));
         assert!(h.contains("Categories=Network;FileTransfer;"));
+        assert!(h.contains("MimeType=x-scheme-handler/remotrix;"));
     }
 
     #[test]

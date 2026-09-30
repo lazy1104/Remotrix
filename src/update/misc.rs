@@ -4,8 +4,8 @@ use iced::Task;
 
 use crate::app::{
     dismiss_toast, hide_to_tray, mark_settings_dirty, open_add_dialog, pill_to_index, refresh_tray,
-    reset_shutdown_card, restore_window_from_tray, restore_window_from_tray_wayland,
-    send_system_notification, set_page, spawn_toast, Remotrix,
+    reset_shutdown_card, restore_window_from_tray, restore_window_from_tray_wayland, set_page,
+    spawn_toast, Remotrix,
 };
 use crate::i18n::Tr;
 use crate::message::{
@@ -240,19 +240,7 @@ pub(crate) fn handle_show_requested(state: &mut Remotrix) -> Task<Message> {
     if state.window.closing {
         return Task::none();
     }
-    if state.window.hidden_to_tray {
-        return restore_window_from_tray(state);
-    }
-    let title = state.fluent.get(Tr::AppRunningTitle);
-    let body = state.fluent.get(Tr::AppRunningBody);
-    send_system_notification(
-        state,
-        title,
-        body,
-        vec![],
-        crate::notify::NotifyAction::ActivateWindow,
-    );
-    Task::none()
+    handle_activate_window(state)
 }
 
 pub(crate) fn handle_activate_window(state: &mut Remotrix) -> Task<Message> {
