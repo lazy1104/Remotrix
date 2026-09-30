@@ -15,33 +15,14 @@ Remotrix 最初是一个学习项目。我喜欢 Motrix / Motrix-next 的设计�
 
 ## 功能特性
 
-- **原生 Rust UI** —— 通过 `iced 0.14` 纯 Rust 渲染，无 Electron / 浏览器内核
-- **多协议下载** —— 支持 HTTP/HTTPS/FTP、BitTorrent（`.torrent` 文件）与 Magnet 磁力链接，由 aria2-next 驱动
-- **并行分段** —— 可配置每台服务器的分段数 / 最大连接数
-- **全局与任务级限速** —— 下载 / 上传限速独立设置，持久化到磁盘
-- **内嵌持久化** —— 任务元数据与进度存储在本地 SQLite 数据库，重启后保留
-- **自管理引擎** —— aria2-next 在运行时从 GitHub Releases 自动获取（sha256 校验、缓存、自愈），支持自动更新检查与后台暂存更新，下次重启时应用
-- **无边框窗口** —— 自定义标题栏，含最小化 / 最大化 / 关闭按钮与关闭确认对话框
-- **系统托盘** —— 托盘图标与菜单，支持最小化到托盘 / 关闭到托盘（`ldtray`）。注意：Wayland 下集成不完整，窗口只能最小化到任务栏，无法完全隐藏
-- **系统通知** —— 下载完成等事件的原生桌面通知（`notify-rust`）
-- **单实例运行** —— 二次启动时聚焦已有窗口（`app-single-instance`）
-- **主题系统** —— 选择强调色（一排色块）；iced 自动生成完整的浅色 / 深色调色板，包括由强调色派生出的 M3 风格表面背景；应用可跟随系统外观（`dark-light` 检测）
-- **国际化** —— 自动从系统区域设置检测 `zh_CN` / `en_US`，可在设置中切换
-- **任务详情** —— 摘要 / 活动 / 文件三个标签页，含 BitTorrent 分片完成度图
-- **排序与筛选** —— 按添加时间、名称、大小、进度或状态排序；按全部 / 下载中 / 已完成筛选
-- **剪贴板监听** —— 自动检测复制到剪贴板的 http/ftp/magnet/ed2k/bt 链接
-- **浏览器接管** —— 本地扩展 API（Salvo HTTP 服务，默认 `127.0.0.1:29110`），配合上游 [motrix-next-extension](https://github.com/AnInsomniacy/motrix-next-extension)（MIT，零改动复用）在浏览器中一键接管下载
-- **文件日志** —— 数据目录下按天滚动的日志文件
-- **更多协议** —— ED2K（含 server.met / nodes.dat 自动同步 + 内置搜索）、Metalink（`.metalink` / `.meta4`）、BT tracker 自动同步
-- **代理** —— HTTP / SOCKS5 全局代理 + 单任务覆盖，支持 Basic Auth
-- **限速时段调度** —— 按时间窗 + 星期自动切换限速
-- **阻止系统休眠** —— 下载时跨平台阻止系统休眠
-- **定时关机** —— 倒计时定时关机或全部任务完成后自动关机
-- **开机自启动** —— 登录后自动启动，可设置自启时隐藏到托盘
-- **自定义主题** —— HSV + Alpha 取色器 + HCT 感知色彩空间派生浅 / 深色主题
-- **应用自更新** —— AppImage / deb / NSIS 多平台自更新，Beta 频道；应用更新复用 aria2 引擎通道
-- **应用文件拖放** —— 拖入 `.torrent` / `.metalink` / URL 自动添加任务
-- **应用动画** —— 卡片 / 对话框 / 进度条 / 速度 HUD / 分类胶囊过渡动画
+- **下载与引擎** —— aria2-next 自管理侧车（运行时获取、sha256 校验、缓存、自愈、自动更新）；HTTP/HTTPS/FTP、BitTorrent、磁力链接，可配置每服务器分段与连接数，全局与任务级下载 / 上传限速持久化，任务元数据与进度存本地 SQLite。
+- **窗口与桌面集成** —— `iced 0.14` 纯 Rust 渲染、自定义无边框窗口与缩放；系统托盘（X11 完整支持，Wayland 仅最小化，Windows 附带 `TaskbarCreated` 看门狗）；跨平台系统通知（Windows 额外走 `win_toast`）；`app-single-instance` 单实例聚焦。
+- **主题与国际化** —— 强调色色板自动派生完整浅 / 深色调色板（含 M3 风格表面背景），可选 HEX 取色 + HCT 派生；跟随系统深色 / 浅色以及 macOS 14+ / Windows 11 / GNOME 强调色，主题切换走平滑过渡；`zh_CN` / `en_US` 自动检测；默认字体跟随系统 UI 字体（Linux `fc-match`、macOS NSFont、Windows SPI），用户可锁定具体字体。
+- **任务浏览** —— 任务详情多标签页（摘要 / 活动 / 文件 / Advanced），BT 分片完成度图与三态复选框文件树单任务选择；按添加时间 / 名称 / 大小 / 进度 / 状态排序，按全部 / 下载中 / 已完成 / 失败筛选，分类胶囊带计数徽标。
+- **剪贴板与浏览器接管** —— 自动检测复制到剪贴板的 http/ftp/magnet/ed2k/bt 链接；本地 Salvo HTTP 服务（默认 `127.0.0.1:29110`，支持热重启）兼容上游 [motrix-next-extension](https://github.com/AnInsomniacy/motrix-next-extension)（MIT，零改动复用）一键接管浏览器下载。
+- **扩展协议** —— ED2K（server.met / nodes.dat 自动 bootstrap + 内置搜索）、Metalink（`.metalink` / `.meta4`）、BT tracker 自动同步（预设源 + 自定义 URL + 定时同步）、BT metadata-only 下载。
+- **自动化与系统集成** —— HTTP / SOCKS5 全局 + 单任务代理（Basic Auth）；限速时段调度（时间窗 + 星期）；定时关机 / 全部完成关机；下载时跨平台阻止系统休眠；登录自启动（Linux `.desktop` / Windows `Run`）；设置 → 高级 → 路径可分别覆盖 aria2 / 应用缓存 / 日志目录，切换后下次启动自动迁移数据。
+- **更新与升级** —— aria2 与应用统一共享后台下载器（节流、重试、流式 sha256、Range 断点续传）；aria2 静默更新 + 顶边进度条；应用自更新 AppImage / deb / NSIS；「静默更新范围」四档（关闭 / 引擎 / 应用 / 应用 + 引擎），应用静默仅下载，动作由用户点击粘性 toast 上的「更新」按钮触发；RPC 端口可配置，端口冲突自动回退空闲端口。
 
 ## 截图
 
@@ -67,61 +48,123 @@ Remotrix 采用**双事件循环**设计：
 └──────────────┘  EngineEvent │        ├─ aria2-next     │
         ▲        (Subscription)│        │   (subprocess)  │
         └──────────────────────┤        └─ aria2-ws RPC   │
-                               │           (WebSocket)    │
-                               └──────────────────────────┘
+                                │           (WebSocket)    │
+                                └──────────────────────────┘
 ```
 
 ### aria2-next 生命周期
 
-- **首次启动** —— `aria2_fetcher::ensure_aria2_next()` 从 `AnInsomniacy/aria2-next` 的 GitHub Releases 下载匹配平台的资源到 `<data_dir>/aria2/`，校验 sha256，记录 `.installed` 并赋予可执行权限。后续启动直接命中缓存。
+- **首次启动** —— `updaters::aria2_fetcher::ensure_aria2_next()` 从 `AnInsomniacy/aria2-next` 的 GitHub Releases 下载匹配平台的资源到 `<data_dir>/aria2/`，校验 sha256，记录 `.installed` 并赋予可执行权限。后续启动直接命中缓存。
 - **覆盖** —— 设置 `ARIA2_BIN=/path/to/aria2-next` 可完全跳过下载（便于开发）。
 - **自愈** —— 若 `.installed` 缺失 / 损坏，会扫描目录中缓存的二进制并重建 `.installed`。
-- **更新** —— `updater::fetch_latest_release()` 比较版本；发现新版本后在后台下载并写入 `.pending-update` 标记。待更新的二进制在下次应用 / 引擎重启时替换当前版本。
+- **更新** —— `updaters::updater::fetch_latest_release()` 比较版本；发现新版本后在后台下载并写入 `.pending-update` 标记。待更新的二进制在下次应用 / 引擎重启时替换当前版本。
 - **降级模式** —— 若获取或派生失败，引擎不会退出；UI 会显示错误并提供重试（`RetryAria2Fetch`）/ 重启（`RestartEngine`）。
 
 ### 代码结构
 
 ```
 src/
-├── main.rs               # 入口、日志初始化、窗口设置
-├── app.rs                # Remotrix 状态、update()、view()、subscription()
-├── app_updater.rs        # 应用自更新：下载暂存 + 重启时替换
-├── config.rs             # 设置（serde）加载/保存、aria2 选项映射、路径辅助
-├── db.rs                 # SQLite 持久化（rusqlite）：任务元数据 + 进度刷新
-├── engine.rs             # EngineBridge：派生 tokio 监管者 + aria2-next 侧车、mpsc 通道
-├── extension_api.rs      # 浏览器扩展 API：Salvo HTTP 服务（/ping /stat /add /pause-all /resume-all）
-├── aria2_fetcher.rs      # 运行时获取 / 缓存 / 校验 aria2-next 二进制、暂存更新
-├── updater.rs            # GitHub Releases 查询、ReleaseInfo、平台 slug
-├── message.rs            # Message 枚举 + 页面 / 筛选 / 排序 / 设置枚举
-├── task.rs               # DownloadTask 模型、格式化器、TaskDetails / TaskFile
-├── i18n.rs               # 区域设置检测 + Fluent 翻译
-├── clipboard_watch.rs    # 剪贴板链接检测（http/ftp/magnet/ed2k/bt）用于自动添加
-├── logging.rs            # tracing 初始化、按天滚动日志、运行时日志级别
-├── scheduler.rs          # 限速时间段 + 星期辅助
-├── torrent_meta.rs       # .torrent 元数据解析（名称、文件、大小）
-├── trackers.rs           # BT tracker 列表解析 / 精简 / 合并
-├── notify.rs             # 原生系统通知（notify-rust）
-├── tray.rs               # 系统托盘（ldtray）：菜单、最小化/关闭到托盘、Wayland 窗口管理
+├── main.rs                      # 入口、日志初始化、窗口设置
+├── lib.rs                       # 库入口（lib + bin）
+├── app.rs                       # Remotrix 状态、update()、view()、subscription()
+├── config/
+│   ├── mod.rs
+│   ├── paths.rs                 # 路径解析器（aria2_bin_dir/session_dir/db_path/log_dir/config_file_path）
+│   ├── settings.rs              # 设置加载/保存、aria2 选项映射
+│   ├── install.rs               # 用户级 .desktop / 图标安装
+│   └── migrations.rs            # 设置一次性迁移
+├── core/
+│   ├── mod.rs
+│   ├── i18n.rs                  # 区域设置检测 + Fluent 翻译
+│   ├── logging.rs               # tracing 初始化、按天滚动日志、运行时日志级别
+│   ├── message.rs               # Message 枚举 + 页面 / 筛选 / 排序 / 设置枚举
+│   ├── scheduler.rs             # 限速时间段 + 星期辅助
+│   └── task.rs                  # DownloadTask 模型、格式化器、TaskDetails / TaskFile
+├── engine/
+│   ├── mod.rs                   # EngineBridge：派生 tokio 监管者 + aria2-next 侧车、mpsc 通道
+│   ├── install.rs               # 引擎二进制获取/缓存/校验的运行时封装
+│   └── ed2k.rs                  # ED2K 协议钩子
+├── integration/
+│   ├── mod.rs
+│   ├── clipboard_watch.rs       # 剪贴板链接检测（http/ftp/magnet/ed2k/bt）
+│   └── extension_api.rs         # 浏览器扩展 API：Salvo HTTP 服务（/ping /stat /add /pause-all /resume-all）
+├── platform/
+│   ├── mod.rs
+│   ├── autostart.rs             # 开机自启动（Linux .desktop / Windows Run）
+│   ├── notify.rs                # notify-rust 系统通知
+│   ├── port_guard.rs            # RPC 端口冲突回退
+│   ├── power.rs                 # 阻止系统休眠（systemd-inhibit / caffeinate / SetThreadExecutionState）
+│   ├── shutdown.rs              # 定时关机 / 全部完成关机
+│   ├── tray.rs                  # ldtray 托盘 + 菜单 + Wayland 窗口管理
+│   ├── tray_watchdog.rs         # Windows 监听 TaskbarCreated 自动重建托盘
+│   └── win_toast.rs             # Windows 原生 Toast（AUMID + Locate/Reveal）
+├── storage/
+│   ├── mod.rs
+│   ├── db.rs                    # SQLite 持久化（rusqlite）：任务元数据 + 进度刷新
+│   ├── ed2k_bootstrap.rs        # server.met / nodes.dat 自动同步
+│   ├── torrent_meta.rs          # .torrent 元数据解析（名称、文件、大小）
+│   └── trackers.rs              # BT tracker 列表解析 / 精简 / 合并
+├── update/
+│   ├── mod.rs
+│   ├── add.rs                   # 添加任务路径
+│   ├── engine.rs                # 引擎侧更新状态机
+│   ├── misc.rs
+│   ├── task.rs                  # 更新任务状态机
+│   ├── window.rs                # 更新 UI 状态机
+│   └── settings/
+│       ├── mod.rs
+│       └── network.rs           # 更新代理配置
+├── updaters/
+│   ├── mod.rs
+│   ├── app_updater.rs           # 应用自更新（deb / AppImage / NSIS）
+│   ├── aria2_fetcher.rs         # aria2 二进制获取 / 缓存 / 校验 / 暂存
+│   ├── download.rs              # 共享后台下载器（节流、重试、流式 sha256、Range 断点续传）
+│   └── updater.rs               # GitHub Releases 查询、ReleaseInfo、平台 slug
 └── ui/
-    ├── mod.rs            # ui 模块重导出
-    ├── theme.rs          # 强调色 → iced 调色板生成、ThemeMode、控件样式
-    ├── icon.rs           # iced_lucide 图标字体模块（构建期生成）
-    ├── icons.rs          # 图标字形常量 + 布局宽度
-    ├── dims.rs           # 共享尺寸常量
-    ├── title_bar.rs      # 自定义无边框标题栏 + 窗口控制
-    ├── resize_frame.rs   # 无边框窗口的自定义缩放手柄
-    ├── close_dialog.rs   # 关闭确认遮罩
-    ├── confirm_dialog.rs # 通用确认遮罩
-    ├── sidebar.rs        # 导航：任务 / 新建 / 关于 / 设置
-    ├── category_bar.rs   # 任务筛选（全部 / 下载中 / 已完成）+ 设置分类
-    ├── task_list.rs      # 下载卡片：进度、操作、排序菜单
-    ├── add_dialog.rs     # 新建下载遮罩（url / 种子 / 分段 / 高级）
-    ├── details_dialog.rs # 任务详情：摘要 / 活动 / 文件标签页
-    ├── sort.rs           # 任务排序比较器
-    ├── about_dialog.rs   # 关于 / 引擎信息遮罩
-    ├── update_dialog.rs  # 应用 / 引擎更新遮罩
-    ├── settings_page.rs  # 常规、下载、BitTorrent、ed2k、网络、高级、外观
-    └── components/       # 可复用控件（对话框、拖拽上传、分片图、文件树、时间/路径选择、Toast 等）
+    ├── mod.rs                   # ui 模块重导出
+    ├── view.rs                  # 顶层 view 入口
+    ├── animation.rs             # ANIM_* 时长 token
+    ├── border_bar.rs            # 顶部边框进度条（渐变位移）
+    ├── scroll_anim.rs
+    ├── system_default_font.rs   # 平台默认字体解析（fc-match / NSFont / SPI）
+    ├── font_autopick.rs         # locale-aware fontdb 枚举回退
+    ├── color/
+    │   ├── mod.rs
+    │   ├── theme.rs             # 强调色 → iced 调色板生成、ThemeMode
+    │   └── hct.rs               # HCT 感知色彩空间派生
+    ├── settings/
+    │   ├── mod.rs
+    │   ├── general.rs           # 常规设置
+    │   ├── download.rs          # 下载设置
+    │   ├── bittorrent.rs        # BT 设置（含 tracker 同步）
+    │   ├── ed2k.rs              # ED2K 设置（含 server.met / nodes.dat 选择）
+    │   ├── network.rs           # 代理设置
+    │   └── advanced.rs          # 高级设置（含路径、浏览器接管、日志）
+    ├── icon.rs                  # iced_lucide 图标字体模块（构建期生成）
+    ├── icons.rs                 # 图标字形常量 + 布局宽度
+    ├── dims.rs                  # 共享尺寸常量
+    ├── title_bar.rs             # 自定义无边框标题栏 + 窗口控制
+    ├── resize_frame.rs          # 无边框窗口的自定义缩放手柄
+    ├── close_dialog.rs          # 关闭确认遮罩
+    ├── confirm_dialog.rs        # 通用确认遮罩
+    ├── sidebar.rs               # 导航：任务 / 新建 / 关于 / 设置
+    ├── category_bar.rs          # 任务筛选（全部 / 下载中 / 已完成 / 失败）+ 设置分类
+    ├── task_list.rs             # 下载卡片：进度、操作、排序菜单
+    ├── add_dialog.rs            # 新建下载遮罩（url / 种子 / 分段 / 高级）
+    ├── details_dialog.rs        # 任务详情：摘要 / 活动 / 文件 / Advanced 标签页
+    ├── sort.rs                  # 任务排序比较器
+    ├── about_dialog.rs          # 关于 / 引擎信息遮罩
+    ├── update_dialog.rs         # 应用 / 引擎更新遮罩
+    └── components/              # 可复用控件
+        ├── dialog.rs / popover.rs / toast.rs          # 弹层 / 浮层 / 提示
+        ├── path_picker.rs / color_picker.rs / font_picker.rs / tag_picker.rs / drop_down.rs / number_stepper.rs  # 选择器
+        ├── secret_input.rs / ctx_input.rs / ctx_menu.rs / copyable_text.rs / truncated_text.rs / translate.rs  # 文本输入
+        ├── file_drop_zone.rs / torrent_upload.rs / drop_overlay.rs  # 拖放
+        ├── file_tree.rs / tri_checkbox.rs / torrent_file_list.rs / piece_map.rs / key_value_list.rs / logo.rs  # 任务详情
+        ├── speed_hud.rs / speed_popover.rs / shutdown_popover.rs  # HUD
+        ├── status_dot.rs / spinner.rs / swatch_icon.rs / scale.rs  # 装饰
+        ├── expand.rs / slim_scrollable.rs / scroll_top_gap.rs / tooltip.rs  # 布局
+        └── mod.rs
 ```
 
 ## 构建与运行
@@ -156,9 +199,10 @@ ARIA2_BIN=/path/to/aria2-next cargo run --
 ## 检查
 
 ```bash
-cargo test --workspace     # 运行测试
-cargo clippy --workspace   # 静态检查（不允许有警告）
-cargo fmt --check          # 格式检查
+cargo test --workspace                                          # 单元 / 集成测试
+cargo test --test download_e2e -- --nocapture                   # 端到端下载测试（需设置 ARIA2_BIN）
+cargo clippy --workspace                                        # 静态检查（不允许有警告）
+cargo fmt --check                                               # 格式检查
 ```
 
 ## 配置
@@ -175,9 +219,9 @@ cargo fmt --check          # 格式检查
 - macOS: `~/Library/Application Support/dev.remotrix.Remotrix/`
 - Windows: `%APPDATA%\remotrix\Remotrix\data\`
 
-持久化的设置包括下载文件夹、最大并发下载数、分段数、全局与任务级限速、主题模式 + 所选浅色 / 深色主题、区域设置、自动更新偏好、关闭到托盘，以及全套 aria2 选项（每服务器最大连接数、最小分段大小、自动重命名、允许覆盖、断点续传、校验完整性、User-Agent、请求头、代理、重试、超时、bt-tracker、做种比例 / 时长、DHT 等）。
+持久化的设置包括下载文件夹、最大并发下载数、分段数、全局与任务级限速、主题模式 + 所选浅色 / 深色主题、跟随系统强调色开关、区域语言、字体选择、自动更新偏好与静默更新范围、关闭到托盘，以及全套 aria2 选项（每服务器最大连接数、最小分段大小、自动重命名、允许覆盖、断点续传、校验完整性、User-Agent、请求头、代理、重试、超时、bt-tracker、做种比例 / 时长、DHT 等）。
 
-「设置 → 高级 → 路径」分组可分别覆盖 **aria2-next 目录**、**应用缓存目录**、**日志目录**。修改后需重启应用才生效；下次启动时若 `last_resolved` 与新路径不同，应用会把旧路径下对应的数据（aria2 bin dir 的全部文件、日志目录的全部文件、应用缓存目录的 `remotrix.db` / `ed2k-bootstrap/` / `ed2k-search/` 白名单子项）**物理复制**到新路径；新路径若已存在同名文件则跳过单文件复制，原路径文件不会被删除。`ARIA2_BIN` 环境变量优先级最高，UI 上的覆盖对其无效。
+「设置 → 高级 → 路径」分组可分别覆盖 **aria2-next 目录**、**应用缓存目录**、**日志目录**。修改后**不会立刻生效**——界面显示「待保存更改」与重启提示，需点「保存并重启应用」才一次性提交；下次启动时若新路径与原 `last_resolved` 不同，应用会把旧路径下对应的数据（aria2 bin dir 的全部文件、日志目录的全部文件、应用缓存目录的 `remotrix.db` / `ed2k-bootstrap/` / `ed2k-search/` 白名单子项）**物理复制**到新路径；新路径若已存在同名文件则跳过单文件复制，原路径文件不会被删除。只改「应用缓存目录」时，默认内嵌其中的 aria2 目录与日志目录会跟随迁移到新缓存目录；单独设置 aria2 / 日志目录时仍以显式设置为准。`ARIA2_BIN` 环境变量优先级最高，UI 上的覆盖对其无效。
 
 ## 浏览器接管（扩展 API）
 
@@ -208,71 +252,44 @@ Remotrix 在本地暴露一个 HTTP 服务（默认端口 `29110`，仅监听回
 | 引擎 | `aria2-next` 侧车 + `aria2-ws 0.5` | C++ aria2 分支，WebSocket 上的 JSON-RPC，以子进程方式派生 |
 | 异步 | `tokio 1.x`（full） | 引擎 + UI 共享运行时 |
 | 持久化 | `rusqlite 0.40`（bundled + fallible_uint） | 内嵌 SQLite，存储任务元数据 / 进度 |
-| 主题 | iced `Theme::custom`（内置） | 强调色色块；iced 自动生成浅 / 深色调色板 |
+| 主题 | iced `Theme::custom` + `palette 0.7` | 强调色 → 调色板生成；HCT 感知色彩空间派生浅 / 深色主题 |
+| 系统偏好 | `mundy 0.2`（color-scheme + accent-color + async-io） | 统一系统深色 / 浅色 + OS 强调色读取（取代 dark-light） |
 | i18n | `fluent-templates 0.15` | Fluent 翻译（zh / en） |
-| 系统主题 | `dark-light 2.0` | 检测系统深色 / 浅色偏好 |
+| 字体 | `fontdb 0.24` + `system-fonts 0.1` | locale-aware 系统字体枚举；平台默认字体走 OS-native API |
 | 文件对话框 | `rfd 0.17` | 原生文件选择器 |
-| 系统托盘 | `ldtray 0.1` | 托盘图标 + 菜单 |
-| 通知 | `notify-rust 4.17`（tokio） | 原生桌面通知 |
+| 系统托盘 | `ldtray 0.1`（固定 `=0.1.2`） | 托盘图标 + 菜单；Windows 看门狗自动恢复 Explorer 重启后的图标 |
+| 通知 | `notify-rust 4.17`（tokio） | 跨平台原生通知；Windows 额外走 `win_toast`（AUMID + Locate / Reveal） |
 | 单实例 | `app-single-instance 0.1` | 单实例运行并聚焦已有窗口 |
-| HTTP 客户端 | `reqwest 0.13`（rustls、json） | GitHub Releases 获取 / 更新器 |
-| HTTP 服务 | `salvo 0.95`（cors + http1 + server-handle） | 浏览器扩展本地回环 API |
-| 哈希 | `sha2 0.11` | aria2-next 二进制校验和验证 |
+| HTTP 客户端 | `reqwest 0.13`（rustls、json、socks） | GitHub Releases 获取 / 更新器 / 代理 |
+| HTTP 服务 | `salvo 0.95`（cors + http1 + server-handle） | 浏览器扩展本地回环 API，支持热重启 |
+| 哈希 | `sha2 0.11` | aria2-next / 应用更新二进制校验和验证 |
 | 图标 | `iced_lucide 0.1`、`iced_aw 0.14` | 图标字体 + 时间选择器 |
-| 动画 | `iced_anim 0.3` | 卡片 / 对话框 / 进度条过渡动画 |
+| 动画 | `iced_anim =0.3.1` | 7 个统一时长 token 的过渡动画 |
 | 图像 | `image 0.25`（png） | 应用图标加载 |
-| 日志 | `tracing` + `tracing-appender 0.2` | 滚动文件日志 |
+| 日志 | `tracing` + `tracing-appender 0.2` + `tracing-subscriber 0.3` | 滚动文件日志 + env-filter |
 | 配置目录 | `directories 6` | XDG / 用户数据路径 |
-| 字体 | `fontdb 0.24` | 设置中用到的系统字体枚举 |
 | 进程 | `libc 0.2` | 对残留 aria2-next 进程发送 SIGTERM/SIGKILL |
 | 时间 | `chrono 0.4`（clock） | 时间戳格式化 |
+| 文件 / 目录 | `open 5` | 打开文件 / 目录 / URL |
+| Windows | `windows 0.62`、`libloading 0.9` | 任务栏看门狗、AUMID、原生 Toast、阻止休眠 |
 
 ## 路线图
 
 **已完成**
-- [x] 双循环引擎桥 + aria2-next 侧车监管者
-- [x] 基础 UI：侧边栏、分类栏、任务列表、添加对话框、设置
-- [x] 无边框窗口 + 自定义标题栏
-- [x] i18n（zh / en）+ 强调色主题 + 系统自动主题
-- [x] SQLite 任务持久化
-- [x] aria2-next 运行时自动获取 + 自动更新
-- [x] 任务详情对话框（分片图、文件、BT 信息）
-- [x] Magnet 磁力链接支持
-- [x] 拖拽文件 / 任务支持
-- [x] 系统托盘集成（X11 下支持最小化到托盘 / 关闭到托盘；Wayland 下不完全，界面只能最小化不能隐藏）
-- [x] 系统通知（下载完成等）
-- [x] 单实例运行
-- [x] 应用动画效果 —— 卡片 / 对话框 / 进度条 / 速度 HUD / 分类胶囊全套过渡动画（`iced_anim`）
-- [x] 开机自启动 —— Linux `.desktop` / Windows `Run`，可设置自启时隐藏到托盘（AppImage 路径处理）
-- [x] 浏览器接管 —— Salvo 本地扩展 API + 复用 motrix-next-extension 一键接管浏览器下载
-- [x] 定时关机 / 下载完成关机 —— 倒计时卡片 + 跨平台 shutdown 命令
-- [x] 阻止系统休眠 —— 下载进行时跨平台抑制系统休眠（`systemd-inhibit` / `caffeinate` / `SetThreadExecutionState`）
-- [x] ED2K 协议 —— server.met / nodes.dat 自动 bootstrap + 内置搜索面板
-- [x] Metalink 协议 —— `.metalink` / `.meta4` 独立添加 tab，支持「follow Metalink」
-- [x] BT tracker 自动同步 —— 预设源 + 自定义 URL + 定时同步
-- [x] BT 仅元数据下载 —— `bt-metadata-only=true`，metadata 持久化到 SQLite
-- [x] HTTP / SOCKS5 代理 —— 全局 + 单任务覆盖，支持 Basic Auth
-- [x] 限速时段调度 —— 时间窗 + 星期自动切换下载 / 上传限速
-- [x] 自定义强调色 + HCT 主题 —— HSV + Alpha + HEX 取色器，感知色彩空间派生浅 / 深色主题
-- [x] 应用自更新 —— AppImage / deb / NSIS 多平台自更新，Beta 频道，应用更新复用 aria2 引擎通道（统一代理 / 进度 / 校验）
-- [x] aria2 静默更新 —— 后台暂存 + 系统通知重启动作 + 下载进度可视化
-- [x] RPC 端口配置 —— 自定义 aria2 RPC 监听端口，端口冲突时自动回退到空闲端口
-- [x] 应用文件拖放 —— 全局窗口拖入 `.torrent` / `.metalink` / URL 自动添加任务，含 overlay 提示
-- [x] 路径选择历史 —— 路径选择器持久化历史下拉
-- [x] 右键上下文菜单 —— 输入框 cut / copy / paste / select-all
-- [x] Windows 原生 Toast —— `win_toast` + AUMID 快捷方式 + 多动作（Locate / Reveal）
-- [x] Windows 托盘看门狗 —— 监听 `TaskbarCreated`，Explorer 重启后自动恢复托盘图标
-- [x] 托盘增强 —— tooltip 显示 ⬇ / ⬆ 速度与活动任务数，菜单暴露 Pause All / Resume All / Open Folder
-- [x] 任务详情「Advanced」tab —— UA / cookie / referer / proxy / headers 可编辑
-- [x] 单任务文件选择 —— `EngineCmd::SelectFiles` + 三态复选框文件树（含虚拟化）
-- [x] 设置项扩展 —— 自动清理已完成任务、文件丢失重下、`close_to_tray`、并发下载上限、`prevent_sleep`、每任务限速、文件分配 / 磁盘缓存、aria2 RPC 端口配置、应用 + 引擎日志级别、变更日志 markdown 渲染
-- [x] 优雅关闭 —— 关闭时清理残留 aria2 进程
-- [x] 「关于」对话框 —— 应用 logo + 依赖致谢
+
+- **架构与 UI** —— 双循环引擎桥 + aria2-next 侧车监管者；侧边栏 / 分类栏 / 任务列表 / 添加对话框 / 设置等基础 UI；无边框窗口 + 自定义标题栏 + 缩放；单实例运行；统一动画系统（7 个 `ANIM_*` token，覆盖卡片 / 对话框 / 进度条 / 速度 HUD / 分类胶囊 / Toast / 弹出遮罩）。
+- **引擎与协议** —— aria2-next 运行时获取 + sha256 校验 + 自愈 + 自动更新；任务元数据与进度持久化到 SQLite；ED2K（server.met / nodes.dat 自动 bootstrap + 内置搜索）、Metalink、BT tracker 自动同步、BT metadata-only；HTTP / SOCKS5 全局 + 单任务代理（Basic Auth）。
+- **桌面集成** —— 系统托盘（X11 完整，Wayland 仅最小化，Windows 含 `TaskbarCreated` 看门狗）；跨平台系统通知（Windows 额外走 `win_toast`）；剪贴板链接自动检测；应用文件拖放（含 overlay 提示）。
+- **主题与本地化** —— i18n（zh / en）；强调色主题 + 跟随系统外观 + 跟随系统强调色 + 主题过渡动画；自定义强调色 + HCT 派生；默认字体跟随系统（Linux `fc-match` / macOS NSFont / Windows SPI，失败回退 fontdb）。
+- **自动化与系统** —— 限速时段调度（时间窗 + 星期）；定时关机 / 全部完成关机；下载时跨平台阻止系统休眠；登录自启动；设置 → 高级 → 路径自定义覆盖并下次启动自动迁移数据。
+- **更新与升级** —— 应用自更新（AppImage / deb / NSIS），统一共享后台下载器（节流 / 重试 / 流式 sha256 / Range 断点续传），完成弹粘性 toast 由用户点击「更新」按钮 apply；aria2 静默更新 + 后台暂存 + 系统通知重启动作；RPC 端口可配置，端口冲突自动回退；顶边进度条统一反馈后台任务。
+- **设置扩展与体验细节** —— 任务详情多标签页（含 BT 分片图、文件树、Advanced UA / cookie / headers）；单任务三态复选框文件选择；分类筛选胶囊带计数徽标；排序 / 路径选择历史 / 右键菜单；设置项扩展（自动清理、并发上限、每任务限速、文件分配、日志级别、变更日志渲染等）；优雅关闭；「关于」对话框。
+- **测试** —— 引擎 / 任务 / 调度等核心模块单元测试；`download_e2e` 端到端下载测试（需 `ARIA2_BIN`）。
 
 **待办**
+
 - [ ] 下载功能完善与全面测试 —— HTTP/HTTPS 与 BT 目前可用，但尚未覆盖足够多的场景（断点续传、完整性校验、限速、失败重试等），需要完整回归测试
-- [ ] 系统级单元测试 —— 补齐 `db.rs` / `app.rs` / 各 dialog 视图 / `tray.rs` / `extension_api.rs` Salvo 处理器等尚未覆盖模块的单元与集成测试（引擎 / 任务 / 调度等核心模块已有测试）
-- [x] 各类路径的自定义 —— 在「设置 → 高级 → 路径」分组中可分别覆盖 aria2-next 目录、应用缓存目录、日志目录；切换后下次启动自动从旧路径迁移数据，原路径文件保留；可随时「恢复默认」
+- [ ] 系统级单元测试 —— 补齐 `db.rs` / `app.rs` / 各 dialog 视图 / `tray.rs` / `extension_api.rs` Salvo 处理器等尚未覆盖模块的单元与集成测试
 - [ ] 文件关联 —— 设置各类文件（如 `.torrent`）的默认打开程序
 - [ ] `motrixnext://` 深链协议 —— 应用未启动时被扩展唤醒 / 网站下载按钮（当前核心 HTTP 拦截不依赖它）
 - [ ] Wayland 托盘兼容性完善 —— 目前在 Wayland 下窗口只能最小化无法完全隐藏到托盘；目前通过系统通知唤醒，待完善窗口隐藏 / 托盘 / 通知兼容性

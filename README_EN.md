@@ -21,33 +21,14 @@ with AI assistance.
 
 ## Features
 
-- **Native Rust UI** — pure-Rust rendering via `iced 0.14`, no Electron / browser stack
-- **Multi-protocol downloads** — HTTP/HTTPS/FTP, BitTorrent (`.torrent` files), and Magnet links through aria2-next
-- **Parallel segments** — configurable split / max-connections per server
-- **Global & per-task speed limits** — separate download / upload caps, persisted to disk
-- **Embedded persistence** — task metadata and progress are stored in a local SQLite database and survive restarts
-- **Self-managing engine** — aria2-next is fetched at runtime from GitHub Releases (sha256-verified, cached, self-healing), with automatic update checks and staged background updates applied on the next restart
-- **Frameless window** — custom title bar with minimize / maximize / close controls and a close-confirmation dialog
-- **System tray** — tray icon and menu, with minimize-to-tray / close-to-tray (`ldtray`). Note: integration is incomplete under Wayland — the window can only be minimized to the taskbar, not fully hidden
-- **System notifications** — native desktop notifications for events like download completion (`notify-rust`)
-- **Single instance** — a second launch focuses the existing window (`app-single-instance`)
-- **Theming** — pick an accent color (a wrapping row of swatches); iced auto-generates the full light / dark palette from it, including a M3-style surface background derived from the accent hue, and the app can follow the system appearance (`dark-light` detection)
-- **Internationalization** — auto-detects `zh_CN` / `en_US` from the system locale, switchable in Settings
-- **Task details** — summary / activity / files tabs with a BitTorrent piece-completion map
-- **Sorting & filters** — sort by added time, name, size, progress, or status; filter by All / Downloading / Completed
-- **Clipboard watching** — auto-detects http/ftp/magnet/ed2k/bt links copied to the clipboard
-- **Browser takeover** — a local extension API (Salvo HTTP server, default `127.0.0.1:29110`) that works out of the box with the upstream [motrix-next-extension](https://github.com/AnInsomniacy/motrix-next-extension) (MIT, reused unmodified)
-- **File logging** — daily rolling logs written under the data directory
-- **More protocols** — ED2K (with automatic `server.met` / `nodes.dat` sync + built-in search), Metalink (`.metalink` / `.meta4`), BT tracker auto-sync
-- **Proxy** — HTTP / SOCKS5 global proxy with per-task override and Basic Auth
-- **Scheduled speed limits** — automatically switch caps by time window and weekday
-- **System sleep inhibition** — cross-platform prevention of system sleep while downloads are active
-- **Scheduled shutdown** — countdown shutdown or auto-shutdown when all tasks finish
-- **Launch at login** — auto-start after sign-in, optionally hidden to tray
-- **Custom theme** — HSV + Alpha color picker with HCT-based light / dark palette generation
-- **App self-update** — AppImage / deb / NSIS self-update across platforms, with a Beta channel; app updates reuse the aria2 engine channel
-- **App-wide file drop** — drop `.torrent` / `.metalink` / URL onto the window to auto-add a task
-- **App animations** — transitions on cards, dialogs, progress bars, speed HUD, and category capsules
+- **Downloads & engine** — self-managing aria2-next sidecar (runtime fetch, sha256 verify, cache, self-heal, auto-update); HTTP/HTTPS/FTP, BitTorrent, and Magnet links; configurable split / max-connections per server; global & per-task download / upload caps persisted to disk; task metadata and progress in a local SQLite database.
+- **Window & desktop integration** — `iced 0.14` pure-Rust rendering, frameless window with custom resize handles; system tray (X11 full support, Wayland minimize-only, Windows `TaskbarCreated` watchdog); cross-platform system notifications (`notify-rust`, plus `win_toast` on Windows); `app-single-instance` focuses the existing window.
+- **Theme & i18n** — accent-color swatches auto-derive the full light / dark palette including a M3-style surface background; optional HEX picker with HCT-based derivation; follow system dark / light mode and macOS 14+ / Windows 11 / GNOME accent color, with smooth transition animations; auto-detected `zh_CN` / `en_US`; default font follows the OS UI font (Linux `fc-match`, macOS NSFont, Windows SPI), with optional pinning.
+- **Task browsing** — multi-tab task details (Summary / Activity / Files / Advanced) with a BT piece-completion map and tri-state checkbox file tree for per-task selection; sort by added time / name / size / progress / status; filter by All / Downloading / Completed / Failed, with count badges in the category capsules.
+- **Clipboard & browser takeover** — auto-detect http/ftp/magnet/ed2k/bt links copied to the clipboard; a local Salvo HTTP server (default `127.0.0.1:29110`, hot-restartable) interoperates out of the box with the upstream [motrix-next-extension](https://github.com/AnInsomniacy/motrix-next-extension) (MIT, reused unmodified) to intercept browser downloads.
+- **Extended protocols** — ED2K (automatic `server.met` / `nodes.dat` bootstrap + built-in search), Metalink (`.metalink` / `.meta4`), BT tracker auto-sync (preset sources + custom URLs + periodic sync), BT metadata-only downloads.
+- **Automation & system integration** — HTTP / SOCKS5 global + per-task proxy with Basic Auth; scheduled speed limits by time window + weekday; scheduled shutdown / shutdown-when-all-done; cross-platform system sleep inhibition while downloads are active; launch at login (Linux `.desktop` / Windows `Run`); Settings → Advanced → Paths to override aria2 / app cache / log dirs with automatic data migration on next launch.
+- **Updates** — a shared background downloader (throttling, retry, streaming sha256, Range resume) backs both aria2 and app updates; aria2 silent update + top-border progress bar; AppImage / deb / NSIS app self-update; silent-update scope selector (Off / Engine / App / App + Engine) — "App" silent only downloads, the action still requires the user to click the sticky toast's "Update" button; customizable RPC port with automatic fallback on conflict.
 
 ## Screenshots
 
@@ -75,19 +56,19 @@ Remotrix uses a **dual event loop** design:
 └──────────────┘  EngineEvent │        ├─ aria2-next     │
         ▲        (Subscription)│        │   (subprocess)  │
         └──────────────────────┤        └─ aria2-ws RPC   │
-                               │           (WebSocket)    │
-                               └──────────────────────────┘
+                                │           (WebSocket)    │
+                                └──────────────────────────┘
 ```
 
 ### aria2-next lifecycle
 
-- **First launch** — `aria2_fetcher::ensure_aria2_next()` downloads the matching platform asset from
+- **First launch** — `updaters::aria2_fetcher::ensure_aria2_next()` downloads the matching platform asset from
   `AnInsomniacy/aria2-next` GitHub Releases into `<data_dir>/aria2/`, verifies its sha256, records
   `.installed`, and marks it executable. Subsequent launches hit the cache.
 - **Override** — set `ARIA2_BIN=/path/to/aria2-next` to skip the download entirely (useful for development).
 - **Self-healing** — if `.installed` is missing/corrupt, the directory is scanned for a cached binary
   and `.installed` is rebuilt.
-- **Updates** — `updater::fetch_latest_release()` compares versions; a newer release is downloaded in
+- **Updates** — `updaters::updater::fetch_latest_release()` compares versions; a newer release is downloaded in
   the background and a `.pending-update` marker is written. The pending binary replaces the active one
   on the next app / engine restart.
 - **Degraded mode** — if fetch or spawn fails, the engine does not exit; the UI surfaces the error and
@@ -97,45 +78,107 @@ Remotrix uses a **dual event loop** design:
 
 ```
 src/
-├── main.rs               # entry, logging init, window settings
-├── app.rs                # Remotrix state, update(), view(), subscription()
-├── app_updater.rs        # app self-update: download staging + swap on relaunch
-├── config.rs             # Settings (serde) load/save, aria2 option mapping, path helpers
-├── db.rs                 # SQLite persistence (rusqlite): task meta + progress flush
-├── engine.rs             # EngineBridge: spawn tokio supervisor + aria2-next sidecar, mpsc channels
-├── extension_api.rs      # browser extension API: Salvo HTTP server (/ping /stat /add /pause-all /resume-all)
-├── aria2_fetcher.rs      # runtime fetch / cache / verify aria2-next binary, staged updates
-├── updater.rs            # GitHub Releases lookup, ReleaseInfo, platform slug
-├── message.rs            # Message enum + page / filter / sort / setting enums
-├── task.rs               # DownloadTask model, formatters, TaskDetails / TaskFile
-├── i18n.rs               # Locale detection + Fluent translations
-├── clipboard_watch.rs    # clipboard link detection (http/ftp/magnet/ed2k/bt) for auto-add
-├── logging.rs            # tracing init, daily rolling file logs, runtime log levels
-├── scheduler.rs          # speed-limit schedule window + weekday helpers
-├── torrent_meta.rs       # .torrent metadata parsing (name, files, size)
-├── trackers.rs           # BT tracker list parse / reduce / merge
-├── notify.rs             # native system notifications (notify-rust)
-├── tray.rs               # system tray (ldtray): menu, minimize/close-to-tray, Wayland window mgmt
+├── main.rs                      # entry, logging init, window settings
+├── lib.rs                       # library entry (lib + bin)
+├── app.rs                       # Remotrix state, update(), view(), subscription()
+├── config/
+│   ├── mod.rs
+│   ├── paths.rs                 # path resolvers (aria2_bin_dir/session_dir/db_path/log_dir/config_file_path)
+│   ├── settings.rs              # Settings load/save, aria2 option mapping
+│   ├── install.rs               # user-level .desktop / icon installation
+│   └── migrations.rs            # one-shot settings migrations
+├── core/
+│   ├── mod.rs
+│   ├── i18n.rs                  # locale detection + Fluent translations
+│   ├── logging.rs               # tracing init, daily rolling logs, runtime log levels
+│   ├── message.rs               # Message enum + page / filter / sort / settings enums
+│   ├── scheduler.rs             # speed-limit schedule window + weekday helpers
+│   └── task.rs                  # DownloadTask model, formatters, TaskDetails / TaskFile
+├── engine/
+│   ├── mod.rs                   # EngineBridge: spawn tokio supervisor + aria2-next sidecar, mpsc channels
+│   ├── install.rs               # runtime wrapper around engine binary fetch / cache / verify
+│   └── ed2k.rs                  # ED2K protocol hooks
+├── integration/
+│   ├── mod.rs
+│   ├── clipboard_watch.rs       # clipboard link detection (http/ftp/magnet/ed2k/bt)
+│   └── extension_api.rs         # browser extension API: Salvo HTTP server (/ping /stat /add /pause-all /resume-all)
+├── platform/
+│   ├── mod.rs
+│   ├── autostart.rs             # launch at login (Linux .desktop / Windows Run)
+│   ├── notify.rs                # notify-rust system notifications
+│   ├── port_guard.rs            # RPC port conflict fallback
+│   ├── power.rs                 # system sleep inhibition (systemd-inhibit / caffeinate / SetThreadExecutionState)
+│   ├── shutdown.rs              # scheduled / all-tasks-complete shutdown
+│   ├── tray.rs                  # ldtray: menu, minimize/close-to-tray, Wayland window mgmt
+│   ├── tray_watchdog.rs         # Windows: listen for TaskbarCreated, rebuild tray icon
+│   └── win_toast.rs             # Windows native toast (AUMID + Locate/Reveal)
+├── storage/
+│   ├── mod.rs
+│   ├── db.rs                    # SQLite persistence (rusqlite): task meta + progress flush
+│   ├── ed2k_bootstrap.rs        # server.met / nodes.dat auto-sync
+│   ├── torrent_meta.rs          # .torrent metadata parsing (name, files, size)
+│   └── trackers.rs              # BT tracker list parse / reduce / merge
+├── update/
+│   ├── mod.rs
+│   ├── add.rs                   # add-task path
+│   ├── engine.rs                # engine-side update state machine
+│   ├── misc.rs
+│   ├── task.rs                  # update task state machine
+│   ├── window.rs                # update UI state machine
+│   └── settings/
+│       ├── mod.rs
+│       └── network.rs           # update proxy config
+├── updaters/
+│   ├── mod.rs
+│   ├── app_updater.rs           # app self-update (deb / AppImage / NSIS)
+│   ├── aria2_fetcher.rs         # aria2 binary fetch / cache / verify / staging
+│   ├── download.rs              # shared background downloader (throttling, retry, streaming sha256, Range resume)
+│   └── updater.rs               # GitHub Releases lookup, ReleaseInfo, platform slug
 └── ui/
-    ├── mod.rs            # ui module re-exports
-    ├── theme.rs          # accent-color → iced palette generation, ThemeMode, widget styles
-    ├── icon.rs           # iced_lucide icon font module (build-generated)
-    ├── icons.rs          # icon glyph constants + layout widths
-    ├── dims.rs           # shared dimension constants
-    ├── title_bar.rs      # custom frameless title bar + window controls
-    ├── resize_frame.rs   # custom resize handles for the frameless window
-    ├── close_dialog.rs   # close-confirmation overlay
-    ├── confirm_dialog.rs # generic confirm overlay
-    ├── sidebar.rs        # nav: Tasks / New / About / Settings
-    ├── category_bar.rs   # task filters (All / Downloading / Completed) + settings categories
-    ├── task_list.rs      # download cards with progress, actions, sort menu
-    ├── add_dialog.rs     # new-download overlay (url / torrent / split / advanced)
-    ├── details_dialog.rs # task details: summary / activity / files tabs
-    ├── sort.rs           # task sorting comparators
-    ├── about_dialog.rs   # about / engine info overlay
-    ├── update_dialog.rs  # app / engine update overlay
-    ├── settings_page.rs  # general, download, bittorrent, ed2k, network, advanced, appearance
-    └── components/       # reusable widgets (dialogs, drag-drop upload, piece map, file tree, ...)
+    ├── mod.rs                   # ui module re-exports
+    ├── view.rs                  # top-level view entry
+    ├── animation.rs             # ANIM_* duration tokens
+    ├── border_bar.rs            # top-border gradient progress bar
+    ├── scroll_anim.rs
+    ├── system_default_font.rs   # OS-native default font (fc-match / NSFont / SPI)
+    ├── font_autopick.rs         # locale-aware fontdb fallback
+    ├── color/
+    │   ├── mod.rs
+    │   ├── theme.rs             # accent-color → iced palette generation, ThemeMode
+    │   └── hct.rs               # HCT perceptually-uniform color space
+    ├── settings/
+    │   ├── mod.rs
+    │   ├── general.rs           # general settings
+    │   ├── download.rs          # download settings
+    │   ├── bittorrent.rs        # BT settings (incl. tracker sync)
+    │   ├── ed2k.rs              # ED2K settings (incl. server.met / nodes.dat picker)
+    │   ├── network.rs           # proxy settings
+    │   └── advanced.rs          # advanced settings (paths, browser takeover, logs)
+    ├── icon.rs                  # iced_lucide icon font module (build-generated)
+    ├── icons.rs                 # icon glyph constants + layout widths
+    ├── dims.rs                  # shared dimension constants
+    ├── title_bar.rs             # custom frameless title bar + window controls
+    ├── resize_frame.rs          # custom resize handles for the frameless window
+    ├── close_dialog.rs          # close-confirmation overlay
+    ├── confirm_dialog.rs        # generic confirm overlay
+    ├── sidebar.rs               # nav: Tasks / New / About / Settings
+    ├── category_bar.rs          # task filters (All / Downloading / Completed / Failed) + settings categories
+    ├── task_list.rs             # download cards with progress, actions, sort menu
+    ├── add_dialog.rs            # new-download overlay (url / torrent / split / advanced)
+    ├── details_dialog.rs        # task details: summary / activity / files / Advanced tabs
+    ├── sort.rs                  # task sorting comparators
+    ├── about_dialog.rs          # about / engine info overlay
+    ├── update_dialog.rs         # app / engine update overlay
+    └── components/              # reusable widgets
+        ├── dialog.rs / popover.rs / toast.rs                    # overlays / floating layer / toasts
+        ├── path_picker.rs / color_picker.rs / font_picker.rs / tag_picker.rs / drop_down.rs / number_stepper.rs  # pickers
+        ├── secret_input.rs / ctx_input.rs / ctx_menu.rs / copyable_text.rs / truncated_text.rs / translate.rs   # text input
+        ├── file_drop_zone.rs / torrent_upload.rs / drop_overlay.rs  # drag and drop
+        ├── file_tree.rs / tri_checkbox.rs / torrent_file_list.rs / piece_map.rs / key_value_list.rs / logo.rs  # task detail
+        ├── speed_hud.rs / speed_popover.rs / shutdown_popover.rs  # HUD
+        ├── status_dot.rs / spinner.rs / swatch_icon.rs / scale.rs  # decoration
+        ├── expand.rs / slim_scrollable.rs / scroll_top_gap.rs / tooltip.rs  # layout
+        └── mod.rs
 ```
 
 ## Build & Run
@@ -178,9 +221,10 @@ ARIA2_BIN=/path/to/aria2-next cargo run --
 ## Checks
 
 ```bash
-cargo test --workspace     # run tests
-cargo clippy --workspace   # lint (no warnings allowed)
-cargo fmt --check          # formatting check
+cargo test --workspace                                          # unit / integration tests
+cargo test --test download_e2e -- --nocapture                   # end-to-end download tests (requires ARIA2_BIN)
+cargo clippy --workspace                                        # lint (no warnings allowed)
+cargo fmt --check                                               # formatting check
 ```
 
 ## Configuration
@@ -199,10 +243,21 @@ Runtime data (SQLite database, aria2-next binary cache + session, log files) liv
 - Windows: `%APPDATA%\remotrix\Remotrix\data\`
 
 Persisted settings include the download folder, max concurrent downloads, split, global & per-task
-speed limits, theme mode + selected light/dark themes, locale, auto-update preferences, close-to-tray,
-and a full set of aria2 options (max-connection-per-server, min-split-size, auto-file-renaming,
-allow-overwrite, continue, check-integrity, user-agent, headers, proxy, retries, timeouts,
-bt-tracker, seed ratio/time, DHT, and more).
+speed limits, theme mode + selected light/dark themes, follow-system-accent toggle, locale, font
+choice, auto-update preferences and silent-update scope, close-to-tray, and a full set of aria2
+options (max-connection-per-server, min-split-size, auto-file-renaming, allow-overwrite, continue,
+check-integrity, user-agent, headers, proxy, retries, timeouts, bt-tracker, seed ratio/time, DHT,
+and more).
+
+Settings → Advanced → Paths lets you override the **aria2-next dir**, **app cache dir**, and
+**log dir**. Changes do **not take effect immediately** — the UI shows a "pending changes" hint and
+requires clicking **Save & restart** to commit; on next launch, if the new paths differ from the
+previous `last_resolved`, Remotrix physically copies the matching data from the old paths (all files
+in the aria2 bin dir, all files in the log dir, and the allow-listed children of the app cache dir:
+`remotrix.db`, `ed2k-bootstrap/`, `ed2k-search/`) to the new paths. Files already present at the new
+path are skipped individually; the old files are never deleted. Changing only the app cache dir
+also migrates the default embedded aria2 and log dirs into the new cache dir; explicit overrides
+for aria2 / log still win. The `ARIA2_BIN` env var has the highest priority and overrides the UI.
 
 ## Browser Takeover (Extension API)
 
@@ -232,72 +287,45 @@ After changing **Enabled / port / secret / auto-submit**, clicking **Apply** **h
 | GUI | `iced 0.14` (+tokio, advanced, canvas, svg, markdown) | Pure Rust, widget-based, dark theme support |
 | Engine | `aria2-next` sidecar + `aria2-ws 0.5` | C++ aria2 fork, JSON-RPC over WebSocket, spawned as subprocess |
 | Async | `tokio 1.x` (full) | Shared runtime for engine + UI |
-| Persistence | `rusqlite 0.32` (bundled) | Embedded SQLite for task metadata / progress |
-| Themes | iced `Theme::custom` (built-in) | Accent-color swatches; iced auto-generates light/dark palettes |
-| i18n | `fluent-templates 0.14` | Fluent translations (zh / en) |
-| System theme | `dark-light 1.1` | Detect system dark / light preference |
-| File dialog | `rfd 0.15` | Native OS file picker |
-| System tray | `ldtray 0.1` | Tray icon + menu |
-| Notifications | `notify-rust 4.17` (tokio) | Native desktop notifications |
+| Persistence | `rusqlite 0.40` (bundled + fallible_uint) | Embedded SQLite for task metadata / progress |
+| Theming | iced `Theme::custom` + `palette 0.7` | Accent-color → palette; HCT perceptually-uniform derivation for light/dark |
+| System preferences | `mundy 0.2` (color-scheme + accent-color + async-io) | Unified system dark/light + OS accent color reading (replaces dark-light) |
+| i18n | `fluent-templates 0.15` | Fluent translations (zh / en) |
+| Fonts | `fontdb 0.24` + `system-fonts 0.1` | Locale-aware system font enumeration; OS-native default font API |
+| File dialog | `rfd 0.17` | Native OS file picker |
+| System tray | `ldtray 0.1` (pinned `=0.1.2`) | Tray icon + menu; Windows watchdog auto-restores after Explorer restarts |
+| Notifications | `notify-rust 4.17` (tokio) | Cross-platform native notifications; Windows additionally uses `win_toast` (AUMID + Locate / Reveal) |
 | Single instance | `app-single-instance 0.1` | Single-instance run, focuses existing window |
-| HTTP client | `reqwest 0.12` (rustls, json) | GitHub Releases fetch / updater |
-| HTTP server | `salvo 0.95` (cors + http1 + server-handle) | Browser extension loopback API |
-| Hashing | `sha2 0.10` | aria2-next binary checksum verification |
+| HTTP client | `reqwest 0.13` (rustls, json, socks) | GitHub Releases fetch / updater / proxy |
+| HTTP server | `salvo 0.95` (cors + http1 + server-handle) | Browser extension loopback API with hot-restart |
+| Hashing | `sha2 0.11` | aria2-next / app-update binary checksum verification |
 | Icons | `iced_lucide 0.1`, `iced_aw 0.14` | Icon font + time picker |
-| Animations | `iced_anim 0.3` | Card / dialog / progress-bar transitions |
-| Image | `image 0.24` (png) | App icon loading |
-| Logging | `tracing` + `tracing-appender 0.2` | Rolling file logs |
-| Config dirs | `directories 5` | XDG / user data paths |
-| Fonts | `fontdb 0.23` | System font-family enumeration for Settings |
+| Animations | `iced_anim =0.3.1` | 7 unified duration tokens |
+| Image | `image 0.25` (png) | App icon loading |
+| Logging | `tracing` + `tracing-appender 0.2` + `tracing-subscriber 0.3` | Rolling file logs + env-filter |
+| Config dirs | `directories 6` | XDG / user data paths |
 | Process | `libc 0.2` | SIGTERM/SIGKILL stale aria2-next processes |
 | Time | `chrono 0.4` (clock) | Timestamp formatting |
+| File / dir | `open 5` | Open file / directory / URL |
+| Windows | `windows 0.62`, `libloading 0.9` | Taskbar watchdog, AUMID, native toasts, sleep inhibition |
 
 ## Roadmap
 
 **Done**
-- [x] Dual-loop engine bridge + aria2-next sidecar supervisor
-- [x] Basic UI: sidebar, category bar, task list, add dialog, settings
-- [x] Frameless window + custom title bar
-- [x] i18n (zh / en) + accent-color theme + system auto theme
-- [x] SQLite task persistence
-- [x] aria2-next runtime auto-fetch + auto-update
-- [x] Task details dialog (piece map, files, BT info)
-- [x] Magnet link support
-- [x] Drag-and-drop file / task support
-- [x] System tray integration (minimize-to-tray / close-to-tray on X11; incomplete on Wayland — the window can only be minimized, not hidden)
-- [x] System notifications (download completion, etc.)
-- [x] Single-instance run
-- [x] Launch at login — Linux `.desktop` / Windows `Run`, optionally hidden to tray on auto-start (with AppImage path handling)
-- [x] Browser takeover — local extension API + reuses motrix-next-extension to intercept browser downloads
-- [x] Scheduled / download-complete shutdown — countdown card + cross-platform shutdown command
-- [x] System sleep inhibition — cross-platform suppression of system sleep while downloads are active (`systemd-inhibit` / `caffeinate` / `SetThreadExecutionState`)
-- [x] App animations — full transition animations on cards / dialogs / progress bars / speed HUD / category capsules (`iced_anim`)
-- [x] ED2K protocol — automatic `server.met` / `nodes.dat` bootstrap + built-in search panel
-- [x] Metalink protocol — `.metalink` / `.meta4` as a dedicated add tab, with optional "follow Metalink"
-- [x] BT tracker auto-sync — preset sources + custom URLs + periodic sync
-- [x] BT metadata-only download — `bt-metadata-only=true`, metadata persisted to SQLite
-- [x] HTTP / SOCKS5 proxy — global + per-task override, with Basic Auth
-- [x] Scheduled speed limits — automatic download / upload cap switching by time window + weekday
-- [x] Custom accent color + HCT theme — HSV + Alpha + HEX picker, perceptually-derived light / dark palettes
-- [x] App self-update — AppImage / deb / NSIS self-update across platforms, with a Beta channel; app updates reuse the aria2 engine channel for unified proxy / progress / checksum
-- [x] Silent aria2 updates — staged in the background + system-notification restart prompt + visible download progress
-- [x] RPC port configuration — customizable aria2 RPC listen port with automatic fallback to a free port on conflict
-- [x] App-wide file drop — drop `.torrent` / `.metalink` / URL onto the window to auto-add a task, with an overlay hint
-- [x] Path picker history — persistent dropdown history
-- [x] Right-click context menu — cut / copy / paste / select-all on text inputs
-- [x] Windows native toasts — `win_toast` + AUMID shortcut + multi-action buttons (Locate / Reveal)
-- [x] Windows tray watchdog — listens for `TaskbarCreated`, restores the tray icon after Explorer restarts
-- [x] Tray enhancements — tooltip shows ⬇ / ⬆ speed and active task count; menu exposes Pause All / Resume All / Open Folder
-- [x] Task details "Advanced" tab — editable UA / cookie / referer / proxy / headers
-- [x] Per-task file selection — `EngineCmd::SelectFiles` + tri-state checkbox file tree (virtualized)
-- [x] Settings expansion — auto-clean completed tasks, re-download missing files, `close_to_tray`, max concurrent downloads, `prevent_sleep`, per-task speed limit, file-allocation / disk cache, aria2 RPC port, app + engine log levels, changelog markdown rendering
-- [x] Graceful shutdown — clean up stale aria2 processes on exit
-- [x] "About" dialog — app logo + dependency credits
+
+- **Architecture & UI** — dual-loop engine bridge + aria2-next sidecar supervisor; basic UI (sidebar, category bar, task list, add dialog, settings); frameless window + custom title bar + resize handles; single-instance run; unified animation system (7 `ANIM_*` tokens covering cards / dialogs / progress bars / speed HUD / category capsules / toasts / overlays).
+- **Engine & protocols** — aria2-next runtime fetch + sha256 verify + self-heal + auto-update; task metadata and progress persisted to SQLite; ED2K (automatic `server.met` / `nodes.dat` bootstrap + built-in search), Metalink, BT tracker auto-sync, BT metadata-only; HTTP / SOCKS5 global + per-task proxy with Basic Auth.
+- **Desktop integration** — system tray (X11 full, Wayland minimize-only, Windows with `TaskbarCreated` watchdog); cross-platform system notifications (Windows additionally uses `win_toast`); clipboard link auto-detection; app-wide file drop with overlay hint.
+- **Theme & localization** — i18n (zh / en); accent-color theme with system appearance / accent-color follow + smooth transition animations; custom accent color with HCT derivation; default font follows the OS (Linux `fc-match` / macOS NSFont / Windows SPI, with fontdb fallback).
+- **Automation & system** — scheduled speed limits by time window + weekday; scheduled / all-tasks-complete shutdown; cross-platform system sleep inhibition while downloads are active; launch at login; Settings → Advanced → Paths to override aria2 / app cache / log dirs with automatic data migration on next launch.
+- **Updates** — AppImage / deb / NSIS app self-update via the shared background downloader (throttling / retry / streaming sha256 / Range resume), surfacing a sticky toast with an "Update" action button that triggers apply on click; aria2 silent update with background staging + system-notification restart prompt; customizable RPC port with automatic free-port fallback; unified top-border progress bar for background tasks.
+- **Settings expansion & UX details** — multi-tab task details (BT piece map, file tree, Advanced UA / cookie / headers); per-task tri-state checkbox file selection; category filter capsules with count badges; sort / path-picker history / right-click context menu; settings additions (auto-clean, concurrency cap, per-task limits, file allocation, log levels, changelog rendering, etc.); graceful shutdown; "About" dialog.
+- **Tests** — unit tests for engine / task / scheduler and other core modules; `download_e2e` end-to-end (requires `ARIA2_BIN`).
 
 **Planned**
+
 - [ ] Download hardening & full testing — HTTP/HTTPS and BT work today, but haven't covered enough scenarios (resume, integrity check, speed limits, retry on failure, etc.); needs a full regression pass
-- [ ] System-level unit tests — fill in unit / integration tests for modules not yet covered, such as `db.rs`, `app.rs`, the dialog views, `tray.rs`, and the Salvo handlers in `extension_api.rs` (engine / task / scheduler and similar core modules already have tests)
-- [ ] Customizable paths — let users override app cache, log, and aria2-next binary paths
+- [ ] System-level unit tests — fill in unit / integration tests for modules not yet covered, such as `db.rs`, `app.rs`, the dialog views, `tray.rs`, and the Salvo handlers in `extension_api.rs`
 - [ ] File associations — set the default program for opening file types (e.g. `.torrent`)
 - [ ] `motrixnext://` deep-link protocol — wake the app when not running / website download buttons (the core HTTP interception does not depend on it)
 - [ ] Wayland tray compatibility polish — under Wayland the window can only be minimized and not fully hidden to the tray; currently wakes via system notification; improve window-hiding / tray / notification behavior
