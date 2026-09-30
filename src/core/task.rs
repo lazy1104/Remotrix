@@ -2,6 +2,27 @@ use std::path::PathBuf;
 
 use aria2_ws::TaskOptions;
 
+fn cookie_value_has_control_chars(value: &str) -> bool {
+    value.chars().any(|c| matches!(c, '\r' | '\n' | '\0'))
+}
+
+fn push_cookie_header(opts: &mut TaskOptions, value: &str) {
+    if value.is_empty() || cookie_value_has_control_chars(value) {
+        return;
+    }
+    let entry = format!("Cookie: {value}");
+    match opts.header.as_mut() {
+        Some(headers) => {
+            if !headers.iter().any(|h| h == &entry) {
+                headers.push(entry);
+            }
+        }
+        None => {
+            opts.header = Some(vec![entry]);
+        }
+    }
+}
+
 /// Per-task overrides applied on top of the global `aria2` options when a
 /// task is first added.
 ///
@@ -36,7 +57,6 @@ impl TaskAdvancedOptions {
             ("http-user", &self.http_user),
             ("http-passwd", &self.http_passwd),
             ("referer", &self.referer),
-            ("cookie", &self.cookie),
         ];
         for (key, value) in extra {
             if !value.is_empty() {
@@ -44,6 +64,7 @@ impl TaskAdvancedOptions {
                     .insert(key.to_string(), serde_json::Value::String(value.clone()));
             }
         }
+        push_cookie_header(opts, &self.cookie);
         if let Some(proxy) = crate::config::all_proxy_url(
             &self.proxy_server,
             &self.proxy_username,
@@ -68,12 +89,12 @@ impl TaskAdvancedOptions {
             ("http-user", &self.http_user),
             ("http-passwd", &self.http_passwd),
             ("referer", &self.referer),
-            ("cookie", &self.cookie),
         ];
         for (key, value) in extra {
             opts.extra_options
                 .insert(key.to_string(), serde_json::Value::String(value.clone()));
         }
+        push_cookie_header(opts, &self.cookie);
         opts.all_proxy = Some(
             crate::config::all_proxy_url(
                 &self.proxy_server,
@@ -702,5 +723,68 @@ mod tests {
             ..TaskAdvancedOptions::default()
         };
         assert!(!a.is_empty());
+    }
+
+    #[test]
+    fn advanced_options_apply_sets_cookie_header() {
+        let mut opts = TaskOptions::default();
+        let adv = TaskAdvancedOptions {
+            cookie: "a=b; c=d".to_string(),
+            ..Default::default()
+        };
+        adv.apply(&mut opts);
+        assert!(opts.extra_options.get("cookie").is_none());
+        assert_eq!(
+            opts.header.as_deref(),
+            Some(&["Cookie: a=b; c=d".to_string()][..])
+        );
+    }
+
+    #[test]
+    fn advanced_options_apply_empty_cookie_does_not_touch_header() {
+        let mut opts = TaskOptions {
+            header: Some(vec!["X-Keep: 1".to_string()]),
+            ..Default::default()
+        };
+        let adv = TaskAdvancedOptions::default();
+        adv.apply(&mut opts);
+        assert!(opts.extra_options.get("cookie").is_none());
+        assert_eq!(opts.header.as_deref(), Some(&["X-Keep: 1".to_string()][..]));
+    }
+
+    #[test]
+    fn advanced_options_apply_rejects_control_chars_in_cookie() {
+        let mut opts = TaskOptions::default();
+        let adv = TaskAdvancedOptions {
+            cookie: "a=b\r\nX-Inject: 1".to_string(),
+            ..Default::default()
+        };
+        adv.apply(&mut opts);
+        assert!(opts.header.is_none());
+        assert!(opts.extra_options.get("cookie").is_none());
+    }
+
+    #[test]
+    fn advanced_options_apply_change_sets_cookie_header() {
+        let mut opts = TaskOptions::default();
+        let adv = TaskAdvancedOptions {
+            cookie: "session=abc".to_string(),
+            ..Default::default()
+        };
+        adv.apply_change(&mut opts);
+        assert!(opts.extra_options.get("cookie").is_none());
+        assert_eq!(
+            opts.header.as_deref(),
+            Some(&["Cookie: session=abc".to_string()][..])
+        );
+    }
+
+    #[test]
+    fn advanced_options_apply_change_empty_cookie_leaves_header_none() {
+        let mut opts = TaskOptions::default();
+        let adv = TaskAdvancedOptions::default();
+        adv.apply_change(&mut opts);
+        assert!(opts.header.is_none());
+        assert!(opts.extra_options.get("cookie").is_none());
     }
 }

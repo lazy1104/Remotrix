@@ -913,6 +913,35 @@ fn has_header_control_chars(name: &str, value: &str) -> bool {
         .any(|s| s.chars().any(|c| matches!(c, '\r' | '\n' | '\0')))
 }
 
+/// Extract the value of the first `Cookie` header from an aria2 `getOption`
+/// response. aria2 does not expose a top-level `cookie` option; cookies are
+/// stored inside the `header` array (case-insensitive name prefix).
+fn cookie_from_get_option(value: &serde_json::Value) -> String {
+    let serde_json::Value::Object(map) = value else {
+        return String::new();
+    };
+    let Some(serde_json::Value::Array(headers)) = map.get("header") else {
+        return String::new();
+    };
+    for entry in headers {
+        if let serde_json::Value::String(s) = entry {
+            if let Some(rest) = strip_cookie_header(s) {
+                return rest.to_string();
+            }
+        }
+    }
+    String::new()
+}
+
+fn strip_cookie_header(entry: &str) -> Option<&str> {
+    let (name, value) = entry.split_once(':')?;
+    if name.trim().eq_ignore_ascii_case("cookie") {
+        Some(value.trim())
+    } else {
+        None
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn add_download_internal(
     client: &Client,
@@ -931,13 +960,15 @@ async fn add_download_internal(
     let mut options = base_task_options(save_dir, split);
     advanced.apply(&mut options);
     if !headers.is_empty() {
-        options.header = Some(
-            headers
-                .iter()
-                .filter(|(n, v)| !n.trim().is_empty() && !has_header_control_chars(n, v))
-                .map(|(n, v)| format!("{n}: {v}"))
-                .collect(),
-        );
+        let extra_headers: Vec<String> = headers
+            .iter()
+            .filter(|(n, v)| !n.trim().is_empty() && !has_header_control_chars(n, v))
+            .map(|(n, v)| format!("{n}: {v}"))
+            .collect();
+        match options.header.as_mut() {
+            Some(existing) => existing.extend(extra_headers),
+            None => options.header = Some(extra_headers),
+        }
     }
     let dir = save_dir.to_string_lossy().to_string();
     let aria2 = crate::config::load();
@@ -1437,7 +1468,7 @@ async fn handle_client_cmd(
                         http_user: get("http-user"),
                         http_passwd: get("http-passwd"),
                         referer: get("referer"),
-                        cookie: get("cookie"),
+                        cookie: cookie_from_get_option(&map),
                         proxy_server,
                         proxy_username,
                         proxy_password,
@@ -2527,5 +2558,47 @@ mod tests {
             .get("follow-metalink")
             .expect("follow-metalink key present");
         assert_eq!(key, &serde_json::Value::String("true".to_string()));
+    }
+
+    fn value_with_header(headers: Vec<serde_json::Value>) -> serde_json::Value {
+        let mut m = serde_json::Map::new();
+        m.insert("header".to_string(), serde_json::Value::Array(headers));
+        serde_json::Value::Object(m)
+    }
+
+    #[test]
+    fn cookie_from_get_option_extracts_cookie_header() {
+        let value = value_with_header(vec![
+            serde_json::Value::String("User-Agent: x".to_string()),
+            serde_json::Value::String("Cookie: a=b; c=d".to_string()),
+        ]);
+        assert_eq!(cookie_from_get_option(&value), "a=b; c=d");
+    }
+
+    #[test]
+    fn cookie_from_get_option_case_insensitive_name() {
+        let value = value_with_header(vec![serde_json::Value::String(
+            "cookie: session=xyz".to_string(),
+        )]);
+        assert_eq!(cookie_from_get_option(&value), "session=xyz");
+    }
+
+    #[test]
+    fn cookie_from_get_option_returns_empty_when_absent() {
+        let value = value_with_header(vec![serde_json::Value::String("X-Foo: bar".to_string())]);
+        assert_eq!(cookie_from_get_option(&value), "");
+        let empty = serde_json::Value::Object(serde_json::Map::new());
+        assert_eq!(cookie_from_get_option(&empty), "");
+        let non_object = serde_json::Value::String("nope".to_string());
+        assert_eq!(cookie_from_get_option(&non_object), "");
+    }
+
+    #[test]
+    fn cookie_from_get_option_takes_first_cookie_entry() {
+        let value = value_with_header(vec![
+            serde_json::Value::String("Cookie: first=1".to_string()),
+            serde_json::Value::String("Cookie: second=2".to_string()),
+        ]);
+        assert_eq!(cookie_from_get_option(&value), "first=1");
     }
 }
