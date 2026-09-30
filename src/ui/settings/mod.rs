@@ -256,6 +256,7 @@ pub struct SettingsPageContext<'a> {
     pub bt_tracker_editor: &'a text_editor::Content,
     pub path_history: &'a HashMap<String, Vec<String>>,
     pub font_restart_required: bool,
+    pub custom_color_picker_open: bool,
     pub ctx_mirrors: &'a CtxMirrors,
     pub port_status: &'a std::collections::HashMap<
         crate::port_guard::PortKind,
@@ -285,6 +286,7 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
         bt_tracker_editor,
         path_history,
         font_restart_required,
+        custom_color_picker_open,
         ctx_mirrors,
         port_status,
     } = ctx;
@@ -311,6 +313,7 @@ pub fn view<'a>(ctx: &SettingsPageContext<'a>) -> Element<'a, Message> {
             *update_check_in_flight,
             *aria2_download_version,
             *aria2_download_progress,
+            *custom_color_picker_open,
         ),
         SettingsCategory::Download => {
             download::download_view(fluent, theme, settings, settings_ui, path_history)

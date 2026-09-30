@@ -46,7 +46,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         return resize_placeholder_view(state);
     }
     let titlebar = crate::ui::title_bar::view(t, state.window.maximized);
-    let left_col = crate::ui::sidebar::view(&state.fluent, t, state.page);
+    let left_col = crate::ui::sidebar::view(&state.fluent, t, state.page, state.shutdown.card_open);
 
     let mid_bg = crate::ui::category_bar::background(t);
     let mid_content_inner = crate::ui::category_bar::content(
@@ -130,6 +130,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
                 bt_tracker_editor: &state.bt_tracker_editor,
                 path_history: &state.settings.path_history,
                 font_restart_required: state.settings.font_family != state.applied_font_family,
+                custom_color_picker_open: state.custom_color_picker_open,
                 ctx_mirrors: &state.input_cursors,
                 port_status: &state.port_status,
             };
@@ -214,6 +215,7 @@ pub fn view(state: &Remotrix) -> Element<'_, Message> {
         dl,
         up,
         &state.hud_anim,
+        state.speed_limit_popover_open,
     ))
     .width(Length::Fill)
     .height(Length::Fill)

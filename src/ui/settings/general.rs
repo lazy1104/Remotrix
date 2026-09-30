@@ -24,6 +24,7 @@ pub(super) fn general_view<'a>(
     update_check_in_flight: bool,
     aria2_download_version: Option<&'a str>,
     aria2_download_progress: Option<(u64, u64)>,
+    custom_color_picker_open: bool,
 ) -> Element<'a, Message> {
     let accent = theme::accent(theme_);
     let mode_opts = vec![
@@ -81,7 +82,12 @@ pub(super) fn general_view<'a>(
         ));
     }
     if !settings.follow_system_accent {
-        col = col.push(theme_color_swatches(fluent, theme_, settings));
+        col = col.push(theme_color_swatches(
+            fluent,
+            theme_,
+            settings,
+            custom_color_picker_open,
+        ));
     }
     col = col
         .push(labeled_pick(
@@ -355,6 +361,7 @@ pub(super) fn theme_color_swatches<'a>(
     fluent: &'a Fluent,
     theme_: &'a iced::Theme,
     settings: &'a Settings,
+    custom_color_picker_open: bool,
 ) -> Element<'a, Message> {
     use crate::ui::components::swatch_icon::{swatch_check, swatch_plus, swatch_text_color};
     let current = theme::accent_color(&settings.theme_color);
@@ -394,7 +401,11 @@ pub(super) fn theme_color_swatches<'a>(
             .center_x(Length::Fill)
             .center_y(Length::Fill),
     )
-    .on_press(Message::Settings(SettingsMsg::CustomColorPickerToggle))
+    .on_press_maybe(if custom_color_picker_open {
+        None
+    } else {
+        Some(Message::Settings(SettingsMsg::CustomColorPickerToggle))
+    })
     .width(Length::Fixed(SWATCH_SIZE))
     .height(Length::Fixed(SWATCH_SIZE))
     .padding(0)

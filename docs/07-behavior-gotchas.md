@@ -121,3 +121,13 @@ hatch.
 does. The integration test harness works around this by redirecting `$HOME`, but prod callers that
 set `XDG_DATA_HOME` while expecting ProjectDirs-style paths will silently land in the default
 location. Track as a real-config bug.
+
+## Anchored popovers toggle via their anchor button only when closed
+The speed-limit / shutdown / custom-color popovers (`src/ui/components/popover.rs`) are
+`Length::Fill` layers above the UI. Clicking their anchor button while open fires both the
+popover's outside-click close AND the button's toggle, which net close-then-reopen and make
+the button unable to close it. The anchor buttons are therefore made inert (`on_press = None`)
+while their popover is open (`src/ui/components/speed_hud.rs`, `src/ui/sidebar.rs`,
+`src/ui/settings/general.rs`); closing is handled by the popover's outside-click handler. Keep
+this contract: an open popover's anchor button must not publish a toggle. The right-click context
+menu has no persistent anchor button and is unaffected.

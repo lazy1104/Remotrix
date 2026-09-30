@@ -19,6 +19,7 @@ pub fn view<'a>(
     download: u64,
     upload: u64,
     hud: &'a Animated<f32>,
+    open: bool,
 ) -> Element<'a, Message> {
     let palette = theme.extended_palette();
     let primary_weak = palette.primary.weak.color;
@@ -59,7 +60,11 @@ pub fn view<'a>(
     .on_update(Message::HudAnim);
 
     let button = button(hud_content)
-        .on_press(Message::Dialog(DialogMsg::OpenSpeedLimitPopover))
+        .on_press_maybe(if open {
+            None
+        } else {
+            Some(Message::Dialog(DialogMsg::OpenSpeedLimitPopover))
+        })
         .padding(Padding {
             top: PADDING_HUD.top,
             right: 0.0,
