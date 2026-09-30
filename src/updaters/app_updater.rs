@@ -283,7 +283,9 @@ pub fn find_pending_app_update(download_dir: Option<&Path>) -> Option<AppUpdateO
             continue;
         }
         let path = entry.path();
-        let meta = std::fs::metadata(&path).ok()?;
+        let Ok(meta) = std::fs::metadata(&path) else {
+            continue;
+        };
         if !meta.is_file() {
             continue;
         }
@@ -301,15 +303,24 @@ pub fn find_pending_app_update(download_dir: Option<&Path>) -> Option<AppUpdateO
         }
     }
     let (path, parsed, _) = best?;
-    if let Some(v) = parsed.as_deref() {
-        if !crate::updater::version_gt(v, current) {
-            return None;
-        }
+    match parsed {
+        // Only offer an already-downloaded package when it parses to a
+        // version that is genuinely newer than the running app.
+        Some(v) if crate::updater::version_gt(&v, current) => Some(AppUpdateOutcome {
+            kind,
+            path: Some(path),
+        }),
+        // Windows installer filenames historically vary; keep a conservative
+        // fallback there so a version-less installer is not denied the apply
+        // step. On Deb/AppImage an unparseable or non-newer file must not be
+        // reported as a pending update (any random .deb would otherwise pop
+        // the "update ready" toast on every launch).
+        None if kind == InstallKind::WindowsSetup => Some(AppUpdateOutcome {
+            kind,
+            path: Some(path),
+        }),
+        _ => None,
     }
-    Some(AppUpdateOutcome {
-        kind,
-        path: Some(path),
-    })
 }
 
 /// Delete a downloaded installer from disk after the user successfully
@@ -324,16 +335,20 @@ pub fn remove_app_update_file(path: &Path) {
 /// patterns emitted by the release workflow:
 /// - `Remotrix-0.4.0.AppImage`
 /// - `remotrix_0.4.0_amd64.deb`
+/// - `remotrix_0.6.0-beta.1_amd64.deb` (prerelease suffix preserved)
 /// - `remotrix_0.4.0_x64-setup.exe`
 fn parse_app_version_from_filename(filename: &str) -> Option<String> {
+    // Prerelease identifiers that may follow the numeric core, e.g. the
+    // `beta` in `0.6.0-beta.1`. Whitelisted so the arch segment (`amd64`,
+    // `x64`, ...) is never mistaken for a prerelease.
+    const PRE_WORDS: [&str; 5] = ["alpha", "beta", "rc", "pre", "dev"];
+
     let lower = filename.to_ascii_lowercase();
     let strip_prefixes = ["remotrix-", "remotrix_"];
     let stripped = strip_prefixes
         .iter()
         .find_map(|p| lower.strip_prefix(*p).map(str::to_string))?;
-    let segments: Vec<&str> = stripped
-        .split(|c: char| c == '-' || c == '_' || c == '.')
-        .collect();
+    let segments: Vec<&str> = stripped.split(['-', '_', '.']).collect();
     let mut end = 0;
     for seg in segments.iter() {
         if seg.is_empty() || !seg.chars().next().is_some_and(|c| c.is_ascii_digit()) {
@@ -344,7 +359,17 @@ fn parse_app_version_from_filename(filename: &str) -> Option<String> {
     if end == 0 {
         return None;
     }
-    let version = segments[..end].join(".");
+    let mut version = segments[..end].join(".");
+    if let Some(pre) = segments.get(end).filter(|s| PRE_WORDS.contains(s)) {
+        let mut tail = vec![*pre];
+        let mut i = end + 1;
+        while i < segments.len() && segments[i].chars().all(|c| c.is_ascii_digit()) {
+            tail.push(segments[i]);
+            i += 1;
+        }
+        version.push('-');
+        version.push_str(&tail.join("."));
+    }
     if crate::updater::version_tuple(&version).is_empty() {
         return None;
     }
@@ -493,6 +518,23 @@ mod tests {
     }
 
     #[test]
+    fn parse_app_version_prerelease_deb() {
+        // The prerelease tail is preserved so the same version's leftover
+        // package is never re-offered as an update (0.6.0-beta.1 is not
+        // newer than 0.6.0-beta.1), while a later snapshot still is.
+        assert_eq!(
+            parse_app_version_from_filename("remotrix_0.6.0-beta.1_amd64.deb"),
+            Some("0.6.0-beta.1".to_string())
+        );
+        assert_eq!(
+            parse_app_version_from_filename("remotrix_0.6.0-beta.2_amd64.deb"),
+            Some("0.6.0-beta.2".to_string())
+        );
+        assert!(!crate::updater::version_gt("0.6.0-beta.1", "0.6.0-beta.1"));
+        assert!(crate::updater::version_gt("0.6.0-beta.2", "0.6.0-beta.1"));
+    }
+
+    #[test]
     fn parse_app_version_setup() {
         assert_eq!(
             parse_app_version_from_filename("remotrix_0.4.0_x64-setup.exe"),
@@ -505,6 +547,60 @@ mod tests {
         assert_eq!(
             parse_app_version_from_filename("Remotrix-beta.AppImage"),
             None
+        );
+    }
+
+    fn temp_scan_dir(files: &[&str]) -> (PathBuf, Vec<PathBuf>) {
+        let uniq = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("remotrix-updtest-{uniq}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut paths = Vec::new();
+        for f in files {
+            let p = dir.join(f);
+            std::fs::write(&p, b"not a real package").unwrap();
+            paths.push(p);
+        }
+        (dir, paths)
+    }
+
+    fn run_pending_scan(files: &[&str]) -> Option<PathBuf> {
+        std::env::set_var("REMOTRIX_FORCE_INSTALL_KIND", "deb");
+        let (dir, paths) = temp_scan_dir(files);
+        let outcome = find_pending_app_update(Some(&dir));
+        std::env::remove_var("REMOTRIX_FORCE_INSTALL_KIND");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(paths.iter().all(|p| !p.exists()));
+        outcome.map(|o| o.path.unwrap_or_default())
+    }
+
+    #[test]
+    fn find_pending_unrelated_deb_ignored() {
+        // A random .deb in the download dir must not be reported as a
+        // pending Remotrix update.
+        assert!(run_pending_scan(&["google-chrome-stable_amd64.deb"]).is_none());
+        assert!(run_pending_scan(&["foo.deb"]).is_none());
+    }
+
+    #[test]
+    fn find_pending_older_or_same_version_ignored() {
+        // Older releases and the exact running prerelease are not pending.
+        assert!(run_pending_scan(&["remotrix_0.5.0_amd64.deb"]).is_none());
+        assert!(
+            run_pending_scan(&["remotrix_0.6.0-beta.1_amd64.deb"]).is_none()
+        );
+    }
+
+    #[test]
+    fn find_pending_newer_version_offered() {
+        // A genuinely newer final or later beta snapshot is offered.
+        assert!(
+            run_pending_scan(&["remotrix_0.6.0_amd64.deb"]).is_some()
+        );
+        assert!(
+            run_pending_scan(&["remotrix_0.6.0-beta.2_amd64.deb"]).is_some()
         );
     }
 }

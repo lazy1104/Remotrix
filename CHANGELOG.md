@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复安装 deb 后在 GNOME 中应用无图标、显示为通用齿轮的问题：运行时写入的用户级 `.desktop` 现在携带 `Icon=remotrix` 并在用户作用域回退安装 256x256 应用图标，覆盖包内/裸跑两种场景。
+- 修复启动时误弹「更新已就绪，点击应用」提示的问题：不再把下载目录中任意 `.deb` 或解析不出版本的安装包当作待应用更新；同版本预发布残留也不会被再次提示，只有真正更新的包才会提示应用。
+
 ## [0.6.0-beta.1] - 2026-09-25
 
 ### Added

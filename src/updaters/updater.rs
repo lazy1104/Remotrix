@@ -439,22 +439,72 @@ pub fn platform_display() -> String {
     format!("{os} {arch}")
 }
 
-/// Parse a dotted version string into a numeric tuple. Non-numeric
-/// segments (e.g. a `1.2.3-beta` suffix) are dropped, so the result may
-/// be shorter than the input.
+/// Split the dotted numeric core (`MAJOR.MINOR.PATCH[.extras]`) from a
+/// trailing `-pre` suffix. The prerelease marker is the first `-`, so
+/// `0.6.0-beta.1` yields `([0, 6, 0], Some("beta.1"))` and the trailing
+/// `1` of the prerelease is never absorbed into the core tuple.
+fn split_prerelease(v: &str) -> (Vec<u64>, Option<&str>) {
+    let (core, pre) = match v.find('-') {
+        Some(i) => (&v[..i], Some(&v[i + 1..])),
+        None => (v, None),
+    };
+    let tuple = core
+        .split('.')
+        .filter_map(|p| p.parse::<u64>().ok())
+        .collect();
+    (tuple, pre)
+}
+
+/// Parse a dotted version string into a numeric tuple. The prerelease
+/// suffix (everything after the first `-`) is stripped, so `1.2.3-beta`
+/// and `1.2.3-beta.1` both yield `[1, 2, 3]`.
 pub fn version_tuple(v: &str) -> Vec<u64> {
-    v.split('.').filter_map(|p| p.parse::<u64>().ok()).collect()
+    split_prerelease(v).0
+}
+
+/// Order two prerelease identifiers of the same numeric core (SemVer-style).
+/// Numeric identifiers compare numerically, identifiers with letters compare
+/// lexically, and a longer identifier list wins only when the shared prefix
+/// is equal. Returns `true` when `a` sorts after `b`.
+fn prerelease_gt(a: &str, b: &str) -> bool {
+    let pa: Vec<&str> = a.split('.').collect();
+    let pb: Vec<&str> = b.split('.').collect();
+    let len = pa.len().max(pb.len());
+    for i in 0..len {
+        let x = pa.get(i).copied().unwrap_or("");
+        let y = pb.get(i).copied().unwrap_or("");
+        if x.is_empty() && y.is_empty() {
+            return false;
+        }
+        if y.is_empty() {
+            return true;
+        }
+        if x.is_empty() {
+            return false;
+        }
+        match (x.parse::<u64>(), y.parse::<u64>()) {
+            (Ok(xn), Ok(yn)) if xn != yn => return xn > yn,
+            (Ok(_), Ok(_)) => {}
+            _ => match x.cmp(y) {
+                std::cmp::Ordering::Equal => {}
+                ord => return ord.is_gt(),
+            },
+        }
+    }
+    false
 }
 
 /// Returns `true` when `a` is strictly newer than `b`.
 ///
-/// The comparison is segment-by-segment with zero-padding: `1.2.0.1` is
-/// newer than `1.2`, `1.10` is newer than `1.9`. Non-numeric segments
-/// are ignored by [`version_tuple`], so `1.2.3-beta` and `1.2.3` are
-/// considered equal.
+/// The numeric core is compared segment-by-segment with zero-padding:
+/// `1.2.0.1` is newer than `1.2`, `1.10` is newer than `1.9`. A prerelease
+/// (`-beta.1`) is the same target as its base release, so `0.6.0-beta.1`
+/// is **not** newer than `0.6.0`, while `0.6.0` is newer than
+/// `0.6.0-beta.1`. Prereleases of the same core are ordered by
+/// [`prerelease_gt`] (e.g. `0.6.0-beta.2` newer than `0.6.0-beta.1`).
 pub fn version_gt(a: &str, b: &str) -> bool {
-    let ta = version_tuple(a);
-    let tb = version_tuple(b);
+    let (ta, pa) = split_prerelease(a);
+    let (tb, pb) = split_prerelease(b);
     let len = ta.len().max(tb.len());
     for i in 0..len {
         let x = ta.get(i).copied().unwrap_or(0);
@@ -463,7 +513,12 @@ pub fn version_gt(a: &str, b: &str) -> bool {
             return x > y;
         }
     }
-    false
+    match (pa, pb) {
+        (None, None) => false,
+        (Some(pa), Some(pb)) => prerelease_gt(pa, pb),
+        (Some(_), None) => false,
+        (None, Some(_)) => true,
+    }
 }
 
 #[cfg(test)]
@@ -483,10 +538,13 @@ mod tests {
 
     #[test]
     fn version_tuple_drops_non_numeric() {
-        // "1.2.3-beta" → non-numeric "3-beta" segment can't parse, dropped.
-        // Actually "-beta" attaches to "3", so "3-beta" fails to parse as u64.
-        assert_eq!(version_tuple("1.2.3-beta"), vec![1, 2]);
+        // The prerelease marker (first '-') splits off the numeric core, so
+        // "1.2.3-beta" and "1.2.3-beta.1" share the base tuple [1, 2, 3].
+        assert_eq!(version_tuple("1.2.3-beta"), vec![1, 2, 3]);
+        assert_eq!(version_tuple("1.2.3-beta.1"), vec![1, 2, 3]);
+        assert_eq!(version_tuple("0.6.0-beta.1"), vec![0, 6, 0]);
         assert_eq!(version_tuple("1.2.3.4"), vec![1, 2, 3, 4]);
+        assert_eq!(version_tuple("1.10.100"), vec![1, 10, 100]);
     }
 
     #[test]
@@ -506,10 +564,34 @@ mod tests {
     }
 
     #[test]
-    fn version_gt_ignores_non_numeric_suffix() {
-        // 1.2.3-beta → tuple [1, 2]; equal to 1.2 → not greater.
-        assert!(!version_gt("1.2.3-beta", "1.2"));
-        assert!(!version_gt("1.2", "1.2.3-beta"));
+    fn version_gt_prerelease_not_newer_than_release() {
+        // The reported bug: a prerelease of the same target must not be
+        // offered as an update over the final release.
+        assert!(!version_gt("0.6.0-beta.1", "0.6.0"));
+        assert!(version_gt("0.6.0", "0.6.0-beta.1"));
+        assert!(!version_gt("0.6.0-beta.1", "0.6.0-beta.1"));
+        assert!(!version_gt("1.2.3-beta", "1.2.3"));
+        // Beta of an older target is less mature: not newer than a lower
+        // base release either.
+        assert!(!version_gt("0.5.0-beta.9", "0.6.0"));
+        assert!(version_gt("0.6.0-beta.1", "0.5.0"));
+    }
+
+    #[test]
+    fn version_gt_prerelease_order_same_core() {
+        // Within the same core, a later snapshot is newer.
+        assert!(version_gt("0.6.0-beta.2", "0.6.0-beta.1"));
+        assert!(!version_gt("0.6.0-beta.1", "0.6.0-beta.2"));
+    }
+
+    #[test]
+    fn version_gt_total_order() {
+        // 0.6.0-beta.1 < 0.6.0-beta.2 < 0.6.0 < 0.6.1-beta.1
+        assert!(version_gt("0.6.0-beta.2", "0.6.0-beta.1"));
+        assert!(version_gt("0.6.0", "0.6.0-beta.2"));
+        assert!(!version_gt("0.6.0-beta.2", "0.6.0"));
+        assert!(version_gt("0.6.1-beta.1", "0.6.0"));
+        assert!(!version_gt("0.6.0-beta.1", "0.6.0-beta.1"));
     }
 
     #[test]

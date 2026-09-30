@@ -49,8 +49,64 @@ pub fn install_desktop_file() {
         }
     }
     let tmp = path.with_extension("desktop.tmp");
-    if std::fs::write(&tmp, content).is_ok() {
-        let _ = std::fs::rename(&tmp, &path);
+    if std::fs::write(&tmp, &content).is_ok() {
+        if std::fs::rename(&tmp, &path).is_ok() {
+            install_user_icon(&data_home);
+        }
+    }
+}
+
+const USER_APP_ICON: &[u8] = include_bytes!("../../assets/icon.png");
+
+fn install_user_icon(data_home: &std::path::Path) {
+    let icon_dir = data_home
+        .join("icons")
+        .join("hicolor")
+        .join("256x256")
+        .join("apps");
+    if std::fs::create_dir_all(&icon_dir).is_err() {
+        return;
+    }
+    let icon_path = icon_dir.join("remotrix.png");
+    let needs_write = match std::fs::read(&icon_path) {
+        Ok(existing) => existing != USER_APP_ICON,
+        Err(_) => true,
+    };
+    if !needs_write {
+        return;
+    }
+    let tmp = icon_path.with_extension("png.tmp");
+    if std::fs::write(&tmp, USER_APP_ICON).is_ok() {
+        let _ = std::fs::rename(&tmp, &icon_path);
+    }
+    refresh_icon_theme_cache(&icon_dir);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn refresh_icon_theme_cache(icon_dir: &std::path::Path) {
+    let Some(theme_root) = icon_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.to_path_buf())
+    else {
+        return;
+    };
+    let status = std::process::Command::new("gtk-update-icon-cache")
+        .arg("-f")
+        .arg(&theme_root)
+        .arg("-q")
+        .status();
+    match status {
+        Ok(s) if !s.success() => tracing::warn!(
+            theme_root = %theme_root.display(),
+            "gtk-update-icon-cache returned non-zero"
+        ),
+        Err(e) => tracing::warn!(
+            theme_root = %theme_root.display(),
+            error = %e,
+            "gtk-update-icon-cache unavailable"
+        ),
+        _ => {}
     }
 }
 
@@ -65,6 +121,7 @@ pub(crate) fn desktop_entry_header(exec: &str) -> String {
          Name=Remotrix\n\
          Comment=Download manager\n\
          Exec={exec}\n\
+         Icon=remotrix\n\
          Terminal=false\n\
          Categories=Network;FileTransfer;\n"
     )
@@ -101,6 +158,7 @@ mod tests {
         assert!(h.contains("Type=Application"));
         assert!(h.contains("Name=Remotrix"));
         assert!(h.contains("Exec=\"/usr/bin/remotrix\""));
+        assert!(h.contains("Icon=remotrix"));
         assert!(h.contains("Terminal=false"));
         assert!(h.contains("Categories=Network;FileTransfer;"));
     }
