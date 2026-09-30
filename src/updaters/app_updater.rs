@@ -588,19 +588,13 @@ mod tests {
     fn find_pending_older_or_same_version_ignored() {
         // Older releases and the exact running prerelease are not pending.
         assert!(run_pending_scan(&["remotrix_0.5.0_amd64.deb"]).is_none());
-        assert!(
-            run_pending_scan(&["remotrix_0.6.0-beta.1_amd64.deb"]).is_none()
-        );
+        assert!(run_pending_scan(&["remotrix_0.6.0-beta.1_amd64.deb"]).is_none());
     }
 
     #[test]
     fn find_pending_newer_version_offered() {
         // A genuinely newer final or later beta snapshot is offered.
-        assert!(
-            run_pending_scan(&["remotrix_0.6.0_amd64.deb"]).is_some()
-        );
-        assert!(
-            run_pending_scan(&["remotrix_0.6.0-beta.2_amd64.deb"]).is_some()
-        );
+        assert!(run_pending_scan(&["remotrix_0.6.0_amd64.deb"]).is_some());
+        assert!(run_pending_scan(&["remotrix_0.6.0-beta.2_amd64.deb"]).is_some());
     }
 }
