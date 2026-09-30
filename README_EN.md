@@ -263,7 +263,7 @@ for aria2 / log still win. The `ARIA2_BIN` env var has the highest priority and 
 
 Remotrix exposes a local HTTP server (default port `29110`, loopback only) that implements the full protocol expected by the upstream [motrix-next-extension](https://github.com/AnInsomniacy/motrix-next-extension) (MIT, reused unmodified):
 
-- `GET /ping` — heartbeat (no auth)
+- `GET /ping` — heartbeat (requires auth)
 - `GET /stat` — global stats (`downloadSpeed` / `numActive`, etc., mirroring aria2 `getGlobalStat` as strings)
 - `POST /add` — add a download (referer / cookie / UA / request headers submitted with the task)
 - `POST /pause-all` / `POST /resume-all` — global pause / resume
@@ -274,7 +274,7 @@ Remotrix exposes a local HTTP server (default port `29110`, loopback only) that 
 2. In Remotrix Settings → "Advanced" → "Browser Takeover", enable it and copy the port and secret.
 3. In the extension options page, point it at `http://127.0.0.1:<port>` and enter the secret; `checkConnection` should pass.
 
-By default `/add` **silently auto-submits** the task and fires a system notification; you can switch to a confirmation dialog in Settings instead. **The secret is always required**: if none is set, one is auto-generated and persisted at startup; `/stat`, `/add`, `/pause-all`, and `/resume-all` all require `Authorization: Bearer <secret>` (the `/ping` heartbeat stays open). Only global pause / resume is exposed; manage individual tasks back in the Remotrix main window.
+By default `/add` **silently auto-submits** the task and fires a system notification; you can switch to a confirmation dialog in Settings instead. **The secret is always required**: if none is set, one is auto-generated and persisted at startup; all endpoints (`/ping`, `/stat`, `/add`, `/pause-all`, `/resume-all`) require `Authorization: Bearer <secret>`. Only global pause / resume is exposed; manage individual tasks back in the Remotrix main window.
 
 After changing **Enabled / port / secret / auto-submit**, clicking **Apply** **hot-restarts** the extension service immediately (no app restart needed) and shows a toast ("Restarting… / restarted / restart failed"); toggling the enable switch off stops the service and shows a "stopped" toast. This only happens on Apply — editing the toggles or inputs alone does not restart.
 

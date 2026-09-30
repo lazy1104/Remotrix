@@ -226,7 +226,11 @@ fn deny(res: &mut Response) {
 }
 
 #[handler]
-async fn ping(res: &mut Response) {
+async fn ping(req: &mut Request, res: &mut Response) {
+    if !authorized(req) {
+        deny(res);
+        return;
+    }
     res.render(Json(serde_json::json!({
         "status": "ok",
         "version": env!("CARGO_PKG_VERSION"),

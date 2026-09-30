@@ -227,7 +227,7 @@ cargo fmt --check                                               # 格式检查
 
 Remotrix 在本地暴露一个 HTTP 服务（默认端口 `29110`，仅监听回环地址），实现与上游 [motrix-next-extension](https://github.com/AnInsomniacy/motrix-next-extension)（MIT 许可，零改动复用）开箱即用的整套协议：
 
-- `GET /ping` —— 心跳（无鉴权）
+- `GET /ping` —— 心跳（需鉴权）
 - `GET /stat` —— 全局统计（`downloadSpeed` / `numActive` 等，字符串形式镜像 aria2 `getGlobalStat`）
 - `POST /add` —— 添加下载（referer / cookie / UA / 请求头随任务提交）
 - `POST /pause-all` / `POST /resume-all` —— 全局暂停 / 恢复
@@ -238,7 +238,7 @@ Remotrix 在本地暴露一个 HTTP 服务（默认端口 `29110`，仅监听回
 2. 在 Remotrix 设置 →「高级」→「浏览器接管」中启用并复制端口与密钥。
 3. 在扩展选项页把地址填为 `http://127.0.0.1:<端口>` 并填入密钥，`checkConnection` 通过即可。
 
-默认情况下 `/add` 会**静默自动提交**任务并弹出系统通知；可在设置中改为弹「添加」对话框二次确认。**密钥始终必需**：若设置里没有密钥，会在启动时自动生成并持久化；`/stat /add /pause-all /resume-all` 均要求 `Authorization: Bearer <密钥>`（`/ping` 心跳除外）。默认只提供全局暂停 / 恢复，单任务管理请回到 Remotrix 主窗口完成。
+默认情况下 `/add` 会**静默自动提交**任务并弹出系统通知；可在设置中改为弹「添加」对话框二次确认。**密钥始终必需**：若设置里没有密钥，会在启动时自动生成并持久化；所有接口（`/ping /stat /add /pause-all /resume-all`）均要求 `Authorization: Bearer <密钥>`。默认只提供全局暂停 / 恢复，单任务管理请回到 Remotrix 主窗口完成。
 
 修改「启用 / 端口 / 密钥 / 自动提交」后点击「**应用**」会**立即热重启**扩展服务（无需重启应用），并以 toast 提示「正在重启… / 已重启 / 重启失败」；若关闭启用开关则会停止服务并提示「已停止」。仅在点击「应用」时生效，修改开关或输入本身不会触发重启。
 

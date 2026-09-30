@@ -10,10 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - 浏览器接管、添加对话框与「编辑高级选项」中携带 Cookie 的任务不再因 aria2 报 `Unknown option: cookie` 而整批添加失败：Cookie 现通过 aria2 的 `header: Cookie: …` 下发，详情面板的 Cookie 字段也能正确从 `header` 回读。
+- 失败任务不再跨重启被 aria2 会话缓存复活并反复触发 `download failed` 警告：启动时先按 DB 中 `status='error'` 的 GID 把对应条目从 `session.txt` 中剔除，再交给 `--input-file`，与既有的 RPC `tell_stopped` 兜底清理互补。
 
 ### Changed
 
-- 浏览器接管 API 改为强制密钥鉴权：未配置时自动生成随机密钥并持久化，所有数据接口（`/stat`、`/add`、`/pause-all`、`/resume-all`）均要求 `Authorization: Bearer <密钥>`，`/ping` 心跳除外。已升级用户需在设置 → 高级 → 浏览器接管查看新密钥并更新浏览器扩展配置。
+- 浏览器接管 API 改为强制密钥鉴权：未配置时自动生成随机密钥并持久化，**所有接口（`/ping`、`/stat`、`/add`、`/pause-all`、`/resume-all`）** 均要求 `Authorization: Bearer <密钥>`。已升级用户需在设置 → 高级 → 浏览器接管查看新密钥并更新浏览器扩展配置；浏览器扩展 "checkConnection" 在未配置密钥时会直接失败，避免显示虚假的"连接成功"。
 
 ## [0.6.0-beta.2] - 2026-09-30
 
