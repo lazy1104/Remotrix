@@ -317,6 +317,164 @@ fn emit_sidecar_line(target: &'static str, line: &str, repeats: u32) {
     }
 }
 
+fn parse_session_gid(line: &[u8]) -> Option<&str> {
+    let rest = line.strip_prefix(b" gid=")?;
+    let end = rest
+        .iter()
+        .position(|&b| b == b' ' || b == b'\t' || b == b'\r')
+        .unwrap_or(rest.len());
+    std::str::from_utf8(&rest[..end]).ok()
+}
+
+/// Pure rewrite of an aria2 session file: drop every download entry whose
+/// `gid=` appears in `errors`. Preserves every byte of the input that
+/// isn't part of a removed entry (option lines, the URI's trailing tab,
+/// and blank-line separators between entries stay in place).
+fn filter_error_session_blocks(raw: &[u8], errors: &HashSet<String>) -> (Vec<u8>, usize) {
+    let mut lines: Vec<&[u8]> = Vec::new();
+    let mut start = 0usize;
+    for (i, &b) in raw.iter().enumerate() {
+        if b != b'\n' {
+            continue;
+        }
+        let mut end = i;
+        if end > start && raw[end - 1] == b'\r' {
+            end -= 1;
+        }
+        lines.push(&raw[start..end]);
+        start = i + 1;
+    }
+    if start < raw.len() {
+        let mut end = raw.len();
+        if end > start && raw[end - 1] == b'\r' {
+            end -= 1;
+        }
+        lines.push(&raw[start..end]);
+    }
+    let total = lines.len();
+    if total == 0 {
+        return (raw.to_vec(), 0);
+    }
+
+    let mut entries: Vec<Vec<usize>> = Vec::new();
+    let mut current: Vec<usize> = Vec::new();
+    let mut body_started = false;
+    let mut pending: Vec<usize> = Vec::new();
+
+    for (idx, line) in lines.iter().enumerate() {
+        let only_ws = line.iter().all(|&b| b == b' ' || b == b'\t' || b == b'\r');
+        let is_blank = line.is_empty() || only_ws;
+        let is_indent = !is_blank && line[0] == b' ';
+
+        if is_blank {
+            if !current.is_empty() && body_started {
+                entries.push(std::mem::take(&mut current));
+                body_started = false;
+            }
+            pending.push(idx);
+            continue;
+        }
+
+        if is_indent {
+            if current.is_empty() {
+                let mut v = std::mem::take(&mut pending);
+                v.push(idx);
+                current = v;
+            } else {
+                current.push(idx);
+            }
+            body_started = true;
+            continue;
+        }
+
+        if !current.is_empty() && body_started {
+            entries.push(std::mem::take(&mut current));
+            body_started = false;
+        }
+        if current.is_empty() {
+            let mut v = std::mem::take(&mut pending);
+            v.push(idx);
+            current = v;
+        } else {
+            current.push(idx);
+        }
+    }
+    if !current.is_empty() {
+        entries.push(current);
+    } else if !pending.is_empty() {
+        if let Some(last) = entries.last_mut() {
+            last.extend(pending);
+        } else {
+            for li in pending {
+                entries.push(vec![li]);
+            }
+        }
+    }
+
+    let mut keep_line = vec![false; total];
+    let mut dropped = 0usize;
+    for entry in &entries {
+        let mut gid = entry.iter().filter_map(|&li| parse_session_gid(lines[li]));
+        let drop = gid.next().is_some_and(|g| errors.contains(g));
+        if drop {
+            dropped += 1;
+            continue;
+        }
+        for &li in entry {
+            keep_line[li] = true;
+        }
+    }
+    if dropped == 0 {
+        return (raw.to_vec(), 0);
+    }
+
+    let trailing_nl = raw.last() == Some(&b'\n');
+    let mut out: Vec<u8> = Vec::with_capacity(raw.len());
+    for (i, line) in lines.iter().enumerate() {
+        if !keep_line[i] {
+            continue;
+        }
+        out.extend_from_slice(line);
+        if i + 1 < total || trailing_nl {
+            out.push(b'\n');
+        }
+    }
+    (out, dropped)
+}
+
+fn strip_error_tasks_from_session(session_file: &Path, db_path: &Path) -> usize {
+    let raw = match std::fs::read(session_file) {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!(error = %e, "session strip: read failed");
+            return 0;
+        }
+    };
+    if raw
+        .iter()
+        .all(|&b| b == b'\n' || b == b' ' || b == b'\t' || b == b'\r')
+    {
+        return 0;
+    }
+    let errors = crate::db::error_gids(db_path);
+    if errors.is_empty() {
+        return 0;
+    }
+    let (out, dropped) = filter_error_session_blocks(&raw, &errors);
+    if dropped == 0 {
+        return 0;
+    }
+    if let Err(e) = std::fs::write(session_file, &out) {
+        tracing::warn!(error = %e, "session strip: write failed");
+        return 0;
+    }
+    tracing::info!(
+        count = dropped,
+        "startup: stripped error-state entries from session.txt"
+    );
+    dropped
+}
+
 /// Post-spawn cleanup: enumerate aria2's stopped-task list and remove any
 /// task in `error` status so it cannot be re-resurrected by the next
 /// `--save-session` write or the next `--input-file` replay on restart.
@@ -395,6 +553,9 @@ impl Sidecar {
         let session_file = config.session_path.join("session.txt");
         if !session_file.exists() {
             std::fs::write(&session_file, "").map_err(|e| format!("create session file: {e}"))?;
+        }
+        if let Some(db) = crate::config::db_path() {
+            strip_error_tasks_from_session(&session_file, &db);
         }
         let session_str = session_file.to_string_lossy().to_string();
 
@@ -2600,5 +2761,111 @@ mod tests {
             serde_json::Value::String("Cookie: second=2".to_string()),
         ]);
         assert_eq!(cookie_from_get_option(&value), "first=1");
+    }
+
+    #[test]
+    fn filter_error_session_blocks_drops_only_matching_gids() {
+        let raw = b"\
+http://err.example/a\t
+ gid=deadbeefdeadbeef
+ dir=/d
+ out=a
+
+http://keep.example/b\t
+ gid=keepkeepkeep
+ dir=/d
+ out=b
+";
+        let mut errors = HashSet::new();
+        errors.insert("deadbeefdeadbeef".to_string());
+
+        let (out, dropped) = filter_error_session_blocks(raw, &errors);
+        assert_eq!(dropped, 1);
+
+        let out_str = std::str::from_utf8(&out).unwrap();
+        assert!(!out_str.contains("deadbeefdeadbeef"));
+        assert!(!out_str.contains("http://err.example/a"));
+        assert!(out_str.contains("keepkeepkeep"));
+        assert!(out_str.contains("http://keep.example/b\t"));
+        assert!(out_str.contains(" out=b"));
+        let expected = "\nhttp://keep.example/b\t\n gid=keepkeepkeep\n dir=/d\n out=b\n";
+        assert_eq!(out_str, expected);
+    }
+
+    #[test]
+    fn filter_error_session_blocks_handles_multi_uri_entry() {
+        let raw = b"\
+http://x/a
+http://x/b
+ gid=keepkeepkeep
+ dir=/d
+
+http://y/a\t
+ gid=deadbeefdeadbeef
+ dir=/d
+";
+        let mut errors = HashSet::new();
+        errors.insert("deadbeefdeadbeef".to_string());
+
+        let (out, dropped) = filter_error_session_blocks(raw, &errors);
+        assert_eq!(dropped, 1);
+
+        let out_str = std::str::from_utf8(&out).unwrap();
+        assert!(out_str.contains("http://x/a"));
+        assert!(out_str.contains("http://x/b"));
+        assert!(out_str.contains("gid=keepkeepkeep"));
+        assert!(!out_str.contains("deadbeefdeadbeef"));
+        assert!(!out_str.contains("http://y/a"));
+        let expected = "http://x/a\nhttp://x/b\n gid=keepkeepkeep\n dir=/d\n";
+        assert_eq!(out_str, expected);
+    }
+
+    #[test]
+    fn filter_error_session_blocks_keeps_blank_separator_between_kept_entries() {
+        let raw = b"\
+http://a.example\t
+ gid=keepaaaaaaaaaaa
+ dir=/d
+
+http://b.example\t
+ gid=keepbbbbbbbbbbb
+ dir=/d
+";
+        let errors = HashSet::<String>::new();
+        let (out, dropped) = filter_error_session_blocks(raw, &errors);
+        assert_eq!(dropped, 0);
+        let out_str = std::str::from_utf8(&out).unwrap();
+        assert!(
+            out_str.contains("\n\n"),
+            "blank separator between two kept entries should be preserved; got: {:?}",
+            out_str
+        );
+    }
+
+    #[test]
+    fn filter_error_session_blocks_keeps_unknown_entries() {
+        let raw = b"\
+http://x/a\t
+ gid=unknownunknown00
+ dir=/d
+";
+        let errors = HashSet::<String>::new();
+        let (out, dropped) = filter_error_session_blocks(raw, &errors);
+        assert_eq!(dropped, 0);
+        assert_eq!(out.as_slice(), raw);
+    }
+
+    #[test]
+    fn filter_error_session_blocks_no_change_returns_input() {
+        let raw = b"\
+http://x/a\t
+ gid=keepkeepkeep
+ dir=/d
+";
+        let mut errors = HashSet::new();
+        errors.insert("deadbeefdeadbeef".to_string());
+        let (out, dropped) = filter_error_session_blocks(raw, &errors);
+        assert_eq!(dropped, 0);
+        assert_eq!(out.as_slice(), raw);
     }
 }

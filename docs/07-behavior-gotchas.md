@@ -14,18 +14,33 @@ it errors again → written again. The per-session `max-tries` / `retry-wait` se
 (`src/ui/settings_page.rs:995-1009`) do **not** cap cross-restart retries — each engine lifetime gets
 its own 5-tries budget.
 
-To stop the loop, `prune_error_tasks_in_aria2` (`src/engine/install.rs` around line 324, called from
-`Sidecar::spawn` after the WebSocket `Client` is connected and before `Ok(Sidecar { .. })` is returned)
-calls `aria2.tell_stopped(-1, 1000)` and runs `force_remove` + `remove_download_result` on every
-entry whose status is `error` — using aria2 itself as the source of truth (the SQLite row can lag
-by up to ~1 s, or stay stuck at `waiting` if the previous process was killed mid-flush, so filtering
-by DB was unreliable). After removal the GID is gone from aria2's session save, so subsequent
-`--input-file` replays do not resurrect it.
+To stop the loop, two complementary cleanups run on every spawn:
+
+1. `strip_error_tasks_from_session` (`src/engine/mod.rs`, called from `Sidecar::spawn` right after
+   the `session.txt` file is ensured to exist and *before* `--input-file` is passed to aria2) reads
+   the DB's error-state GIDs via `crate::db::error_gids` (`src/storage/db.rs`) and rewrites
+   `session.txt` to drop every download entry whose `gid=` is in that set — byte-preserving for the
+   rest, so `pause=true`, the URI's trailing tab, blank-line separators and all other options are
+   kept intact. After the rewrite aria2 never sees the dead task in the first place.
+
+2. `prune_error_tasks_in_aria2` (`src/engine/mod.rs`, called from `Sidecar::spawn` after the
+   WebSocket `Client` is connected and before `Ok(Sidecar { .. })` is returned) calls
+   `aria2.tell_stopped(-1, 1000)` and runs `force_remove` + `remove_download_result` on every
+   entry whose status is `error` — using aria2 itself as the source of truth for the cases the DB
+   missed (e.g. the SQLite status may lag by up to ~1 s, or stay stuck at `waiting` if the previous
+   process was killed mid-flush). After removal the GID is gone from aria2's session save, so
+   subsequent `--input-file` replays do not resurrect it.
+
+The two paths cover each other's blind spots: the DB strip is deterministic but only knows what the
+SQLite row already says, while the RPC prune is authoritative but runs only once before
+`--input-file`-restored tasks finish their first re-attempt — either alone leaves a gap the other
+fills. Together the cross-restart retry loop is closed for every `Error`-state task the DB has
+ever recorded, plus any error tasks the DB hadn't yet flushed when the previous process died.
 
 The DB row is intentionally kept (the UI still shows the task as `Error`, so the user can
 right-click → Delete or hit "重新下载", which issues a fresh `aria2.addUri` and a brand-new GID).
-Any failure in the prune path (RPC error, individual `force_remove` / `remove_download_result`
-failure) logs `warn!` and is a no-op, so a flaky WebSocket or unresponsive RPC cannot block engine
+Any failure in either prune path (DB read/parse glitch, RPC error, individual `force_remove` /
+`remove_download_result` failure) logs `warn!` and is a no-op, so neither path can block engine
 spawn.
 
 ## Top border as background progress

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::Path;
 
 use rusqlite::Connection;
@@ -343,6 +344,37 @@ pub fn is_task_error(path: &Path, gid: &str) -> bool {
     }
 }
 
+/// Return every GID in the `tasks` table whose status is `error`. Used by
+/// the engine on startup to decide which entries of aria2's `session.txt`
+/// to strip before the next `--input-file` replay.
+///
+/// Any failure (missing DB, missing table, I/O error) collapses to an
+/// empty set so the caller can keep going without blocking the spawn path.
+pub fn error_gids(path: &Path) -> HashSet<String> {
+    let conn = match open_readonly(path) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(error = %e, "error_gids: open failed");
+            return HashSet::new();
+        }
+    };
+    let mut stmt = match conn.prepare("SELECT gid FROM tasks WHERE status = 'error'") {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(error = %e, "error_gids: prepare failed");
+            return HashSet::new();
+        }
+    };
+    let rows = match stmt.query_map([], |row| row.get::<_, String>(0)) {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(error = %e, "error_gids: query failed");
+            return HashSet::new();
+        }
+    };
+    rows.filter_map(|r| r.ok()).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -396,5 +428,46 @@ mod tests {
         assert!(!is_task_error(&path, "nope"));
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn error_gids_returns_only_error_rows() {
+        let path = temp_db();
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE tasks (
+                gid TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                name TEXT NOT NULL DEFAULT ''
+             );",
+        )
+        .unwrap();
+        conn.execute("INSERT INTO tasks(gid, status) VALUES ('e1','error')", [])
+            .unwrap();
+        conn.execute("INSERT INTO tasks(gid, status) VALUES ('e2','error')", [])
+            .unwrap();
+        conn.execute("INSERT INTO tasks(gid, status) VALUES ('p1','paused')", [])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO tasks(gid, status) VALUES ('c1','complete')",
+            [],
+        )
+        .unwrap();
+
+        let gids = error_gids(&path);
+        assert_eq!(gids.len(), 2);
+        assert!(gids.contains("e1"));
+        assert!(gids.contains("e2"));
+        assert!(!gids.contains("p1"));
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn error_gids_missing_db_returns_empty() {
+        let mut p = std::env::temp_dir();
+        p.push("definitely_does_not_exist_xyz_gids.db");
+        let _ = std::fs::remove_file(&p);
+        assert!(error_gids(&p).is_empty());
     }
 }
