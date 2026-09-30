@@ -353,6 +353,7 @@ fn task_card<'a>(
     progress_anim: &'a HashMap<String, Animated<f32>>,
 ) -> Element<'a, Message> {
     let text_secondary = theme::text_secondary(theme);
+    let text_weak = theme::text_weak(theme);
     let pct = progress_anim
         .get(&t.gid)
         .map(|p| *p.value())
@@ -407,7 +408,12 @@ fn task_card<'a>(
 
     let redownload_btn: Element<'a, Message> = {
         let can_redownload = !t.url.is_empty() || t.info_hash.is_some();
-        let btn = button(icon::refresh().size(FONT_ICON).color(text_secondary))
+        let glyph_color = if can_redownload {
+            text_secondary
+        } else {
+            text_weak
+        };
+        let btn = button(icon::refresh().size(FONT_ICON).color(glyph_color))
             .padding(PADDING_ICON_BTN)
             .style(theme::style::button::toolbar_icon(false));
         let btn = if can_redownload {
@@ -447,7 +453,7 @@ fn task_card<'a>(
             tooltip::Position::Bottom,
         )
     } else {
-        let glyph = icon::folder_open().size(FONT_ICON).color(text_secondary);
+        let glyph = icon::folder_open().size(FONT_ICON).color(text_weak);
         tip::standard(
             button(glyph)
                 .padding(PADDING_ICON_BTN)
@@ -468,7 +474,7 @@ fn task_card<'a>(
             tooltip::Position::Bottom,
         )
     } else {
-        let glyph = icon::link().size(FONT_ICON).color(text_secondary);
+        let glyph = icon::link().size(FONT_ICON).color(text_weak);
         tip::standard(
             button(glyph)
                 .padding(PADDING_ICON_BTN)
