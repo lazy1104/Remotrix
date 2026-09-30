@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0-beta.2] - 2026-09-30
+
 ### Added
 
 - 支持 `remotrix://` 自定义协议：配套扩展「打开应用」按钮可从 OS 调起桌面窗口——关闭时启动并显示窗口、运行中（含托盘隐藏与 autostart-hidden 启动态）聚焦已有窗口。Linux 在用户级 `.desktop` 写入 `MimeType=x-scheme-handler/remotrix;` 与 `Exec="<exe>" %u`，并 `xdg-mime default` 注册为协议处理器；Windows 在 `HKEY_CLASSES_ROOT\remotrix\shell\open\command` 写入 `"<exe>" "%1"`；macOS 由未来的 `.app` 打包注入 `CFBundleURLTypes`（片段见 `assets/macos-info.plist.fragment.xml`，当前 release 流水线不产 macOS 包）。运行中实例走现有 `notify_if_running → Message::ShowRequested` → `handle_activate_window`，将窗口恢复并抬升聚焦。
