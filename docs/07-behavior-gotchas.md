@@ -186,6 +186,38 @@ installs upgrade silently on the next boot.
   user without admin can still launch the app manually; only the
   extension-button path is degraded.
 
+## Extension API `/add` trusts the browser extension with absolute paths and headers
+
+The browser extension HTTP API (`src/integration/extension_api.rs`) is bound to
+`127.0.0.1` and gated by a per-install `Bearer <secret>` (`settings.extension.secret`),
+so the only reachable client is the locally-installed browser extension. Inside that
+trust boundary, `/add` honours the optional `dir` / `path` field directly as the
+task's `save_dir` and forwards `referer` / `cookie` / `userAgent` /
+`requestHeaders` straight to aria2. **No directory allow-list is enforced**: any
+absolute path the extension posts is used as-is.
+
+Operator-visible side-effects of trusting the extension:
+
+- The task detail's "保存位置" mirrors exactly what the extension sent. If the
+  extension posts `dir=/home/<user>/Pictures`, the task writes there; if it
+  posts nothing, the task falls back to `settings.download_dir`. There is no
+  server-side override, by the user's direction (see `.kilo/plans/1790761084217-savedir-reconcile-plan.md`).
+- The `/add` response now echoes a `received` map (`dir`, `filename`,
+  `referer`, `cookie`, `userAgent`, `requestHeaders: <n>`) so the extension can
+  diagnose "I sent it, server dropped it" cases without log-diving.
+- Tasks whose `dir` came from a sandboxed Save-As (Chromium / Firefox via
+  XDG Document Portal → `/run/user/1000/doc/<id>/`) will fail with
+  `Failed to open the file ... No such file or directory` because the portal
+  mount is gone by the time aria2 writes. That is a browser-side limitation
+  — Remotrix cannot resolve portal paths to durable directories. Self-built
+  extension UX that lets the user pick a real folder is tracked separately in
+  `.kilo/plans/1789268216072-extension-save-path.md`.
+- CDN hotlink-protected assets (Referer / Cookie / Signed-URL) need the
+  extension to forward the relevant headers; otherwise aria2's request gets
+  403/302 and the task ends in `error`. When that happens the GUI now shows
+  a toast containing the aria2 `error_code` / `error_message`, so the
+  diagnostic no longer lives only in the system notification / engine log.
+
 ## Anchored popovers toggle via their anchor button only when closed
 The speed-limit / shutdown / custom-color popovers (`src/ui/components/popover.rs`) are
 `Length::Fill` layers above the UI. Clicking their anchor button while open fires both the

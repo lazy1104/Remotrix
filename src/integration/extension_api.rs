@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use salvo::cors::{AllowOrigin, Cors};
@@ -27,7 +28,7 @@ pub struct GlobalStatCache {
 /// A download handed over by the browser extension.
 ///
 /// Used for the dialog-mode path (`/add` when auto-submit is disabled).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ExternalDownload {
     pub urls: Vec<String>,
     pub referer: Option<String>,
@@ -35,6 +36,8 @@ pub struct ExternalDownload {
     pub filename: Option<String>,
     pub user_agent: Option<String>,
     pub request_headers: Vec<(String, String)>,
+    pub dir: Option<PathBuf>,
+    pub out_basename: Option<String>,
 }
 
 struct Shared {
@@ -62,6 +65,10 @@ struct AddDownloadRequest {
     user_agent: Option<String>,
     #[serde(default)]
     request_headers: Option<Vec<HeaderItem>>,
+    #[serde(default)]
+    dir: Option<String>,
+    #[serde(default)]
+    path: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -108,6 +115,8 @@ impl ExternalDownload {
             .into_iter()
             .map(|h| (h.name, h.value))
             .collect();
+        let (dir, out_basename) = normalize_save_dir(body.dir.as_deref().or(body.path.as_deref()))
+            .unwrap_or((None, None));
         Self {
             urls: vec![primary],
             referer: body.referer.clone(),
@@ -115,7 +124,32 @@ impl ExternalDownload {
             filename: body.filename.clone(),
             user_agent: body.user_agent.clone(),
             request_headers,
+            dir,
+            out_basename,
         }
+    }
+}
+
+fn normalize_save_dir(raw: Option<&str>) -> Option<(Option<PathBuf>, Option<String>)> {
+    let raw = raw?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let path = PathBuf::from(raw);
+    if !path.is_absolute() {
+        return None;
+    }
+    let meta = std::fs::metadata(&path).ok();
+    match meta {
+        Some(m) if m.is_file() => {
+            let parent = path.parent().map(|p| p.to_path_buf());
+            let stem = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|s| s.to_string());
+            Some((parent, stem))
+        }
+        _ => Some((Some(path), None)),
     }
 }
 
@@ -338,24 +372,44 @@ async fn add(req: &mut Request, res: &mut Response) {
     }
 
     let external = ExternalDownload::from_request(&body);
+    let out = external
+        .filename
+        .clone()
+        .or_else(|| external.out_basename.clone())
+        .unwrap_or_default();
     let advanced = TaskAdvancedOptions {
-        out: external.filename.clone().unwrap_or_default(),
+        out,
         user_agent: external.user_agent.clone().unwrap_or_default(),
         referer: external.referer.clone().unwrap_or_default(),
         cookie: external.cookie.clone().unwrap_or_default(),
         ..Default::default()
     };
+    let save_dir = external
+        .dir
+        .clone()
+        .unwrap_or_else(|| settings.download_dir.clone());
+    let request_headers = external.request_headers.clone();
     if let Some(shared) = SHARED.lock().unwrap_or_else(|e| e.into_inner()).clone() {
         let _ = shared.cmd_tx.send(EngineCmd::AddExternalDownload {
             urls: external.urls,
-            save_dir: settings.download_dir.clone(),
+            save_dir,
             split: settings.split,
             advanced,
-            headers: external.request_headers,
+            headers: request_headers,
             bt_metadata_only: false,
         });
     }
-    res.render(Json(serde_json::json!({ "action": "added" })));
+    res.render(Json(serde_json::json!({
+        "action": "added",
+        "received": {
+            "dir": external.dir.is_some(),
+            "filename": external.filename.is_some(),
+            "referer": external.referer.is_some(),
+            "cookie": external.cookie.is_some(),
+            "userAgent": external.user_agent.is_some(),
+            "requestHeaders": external.request_headers.len(),
+        }
+    })));
 }
 
 #[cfg(test)]
@@ -426,6 +480,73 @@ mod tests {
     }
 
     #[test]
+    fn external_from_request_picks_dir_as_directory() {
+        let json = r#"{"url":"http://a.com/f","dir":"/tmp"}"#;
+        let body: AddDownloadRequest = serde_json::from_str(json).unwrap();
+        let ext = ExternalDownload::from_request(&body);
+        assert_eq!(ext.dir.as_deref(), Some(std::path::Path::new("/tmp")));
+        assert_eq!(ext.out_basename, None);
+    }
+
+    #[test]
+    fn external_from_request_picks_path_when_dir_missing() {
+        let dir = std::env::temp_dir().join("remotrix-ext-api-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("x.bin");
+        std::fs::write(&file, b"x").unwrap();
+        let body: AddDownloadRequest = serde_json::from_str(&format!(
+            r#"{{"url":"http://a.com/f","path":"{}"}}"#,
+            file.display()
+        ))
+        .unwrap();
+        let ext = ExternalDownload::from_request(&body);
+        assert_eq!(ext.dir.as_deref(), Some(dir.as_path()));
+        assert_eq!(ext.out_basename.as_deref(), Some("x.bin"));
+        let _ = std::fs::remove_file(&file);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn external_from_request_rejects_relative_path() {
+        let json = r#"{"url":"http://a.com/f","dir":"relative/x"}"#;
+        let body: AddDownloadRequest = serde_json::from_str(json).unwrap();
+        let ext = ExternalDownload::from_request(&body);
+        assert!(ext.dir.is_none());
+        assert!(ext.out_basename.is_none());
+    }
+
+    #[test]
+    fn external_from_request_dir_preferred_over_path() {
+        let json = r#"{"url":"http://a.com/f","dir":"/tmp","path":"/var/tmp/y.bin"}"#;
+        let body: AddDownloadRequest = serde_json::from_str(json).unwrap();
+        let ext = ExternalDownload::from_request(&body);
+        assert_eq!(ext.dir.as_deref(), Some(std::path::Path::new("/tmp")));
+        assert_eq!(ext.out_basename, None);
+    }
+
+    #[test]
+    fn normalize_save_dir_returns_none_for_empty_or_relative() {
+        assert!(normalize_save_dir(None).is_none());
+        assert!(normalize_save_dir(Some("")).is_none());
+        assert!(normalize_save_dir(Some("   ")).is_none());
+        assert!(normalize_save_dir(Some("./relative")).is_none());
+    }
+
+    #[test]
+    fn deserialize_add_request_accepts_dir_and_path() {
+        let json = r#"{
+            "url": "http://example.com/a.zip",
+            "dir": "/home/u/Pictures",
+            "path": "/home/u/Downloads/a.zip",
+            "referer": "http://example.com/"
+        }"#;
+        let body: AddDownloadRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(body.dir.as_deref(), Some("/home/u/Pictures"));
+        assert_eq!(body.path.as_deref(), Some("/home/u/Downloads/a.zip"));
+        assert_eq!(body.referer.as_deref(), Some("http://example.com/"));
+    }
+
+    #[test]
     fn url_scheme_allowed_rejects_file_and_unknown() {
         assert!(url_scheme_allowed("https://example.com/f"));
         assert!(url_scheme_allowed("magnet:?xt=urn:btih:abc"));
@@ -461,5 +582,36 @@ mod tests {
         assert_eq!(added["action"], "added");
         let paused = serde_json::json!({ "status": "ok" });
         assert_eq!(paused["status"], "ok");
+    }
+
+    #[test]
+    fn add_response_received_map_reflects_fields() {
+        let json = r#"{
+            "url":"http://a.com/f",
+            "dir":"/tmp",
+            "referer":"http://a.com/",
+            "userAgent":"Mozilla/5.0",
+            "requestHeaders":[{"name":"X-Foo","value":"bar"}]
+        }"#;
+        let body: AddDownloadRequest = serde_json::from_str(json).unwrap();
+        let ext = ExternalDownload::from_request(&body);
+        let resp = serde_json::json!({
+            "action": "added",
+            "received": {
+                "dir": ext.dir.is_some(),
+                "filename": ext.filename.is_some(),
+                "referer": ext.referer.is_some(),
+                "cookie": ext.cookie.is_some(),
+                "userAgent": ext.user_agent.is_some(),
+                "requestHeaders": ext.request_headers.len(),
+            }
+        });
+        assert_eq!(resp["action"], "added");
+        assert_eq!(resp["received"]["dir"], true);
+        assert_eq!(resp["received"]["referer"], true);
+        assert_eq!(resp["received"]["userAgent"], true);
+        assert_eq!(resp["received"]["requestHeaders"], 1);
+        assert_eq!(resp["received"]["cookie"], false);
+        assert_eq!(resp["received"]["filename"], false);
     }
 }

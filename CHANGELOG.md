@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 浏览器接管、添加对话框与「编辑高级选项」中携带 Cookie 的任务不再因 aria2 报 `Unknown option: cookie` 而整批添加失败：Cookie 现通过 aria2 的 `header: Cookie: …` 下发，详情面板的 Cookie 字段也能正确从 `header` 回读。
 - 失败任务不再跨重启被 aria2 会话缓存复活并反复触发 `download failed` 警告：启动时先按 DB 中 `status='error'` 的 GID 把对应条目从 `session.txt` 中剔除，再交给 `--input-file`，与既有的 RPC `tell_stopped` 兜底清理互补。
+- 浏览器插件（motrix-next-extension 兼容协议）提交下载时扩展端传入的保存路径会被原样作为该任务的 `save_dir`：`POST /add` 现接受可选 `dir`（或 `path`）字段，目录作为 `save_dir`、完整文件路径自动拆分为父目录 + `out`，未传入时仍回退到 `settings.download_dir`；`referer` / `cookie` / `userAgent` / `requestHeaders` 继续走既有链路透传给 aria2。响应里新增 `received` 回显，让扩展可即时确认服务端是否真收到这些字段（便于排查 CDN 防盗链）。
+- 任务进入 `error` 状态时，aria2 的 `error_code` / `error_message` 会同步在应用内 toast 上展示（之前仅在系统通知中），CDN 防盗链 / Referer 缺失导致的下载失败可直接在 UI 看到原因。
 
 ### Changed
 

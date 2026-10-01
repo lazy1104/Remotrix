@@ -595,12 +595,20 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
                             (_, Some(c)) if !c.trim().is_empty() => Some(format!("(error {c})")),
                             _ => None,
                         };
+                        let mut body = state.fluent.get_args(Tr::DownloadError, &args);
+                        if let Some(reason) = reason {
+                            body = format!("{body}\n{reason}");
+                        }
+                        let _ = spawn_toast(
+                            state,
+                            ToastGroup::Task,
+                            ToastKind::Error,
+                            body.clone(),
+                            Some(Duration::from_secs(4)),
+                            false,
+                        );
                         if state.tracking.sync_done && state.settings.notifications.download_error {
                             let title = state.fluent.get(Tr::DownloadErrorTitle);
-                            let mut body = state.fluent.get_args(Tr::DownloadError, &args);
-                            if let Some(reason) = reason {
-                                body = format!("{body}\n{reason}");
-                            }
                             send_system_notification(
                                 state,
                                 title,
