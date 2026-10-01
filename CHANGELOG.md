@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0-beta.3] - 2026-10-01
+
 ### Fixed
 
 - 浏览器接管、添加对话框与「编辑高级选项」中携带 Cookie 的任务不再因 aria2 报 `Unknown option: cookie` 而整批添加失败：Cookie 现通过 aria2 的 `header: Cookie: …` 下发，详情面板的 Cookie 字段也能正确从 `header` 回读。
