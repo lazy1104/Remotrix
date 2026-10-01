@@ -26,13 +26,13 @@ fn repo_link<'a>(url: String) -> Element<'a, Message, iced::Theme, iced::Rendere
         .into()
 }
 
-/// Build the about dialog element. `progress` is the aria2 download
+/// Build the about dialog element. `_progress` is the aria2 download
 /// progress (0..=1); pass `0.0` when no update is in flight.
 pub fn view<'a>(
     fluent: &'a Fluent,
     theme: &'a iced::Theme,
     aria2_version: Option<&'a str>,
-    progress: f32,
+    _progress: f32,
 ) -> Element<'a, Message> {
     let gui_text = format!("Remotrix {}", env!("CARGO_PKG_VERSION"));
     let engine_text = match aria2_version {

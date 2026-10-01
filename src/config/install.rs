@@ -104,6 +104,7 @@ fn install_user_icon(data_home: &std::path::Path) {
     if std::fs::write(&tmp, USER_APP_ICON).is_ok() {
         let _ = std::fs::rename(&tmp, &icon_path);
     }
+    #[cfg(not(target_os = "windows"))]
     refresh_icon_theme_cache(&icon_dir);
 }
 

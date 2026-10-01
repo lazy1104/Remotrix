@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::time::Duration;
 
 use super::{EngineCmd, EngineEvent, EventTx};
 
@@ -158,7 +157,7 @@ pub(crate) async fn cleanup_stale_aria2(bin_path: &Path, pid_path: &Path) {
         unsafe { libc::kill(pid, libc::SIGTERM) };
         let mut waited = 0;
         while std::path::Path::new(&format!("/proc/{pid}")).exists() && waited < 50 {
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             waited += 1;
         }
         let still_ours = std::path::Path::new(&format!("/proc/{pid}")).exists()

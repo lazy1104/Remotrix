@@ -17,26 +17,18 @@ use crate::config::Settings;
 use crate::engine::EngineCmd;
 use crate::i18n::{Fluent, Locale, Tr};
 use crate::message::{
-    AddMsg, CtxTarget, EngineMsg, Message, PathPickerId, SettingKey, SettingValue,
-    SettingsCategory, SettingsMsg, SpeedUnit,
+    CtxTarget, EngineMsg, Message, SettingKey, SettingValue, SettingsCategory, SettingsMsg,
+    SpeedUnit,
 };
-use crate::task::format_size;
-use chrono::TimeZone;
 use iced::Color;
 
 use crate::ui::components::color_picker::CustomColorPickerUi;
-use crate::ui::components::copyable_text::copyable_text;
-use crate::ui::components::ctx_input;
 use crate::ui::components::ctx_menu::CtxMirrors;
-use crate::ui::components::font_picker::{self as font_picker, FontPickerOption, FontPickerUi};
+use crate::ui::components::font_picker::FontPickerUi;
 use crate::ui::components::number_stepper::number_stepper;
 use crate::ui::components::path_picker::PathPicker;
 use crate::ui::components::slim_scrollable::slim_scrollable;
-use crate::ui::components::swatch_icon::{swatch_check, swatch_plus, swatch_text_color};
-use crate::ui::components::tag_picker::tag_picker;
-use crate::ui::components::tooltip;
 use crate::ui::dims::*;
-use crate::ui::icon;
 use crate::ui::theme;
 
 pub mod advanced;

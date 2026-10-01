@@ -67,8 +67,6 @@ where
         cursor: mouse::Cursor,
         viewport: &Rectangle,
     ) {
-        use iced::advanced::Renderer as _;
-
         let alpha = color_theme::OVERLAY.a * self.progress;
         if alpha > 0.0 {
             let base = color_theme::OVERLAY;

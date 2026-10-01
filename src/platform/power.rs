@@ -1,8 +1,5 @@
-use std::process::Child;
-use std::sync::Mutex;
-
 #[cfg(not(target_os = "windows"))]
-static BLOCK_CHILD: Mutex<Option<Child>> = Mutex::new(None);
+static BLOCK_CHILD: std::sync::Mutex<Option<std::process::Child>> = std::sync::Mutex::new(None);
 
 pub fn set_sleep_blocked(blocked: bool) {
     if blocked {

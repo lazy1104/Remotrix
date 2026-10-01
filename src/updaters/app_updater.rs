@@ -1,7 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use crate::aria2_fetcher;
-
 /// How the running app was installed; controls which GitHub release asset
 /// is picked and how the downloaded file is applied.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,7 +112,7 @@ pub fn replace_appimage(new: &Path, target: &Path) -> Result<(), String> {
         let _ = std::fs::rename(&bak, target);
         return Err(format!("rename new->target: {e}"));
     }
-    aria2_fetcher::set_perms(target)?;
+    crate::aria2_fetcher::set_perms(target)?;
     let _ = std::fs::remove_file(&bak);
     Ok(())
 }

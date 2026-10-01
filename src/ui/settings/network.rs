@@ -1,12 +1,10 @@
-use iced::widget::{column, row, text};
+use iced::widget::column;
 use iced::{Element, Length};
 
 use super::{
     group_title, labeled_editor, labeled_hint, labeled_number, labeled_text_input, labeled_toggle,
-    sub_items, CtxTarget, Fluent, Message, SettingKey, Settings, SettingsMsg, Tr, FONT_MEDIUM,
-    PADDING_BUTTON_SM, SPACE_SM,
+    sub_items, CtxTarget, Fluent, Message, SettingKey, Settings, SettingsMsg, Tr, SPACE_SM,
 };
-use crate::ui::theme;
 
 pub(super) fn network_view<'a>(
     fluent: &'a Fluent,

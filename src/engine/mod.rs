@@ -5,7 +5,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use aria2_ws::response::TaskStatus as Aria2TaskStatus;
 use aria2_ws::{Client, Event, Notification, TaskOptions};
-use std::time::Instant;
 use tokio::io::AsyncBufReadExt;
 use tokio::process::{Child, Command};
 use tokio::sync::mpsc;

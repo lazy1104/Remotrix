@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use super::paths::{copy_dir, copy_dir_contents, copy_file, resolve_from_settings};
 use super::settings::Settings;
 
@@ -155,6 +153,7 @@ mod tests {
     use super::*;
     use crate::config::settings::ResolvedPaths;
     use crate::config::Settings;
+    use std::path::PathBuf;
 
     fn unique_tmp(label: &str) -> PathBuf {
         use std::time::{SystemTime, UNIX_EPOCH};
