@@ -52,7 +52,10 @@ pub fn install_desktop_file(prefs: &UrlSchemePrefs) {
     if schemes.is_empty() {
         let _ = std::fs::remove_file(&path);
         #[cfg(target_os = "linux")]
-        unregister_default_url_handlers(&[]);
+        {
+            unregister_default_url_handlers(&[]);
+            refresh_desktop_database(&data_home);
+        }
         return;
     }
     let dir = path.parent().unwrap_or(&data_home);
@@ -73,7 +76,10 @@ pub fn install_desktop_file(prefs: &UrlSchemePrefs) {
         if let Ok(existing) = std::fs::read_to_string(&path) {
             if existing == content {
                 #[cfg(target_os = "linux")]
-                set_default_url_handlers(&schemes);
+                {
+                    ensure_desktop_executable(&path);
+                    set_default_url_handlers(&schemes);
+                }
                 return;
             }
         }
@@ -81,11 +87,42 @@ pub fn install_desktop_file(prefs: &UrlSchemePrefs) {
     let tmp = path.with_extension("desktop.tmp");
     if std::fs::write(&tmp, &content).is_ok() {
         if std::fs::rename(&tmp, &path).is_ok() {
+            #[cfg(target_os = "linux")]
+            ensure_desktop_executable(&path);
             install_user_icon(&data_home);
+            #[cfg(target_os = "linux")]
+            refresh_desktop_database(&data_home);
         }
     }
     #[cfg(target_os = "linux")]
     set_default_url_handlers(&schemes);
+}
+
+#[cfg(target_os = "linux")]
+fn ensure_desktop_executable(path: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let Ok(mut perms) = std::fs::metadata(path).map(|m| m.permissions()) else {
+        return;
+    };
+    perms.set_mode(0o755);
+    let _ = std::fs::set_permissions(path, perms);
+}
+
+#[cfg(target_os = "linux")]
+fn refresh_desktop_database(data_home: &std::path::Path) {
+    let applications = data_home.join("applications");
+    let status = std::process::Command::new("update-desktop-database")
+        .arg(&applications)
+        .status();
+    match status {
+        Ok(s) if !s.success() => {
+            tracing::warn!(path = %applications.display(), "update-desktop-database returned non-zero");
+        }
+        Err(e) => {
+            tracing::warn!(path = %applications.display(), error = %e, "update-desktop-database unavailable");
+        }
+        _ => {}
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -178,17 +215,18 @@ fn refresh_icon_theme_cache(icon_dir: &std::path::Path) {
 /// [`install_desktop_file`], with the supplied (already-quoted and escaped)
 /// `Exec=` line and the URL scheme handlers to declare. The `MimeType=` line
 /// is omitted when `schemes` is empty; otherwise it lists every scheme as
-/// `x-scheme-handler/<scheme>;`. Kept separate so the format is unit-testable
-/// without touching the filesystem.
+/// `x-scheme-handler/<scheme>;` with a single trailing semicolon. Kept
+/// separate so the format is unit-testable without touching the filesystem.
 pub(crate) fn desktop_entry_header(exec: &str, schemes: &[&str]) -> String {
     let mime_line = if schemes.is_empty() {
         String::new()
     } else {
-        let joined: Vec<String> = schemes
+        let joined = schemes
             .iter()
-            .map(|s| format!("x-scheme-handler/{s};"))
-            .collect();
-        format!("MimeType={};\n", joined.join(""))
+            .map(|s| format!("x-scheme-handler/{s}"))
+            .collect::<Vec<_>>()
+            .join(";");
+        format!("MimeType={joined};\n")
     };
     format!(
         "[Desktop Entry]\n\
@@ -483,6 +521,10 @@ mod tests {
         assert!(h.contains(
             "MimeType=x-scheme-handler/remotrix;x-scheme-handler/magnet;x-scheme-handler/ed2k;"
         ));
+        assert!(
+            !h.contains("x-scheme-handler/remotrix;;"),
+            "trailing scheme should not double up the semicolon"
+        );
     }
 
     #[test]
