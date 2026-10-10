@@ -783,6 +783,7 @@ pub(crate) fn apply_settings(state: &mut Remotrix) -> bool {
             on_ready,
         );
     }
+    crate::config::install::apply_url_scheme_registration(&state.settings.url_schemes);
     state.applied_settings = state.settings.clone();
     state.settings_dirty = false;
     sync_sleep_block(state);

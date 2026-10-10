@@ -33,10 +33,13 @@ fn autostart_content() -> Option<String> {
     let exe = crate::config::app_launch_exe()?;
     Some(format!(
         "{}X-GNOME-Autostart-enabled=true\n",
-        crate::config::desktop_entry_header(&format!(
-            "env REMOTRIX_AUTOSTART=1 \"{}\"",
-            crate::config::escape_exec(&exe.display().to_string())
-        ))
+        crate::config::desktop_entry_header(
+            &format!(
+                "env REMOTRIX_AUTOSTART=1 \"{}\"",
+                crate::config::escape_exec(&exe.display().to_string())
+            ),
+            &[],
+        )
     ))
 }
 

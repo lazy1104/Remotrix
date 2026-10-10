@@ -583,6 +583,9 @@ pub enum SettingKey {
     BetaChannel,
     AppLogLevel,
     EngineLogLevel,
+    UrlSchemeRegisterRemotrix,
+    UrlSchemeRegisterMagnet,
+    UrlSchemeRegisterEd2k,
 }
 
 #[cfg(test)]

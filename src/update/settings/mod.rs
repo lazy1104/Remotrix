@@ -444,6 +444,21 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                             crate::logging::normalize_engine_level(&s);
                     }
                 }
+                SettingKey::UrlSchemeRegisterRemotrix => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.url_schemes.register_remotrix = b;
+                    }
+                }
+                SettingKey::UrlSchemeRegisterMagnet => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.url_schemes.register_magnet = b;
+                    }
+                }
+                SettingKey::UrlSchemeRegisterEd2k => {
+                    if let SettingValue::Bool(b) = value {
+                        state.settings.url_schemes.register_ed2k = b;
+                    }
+                }
             }
             mark_settings_dirty(state);
             Task::none()

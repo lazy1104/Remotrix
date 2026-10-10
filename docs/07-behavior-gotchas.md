@@ -145,8 +145,8 @@ that each platform registers at first launch:
 
 | Platform | Registration site | Effect |
 |---|---|---|
-| Linux   | `src/config/install.rs::install_desktop_file` rewrites `~/.local/share/applications/remotrix.desktop` with `MimeType=x-scheme-handler/remotrix;` and `Exec="<exe>" %u`, then runs `xdg-mime default remotrix.desktop x-scheme-handler/remotrix` (best-effort, logs `warn!` on failure but never blocks startup). AppImage runtime ships its own entry, so the function no-ops there. | `xdg-open remotrix://open` launches the binary with the URL as `argv[1]`. |
-| Windows | `src/config/install.rs::install_url_scheme` writes `HKEY_CURRENT_USER\Software\Classes\remotrix\shell\open\command = "<exe>" "%1"` via the `windows` crate (`RegCreateKeyExW` + `RegSetValueExW`), mirroring `src/platform/autostart.rs::windows_set_enabled`. Writes to HKCU rather than HKCR so ordinary users do not need elevation; system-wide registration (HKLM) is left to installer-level flows. Called from `src/main.rs` once per launch; failure is `warn!`-logged. | `start remotrix://open` (or any shell/browser handoff) launches the binary with the URL as `argv[1]`. |
+| Linux   | `src/config/install.rs::install_desktop_file` rewrites `~/.local/share/applications/remotrix.desktop` with `MimeType=x-scheme-handler/<scheme>;` (one or more of `remotrix` / `magnet` / `ed2k`, depending on `Settings::url_schemes`) and `Exec="<exe>" %u`, then runs `xdg-mime default remotrix.desktop x-scheme-handler/<scheme>` for every enabled scheme. AppImage runtime ships its own entry, so the function no-ops there. All failures are `warn!`-logged and never block startup. | `xdg-open remotrix://open` (or `magnet:?xt=…`, `ed2k://…`) launches the binary with the URL as `argv[1]`. |
+| Windows | `src/config/install.rs::apply_url_scheme_registration` (called from `apply_settings` in `src/app.rs`) and the start-up `install_url_scheme` keep `HKCU\Software\Classes\<scheme>` in sync with `Settings::url_schemes`. For each enabled scheme it writes the URL-Protocol layout (`(Default) = URL:<Scheme>`, `shell\open\command\(Default) = "<exe>" "%1"`) via `RegCreateKeyExW` + `RegSetValueExW`. Disabled schemes whose root default value starts with `URL:` are removed via `RegDeleteKeyW`. Writes target HKCU so ordinary users do not need elevation; system-wide registration (HKLM) is left to installer-level flows. | `start remotrix://open` (or `magnet:`, `ed2k:`) launches the binary with the URL as `argv[1]`. |
 | macOS   | Bundle `Info.plist` must declare `CFBundleURLTypes` with `CFBundleURLSchemes = ["remotrix"]`. The repo currently ships **no macOS bundle** (release pipeline is deb/AppImage/NSIS only); the exact fragment is committed at `assets/macos-info.plist.fragment.xml` for future packaging integration. | When `.app` packaging lands, LaunchServices routes the URL via the `kAEGetURL` AppleEvent. |
 
 The desktop CLI parser in `src/main.rs` treats **any** first argument starting
@@ -184,11 +184,15 @@ installs upgrade silently on the next boot.
 - `HKEY_CURRENT_USER\Software\Classes` writes are unprivileged and succeed
   for any signed-in user, so the registration is reliable in everyday use.
   Only certain enterprise policies (SRP / AppLocker) can still block the
-  write, in which case `install_url_scheme` logs a `warn!` and the
-  extension-button path is degraded (manual launch still works). System-wide
+  write, in which case `apply_url_scheme_registration` logs a `warn!` and
+  the OS-handoff path is degraded (manual launch still works). System-wide
   registration under `HKEY_LOCAL_MACHINE\Software\Classes` is intentionally
   not done at runtime; if needed, the installer (NSIS) should drop the same
-  key there during install / upgrade.
+  keys there during install / upgrade.
+- `apply_url_scheme_registration` only deletes scheme keys under HKCU whose
+  default value matches the `URL:<scheme>` marker that this app wrote, so
+  pointing `magnet` at qBittorrent (or any other handler) is preserved
+  across Remotrix upgrades.
 
 ## Extension API `/add` trusts the browser extension with absolute paths and headers
 

@@ -392,6 +392,26 @@ impl Default for ExtensionPrefs {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UrlSchemePrefs {
+    #[serde(default)]
+    pub register_remotrix: bool,
+    #[serde(default)]
+    pub register_magnet: bool,
+    #[serde(default)]
+    pub register_ed2k: bool,
+}
+
+impl Default for UrlSchemePrefs {
+    fn default() -> Self {
+        Self {
+            register_remotrix: false,
+            register_magnet: false,
+            register_ed2k: false,
+        }
+    }
+}
+
 /// Attach a single HTTP/SOCKS proxy to a `reqwest::ClientBuilder`.
 ///
 /// When `proxy` is `None`, the builder is returned unchanged. When `Some`,
@@ -783,6 +803,8 @@ pub struct Settings {
     #[serde(default)]
     pub extension: ExtensionPrefs,
     #[serde(default)]
+    pub url_schemes: UrlSchemePrefs,
+    #[serde(default)]
     pub autostart_enabled: bool,
     #[serde(default)]
     pub start_hidden_on_autostart: bool,
@@ -845,6 +867,7 @@ impl Default for Settings {
             tracker: TrackerPrefs::default(),
             notifications: NotificationPrefs::default(),
             extension: ExtensionPrefs::default(),
+            url_schemes: UrlSchemePrefs::default(),
             autostart_enabled: false,
             start_hidden_on_autostart: false,
             prevent_sleep: false,

@@ -11,6 +11,33 @@ use crate::message::{AddMsg, EngineMsg, ExtensionMsg, PathPickerId};
 use crate::ui::components::path_picker::PathPicker;
 use crate::ui::theme;
 
+pub(super) fn url_schemes_view<'a>(
+    fluent: &'a Fluent,
+    theme: &'a iced::Theme,
+    settings: &'a Settings,
+) -> Element<'a, Message> {
+    let accent = theme::accent(theme);
+    column![]
+        .spacing(SPACE_SM)
+        .push(group_title(fluent, Tr::DefaultApps, accent))
+        .push(labeled_toggle(
+            fluent.get(Tr::UrlSchemeRemotrix),
+            settings.url_schemes.register_remotrix,
+            SettingKey::UrlSchemeRegisterRemotrix,
+        ))
+        .push(labeled_toggle(
+            fluent.get(Tr::UrlSchemeMagnet),
+            settings.url_schemes.register_magnet,
+            SettingKey::UrlSchemeRegisterMagnet,
+        ))
+        .push(labeled_toggle(
+            fluent.get(Tr::UrlSchemeEd2k),
+            settings.url_schemes.register_ed2k,
+            SettingKey::UrlSchemeRegisterEd2k,
+        ))
+        .into()
+}
+
 pub(super) fn extension_view<'a>(
     fluent: &'a Fluent,
     theme: &'a iced::Theme,
@@ -217,6 +244,7 @@ pub(super) fn advanced_view<'a>(
     column![]
         .spacing(SPACE_2XL)
         .push(crate::ui::components::scroll_top_gap::view())
+        .push(url_schemes_view(fluent, theme, settings))
         .push(extension_view(fluent, theme, settings, port_status))
         .push(clipboard_col)
         .push(group_title(fluent, Tr::Performance, accent))

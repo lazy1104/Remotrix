@@ -27,10 +27,10 @@ fn main() -> iced::Result {
         cfg.font_family.clone()
     };
 
-    config::install_desktop_file();
+    config::install_desktop_file(&cfg.url_schemes);
     #[cfg(target_os = "windows")]
     {
-        config::install_url_scheme();
+        config::install_url_scheme(&cfg.url_schemes);
         win_toast::init();
     }
 
