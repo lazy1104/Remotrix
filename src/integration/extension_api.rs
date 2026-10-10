@@ -7,6 +7,7 @@ use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::config::{EXTENSION_API_MAX_PORT, EXTENSION_API_MIN_PORT};
+use crate::core::message::Message;
 use crate::engine::{CmdTx, EngineCmd};
 use crate::task::TaskAdvancedOptions;
 
@@ -44,6 +45,7 @@ struct Shared {
     cmd_tx: CmdTx,
     stat_cache: Arc<Mutex<GlobalStatCache>>,
     on_dialog: Option<Box<dyn Fn(ExternalDownload) + Send + Sync + 'static>>,
+    extension_msg_tx: tokio::sync::mpsc::UnboundedSender<Message>,
 }
 
 static SHARED: Mutex<Option<Arc<Shared>>> = Mutex::new(None);
@@ -162,6 +164,7 @@ pub fn spawn_server(
     stat_cache: Arc<Mutex<GlobalStatCache>>,
     on_dialog: Option<Box<dyn Fn(ExternalDownload) + Send + Sync + 'static>>,
     on_ready: Option<Box<dyn Fn(bool) + Send + Sync + 'static>>,
+    extension_msg_tx: tokio::sync::mpsc::UnboundedSender<Message>,
 ) -> Option<tokio::task::JoinHandle<()>> {
     if let Some(handle) = TASK.lock().unwrap_or_else(|e| e.into_inner()).take() {
         handle.abort();
@@ -184,6 +187,7 @@ pub fn spawn_server(
         cmd_tx,
         stat_cache,
         on_dialog,
+        extension_msg_tx,
     });
     *SHARED.lock().unwrap_or_else(|e| e.into_inner()) = Some(shared);
     let addr = format!("127.0.0.1:{port}");
@@ -211,7 +215,8 @@ async fn serve(addr: String) -> Result<(), String> {
         .push(Router::with_path("stat").get(stat))
         .push(Router::with_path("add").post(add))
         .push(Router::with_path("pause-all").post(pause_all))
-        .push(Router::with_path("resume-all").post(resume_all));
+        .push(Router::with_path("resume-all").post(resume_all))
+        .push(Router::with_path("wake").get(wake));
     let cors = Cors::new()
         .allow_origin(AllowOrigin::dynamic(extension_origin))
         .allow_methods(vec![Method::GET, Method::POST, Method::OPTIONS])
@@ -265,10 +270,26 @@ async fn ping(req: &mut Request, res: &mut Response) {
         deny(res);
         return;
     }
+    let settings = crate::config::load();
     res.render(Json(serde_json::json!({
         "status": "ok",
         "version": env!("CARGO_PKG_VERSION"),
+        "remotrixProtocol": settings.url_schemes.register_remotrix,
     })));
+}
+
+#[handler]
+async fn wake(req: &mut Request, res: &mut Response) {
+    if !authorized(req) {
+        deny(res);
+        return;
+    }
+    let Some(shared) = SHARED.lock().unwrap_or_else(|e| e.into_inner()).clone() else {
+        res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
+        return;
+    };
+    let _ = shared.extension_msg_tx.send(Message::ShowRequested);
+    res.render(Json(serde_json::json!({ "status": "ok" })));
 }
 
 #[handler]

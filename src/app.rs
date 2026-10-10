@@ -589,6 +589,7 @@ pub fn init() -> (Remotrix, Task<Message>) {
         state.stat_cache.clone(),
         ext_on_dialog,
         None,
+        state.extension_msg_tx.clone(),
     );
 
     refresh_tray(&mut state);
@@ -781,6 +782,7 @@ pub(crate) fn apply_settings(state: &mut Remotrix) -> bool {
             state.stat_cache.clone(),
             on_dialog,
             on_ready,
+            state.extension_msg_tx.clone(),
         );
     }
     crate::config::install::apply_url_scheme_registration(&state.settings.url_schemes);

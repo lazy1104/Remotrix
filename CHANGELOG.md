@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - 高级设置新增「默认程序」分组,提供 `remotrix://` / `magnet:` / `ed2k://` 三个独立开关(分别显示为 `remotrix链接` / `磁力链接` / `ed2k链接`);Apply 后立即重写 Linux 用户级 `.desktop`(`MimeType=`)与 Windows `HKCU\Software\Classes\<scheme>`,并跑 `xdg-mime default`;默认全部关闭。`thunder://` / `ftp://` 暂未纳入(thunder 需 base64 解码,ftp 不是 OS URL handler)。
+- 扩展 API:`GET /ping` 响应新增 `remotrixProtocol: bool` 字段,同步「默认程序 → `remotrix链接`」开关状态,让浏览器拓展判断走 `remotrix://` 协议还是 fallback。新增 `GET /wake`(同样需 `Authorization: Bearer <密钥>` 鉴权):通过 `extension_msg_tx` 通道发送 `Message::ShowRequested`,复用既有的「恢复窗口 + 抬升聚焦」逻辑(同时覆盖托盘隐藏 / autostart-hidden 启动 / 可见被遮挡;`window.closing` 早退),仅作用于运行中实例——未运行时返回 `connection refused`,不会启动新进程。`thunder://` / `ftp://` 不在协议注册范围内,仍走 HTTP `/add`。
 
 ### Fixed
 

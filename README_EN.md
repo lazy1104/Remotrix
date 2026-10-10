@@ -280,6 +280,8 @@ After changing **Enabled / port / secret / auto-submit**, clicking **Apply** **h
 
 > Known limitation: the `motrixnext://` deep-link protocol is not implemented, so the "Open motrix-next" wake-up button is currently unavailable; download takeover goes over HTTP and is unaffected.
 
+**`/ping` and `/wake`**: the `/ping` response now includes a `remotrixProtocol: bool` field that mirrors the **Default apps → `Remotrix links`** switch, so the extension can decide whether to fall back to `GET /wake` when the OS protocol isn't registered. `/wake` uses the same `Bearer` auth and brings the already-running window to the front (covers tray-hidden / autostart-hidden / occluded visible windows); if Remotrix isn't running it returns `connection refused` rather than starting a new process.
+
 ## Tech Stack
 
 | Component | Choice | Rationale |

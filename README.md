@@ -244,6 +244,8 @@ Remotrix 在本地暴露一个 HTTP 服务（默认端口 `29110`，仅监听回
 
 > 已知限制：`motrixnext://` 深链协议未实现，「打开 motrix-next」唤醒按钮暂不可用；下载接管走 HTTP，不受影响。
 
+**`/ping` 与 `/wake`**：`/ping` 响应新增 `remotrixProtocol: bool` 字段，反映「默认程序 → `remotrix链接`」开关是否启用；拓展可在未注册协议场景下改走 `GET /wake`（同 `Bearer` 鉴权），把运行中的窗口拉到前台——未运行时返回 `connection refused`，不会启动新进程。
+
 ## 技术栈
 
 | 组件 | 选型 | 理由 |
