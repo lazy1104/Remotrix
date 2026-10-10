@@ -146,7 +146,7 @@ that each platform registers at first launch:
 | Platform | Registration site | Effect |
 |---|---|---|
 | Linux   | `src/config/install.rs::install_desktop_file` rewrites `~/.local/share/applications/remotrix.desktop` with `MimeType=x-scheme-handler/remotrix;` and `Exec="<exe>" %u`, then runs `xdg-mime default remotrix.desktop x-scheme-handler/remotrix` (best-effort, logs `warn!` on failure but never blocks startup). AppImage runtime ships its own entry, so the function no-ops there. | `xdg-open remotrix://open` launches the binary with the URL as `argv[1]`. |
-| Windows | `src/config/install.rs::install_url_scheme` writes `HKEY_CLASSES_ROOT\remotrix\shell\open\command = "<exe>" "%1"` via the `windows` crate (`RegCreateKeyExW` + `RegSetValueExW`), mirroring `src/platform/autostart.rs::windows_set_enabled`. Called from `src/main.rs` once per launch; failure is `warn!`-logged. | `start remotrix://open` (or any shell/browser handoff) launches the binary with the URL as `argv[1]`. |
+| Windows | `src/config/install.rs::install_url_scheme` writes `HKEY_CURRENT_USER\Software\Classes\remotrix\shell\open\command = "<exe>" "%1"` via the `windows` crate (`RegCreateKeyExW` + `RegSetValueExW`), mirroring `src/platform/autostart.rs::windows_set_enabled`. Writes to HKCU rather than HKCR so ordinary users do not need elevation; system-wide registration (HKLM) is left to installer-level flows. Called from `src/main.rs` once per launch; failure is `warn!`-logged. | `start remotrix://open` (or any shell/browser handoff) launches the binary with the URL as `argv[1]`. |
 | macOS   | Bundle `Info.plist` must declare `CFBundleURLTypes` with `CFBundleURLSchemes = ["remotrix"]`. The repo currently ships **no macOS bundle** (release pipeline is deb/AppImage/NSIS only); the exact fragment is committed at `assets/macos-info.plist.fragment.xml` for future packaging integration. | When `.app` packaging lands, LaunchServices routes the URL via the `kAEGetURL` AppleEvent. |
 
 The desktop CLI parser in `src/main.rs` treats **any** first argument starting
@@ -181,10 +181,14 @@ installs upgrade silently on the next boot.
   until macOS bundle packaging + an `NSApplication` URL handler are wired up.
   This is tracked as out-of-scope of the current task; the plist fragment is
   pre-committed so the macOS side only needs packaging integration.
-- `HKEY_CLASSES_ROOT` writes may require elevation on locked-down Windows
-  hosts. The `install_url_scheme` failure is non-fatal (warn-only) so a
-  user without admin can still launch the app manually; only the
-  extension-button path is degraded.
+- `HKEY_CURRENT_USER\Software\Classes` writes are unprivileged and succeed
+  for any signed-in user, so the registration is reliable in everyday use.
+  Only certain enterprise policies (SRP / AppLocker) can still block the
+  write, in which case `install_url_scheme` logs a `warn!` and the
+  extension-button path is degraded (manual launch still works). System-wide
+  registration under `HKEY_LOCAL_MACHINE\Software\Classes` is intentionally
+  not done at runtime; if needed, the installer (NSIS) should drop the same
+  key there during install / upgrade.
 
 ## Extension API `/add` trusts the browser extension with absolute paths and headers
 

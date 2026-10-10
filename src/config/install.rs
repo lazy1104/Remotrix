@@ -161,16 +161,19 @@ pub(crate) fn escape_exec(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-/// Register the `remotrix://` URL scheme under `HKEY_CLASSES_ROOT` so that
+/// Register the `remotrix://` URL scheme under
+/// `HKEY_CURRENT_USER\Software\Classes\remotrix\shell\open\command` so that
 /// `start remotrix://open` (or any shell/browser handoff) launches this
-/// binary with the URL as `argv[1]`. Mirrors the `RegCreateKeyExW` /
+/// binary with the URL as `argv[1]`. Writes to HKCU rather than HKCR so
+/// ordinary users do not need elevation; system-wide registration (HKLM) is
+/// left to installer-level flows. Mirrors the `RegCreateKeyExW` /
 /// `RegSetValueExW` pattern from `src/platform/autostart.rs`.
 #[cfg(target_os = "windows")]
 pub fn install_url_scheme() {
     use windows::core::HSTRING;
     use windows::Win32::Foundation::ERROR_SUCCESS;
     use windows::Win32::System::Registry::{
-        RegCloseKey, RegCreateKeyExW, RegSetValueExW, HKEY, HKEY_CLASSES_ROOT, KEY_SET_VALUE,
+        RegCloseKey, RegCreateKeyExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE,
         REG_CREATE_KEY_DISPOSITION, REG_OPTION_NON_VOLATILE, REG_SZ,
     };
 
@@ -187,8 +190,8 @@ pub fn install_url_scheme() {
     let mut disposition = REG_CREATE_KEY_DISPOSITION(0);
     let create_status = unsafe {
         RegCreateKeyExW(
-            HKEY_CLASSES_ROOT,
-            &HSTRING::from("remotrix\\shell\\open\\command"),
+            HKEY_CURRENT_USER,
+            &HSTRING::from("Software\\Classes\\remotrix\\shell\\open\\command"),
             None,
             None,
             REG_OPTION_NON_VOLATILE,
@@ -201,7 +204,7 @@ pub fn install_url_scheme() {
     if create_status != ERROR_SUCCESS {
         tracing::warn!(
             status = ?create_status,
-            "failed to open HKCR\\remotrix\\shell\\open\\command"
+            "failed to open HKCU\\Software\\Classes\\remotrix\\shell\\open\\command"
         );
         return;
     }
@@ -213,7 +216,7 @@ pub fn install_url_scheme() {
     if set_status != ERROR_SUCCESS {
         tracing::warn!(
             status = ?set_status,
-            "failed to write HKCR\\remotrix\\shell\\open\\command default"
+            "failed to write HKCU\\Software\\Classes\\remotrix\\shell\\open\\command default"
         );
     }
 }

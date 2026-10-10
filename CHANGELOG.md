@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows 上 `remotrix://` 协议注册从 `HKEY_CLASSES_ROOT` 降级到 `HKEY_CURRENT_USER\Software\Classes\remotrix\shell\open\command`，普通用户首次启动即生效，不再依赖管理员权限；`start remotrix://open` 在普通用户上下文下能稳定调起应用。
+
 ## [0.6.0-beta.3] - 2026-10-01
 
 ### Fixed
