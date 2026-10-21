@@ -57,8 +57,8 @@ pub struct DetailsDialogState {
     pub advanced_dirty: bool,
 }
 
-impl DetailsDialogState {
-    pub fn new() -> Self {
+impl Default for DetailsDialogState {
+    fn default() -> Self {
         Self {
             visible: false,
             gid: None,
@@ -83,6 +83,12 @@ impl DetailsDialogState {
             advanced_saving: false,
             advanced_dirty: false,
         }
+    }
+}
+
+impl DetailsDialogState {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn open(&mut self, gid: String) {

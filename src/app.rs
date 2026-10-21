@@ -1229,12 +1229,6 @@ pub(crate) fn pill_to_index(state: &mut Remotrix, index: usize) {
         .set_target(index as f32 * crate::ui::dims::FILTER_STEP);
 }
 
-pub(crate) fn pill_settle_to_index(state: &mut Remotrix, index: usize) {
-    state
-        .filter_pill
-        .settle_at(index as f32 * crate::ui::dims::FILTER_STEP);
-}
-
 pub(crate) fn set_page(state: &mut Remotrix, page: Page) {
     if state.page != page {
         state.page = page;
@@ -1387,13 +1381,14 @@ fn build_system_dark_stream() -> Pin<Box<dyn iced::futures::Stream<Item = Messag
     Box::pin(iced::futures::stream::unfold(
         stream,
         |mut stream| async move {
-            match iced::futures::StreamExt::next(&mut stream).await {
-                Some(dark) => Some((
-                    Message::Settings(SettingsMsg::SystemDarkChanged(dark)),
-                    stream,
-                )),
-                None => None,
-            }
+            iced::futures::StreamExt::next(&mut stream)
+                .await
+                .map(|dark| {
+                    (
+                        Message::Settings(SettingsMsg::SystemDarkChanged(dark)),
+                        stream,
+                    )
+                })
         },
     ))
 }

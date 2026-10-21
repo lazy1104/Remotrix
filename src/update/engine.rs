@@ -508,20 +508,19 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
                     if !t.url.is_empty()
                         && crate::engine::is_torrent_url(&t.url)
                         && state.settings.aria2.bt_auto_download
+                        && state.tracking.torrent_followed.insert(gid.clone())
                     {
-                        if state.tracking.torrent_followed.insert(gid.clone()) {
-                            let path = t.save_dir.join(&t.name);
-                            let save_dir = t.save_dir.clone();
-                            let _ = state.handle.cmd_tx.send(EngineCmd::FollowTorrent {
-                                gid: gid.clone(),
-                                path,
-                                save_dir,
-                                split: state.settings.split,
-                                advanced: TaskAdvancedOptions::default(),
-                                delete_after: state.settings.delete_torrent_after_complete,
-                            });
-                            tracing::info!(?gid, "ui: auto-adding downloaded torrent as new task");
-                        }
+                        let path = t.save_dir.join(&t.name);
+                        let save_dir = t.save_dir.clone();
+                        let _ = state.handle.cmd_tx.send(EngineCmd::FollowTorrent {
+                            gid: gid.clone(),
+                            path,
+                            save_dir,
+                            split: state.settings.split,
+                            advanced: TaskAdvancedOptions::default(),
+                            delete_after: state.settings.delete_torrent_after_complete,
+                        });
+                        tracing::info!(?gid, "ui: auto-adding downloaded torrent as new task");
                     }
                 }
             }

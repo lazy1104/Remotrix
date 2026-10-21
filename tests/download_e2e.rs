@@ -1397,7 +1397,7 @@ fn find_recent_torrent(dir: &std::path::Path) -> Option<std::path::PathBuf> {
         if p.extension().and_then(|s| s.to_str()) == Some("torrent") {
             let modified = e.metadata().and_then(|m| m.modified()).ok();
             if let Some(m) = modified {
-                if newest.as_ref().map_or(true, |(t, _)| m > *t) {
+                if newest.as_ref().is_none_or(|(t, _)| m > *t) {
                     newest = Some((m, p));
                 }
             }

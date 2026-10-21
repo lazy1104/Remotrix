@@ -57,6 +57,8 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpListener;
 use tokio::process::{Child, Command};
 
+/// tracker/announce plumbing for the `#[ignore]`d BT tests; see docs/08.
+#[allow(dead_code)]
 pub struct BtSeeder {
     pub tracker_port: u16,
     pub seeder_port: u16,

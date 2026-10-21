@@ -96,7 +96,7 @@ impl WebpageFilterMode {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "smart" => Some(Self::Smart),
             "off" => Some(Self::Off),

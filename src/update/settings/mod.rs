@@ -157,14 +157,14 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                 }
                 SettingKey::UpdateScope => {
                     if let SettingValue::Text(s) = value {
-                        if let Some(scope) = crate::config::UpdateScope::from_str(&s) {
+                        if let Some(scope) = crate::config::UpdateScope::parse(&s) {
                             state.settings.update.scope = scope;
                         }
                     }
                 }
                 SettingKey::SilentUpdateScope => {
                     if let SettingValue::Text(s) = value {
-                        if let Some(scope) = crate::config::SilentUpdateScope::from_str(&s) {
+                        if let Some(scope) = crate::config::SilentUpdateScope::parse(&s) {
                             state.settings.update.silent_update_scope = scope;
                         }
                     }
@@ -346,8 +346,7 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                 }
                 SettingKey::ClipboardWebpageFilter => {
                     if let SettingValue::Text(s) = value {
-                        if let Some(mode) = crate::clipboard_watch::WebpageFilterMode::from_str(&s)
-                        {
+                        if let Some(mode) = crate::clipboard_watch::WebpageFilterMode::parse(&s) {
                             state.settings.webpage_filter = mode;
                         }
                     }
@@ -981,7 +980,7 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                         false,
                     );
                     state.restart_pending = true;
-                    return begin_close(state);
+                    begin_close(state)
                 }
                 crate::app_updater::InstallKind::WindowsSetup => {
                     let Some(path) = path.as_ref() else {
@@ -999,7 +998,7 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                     if apply_result.is_ok() {
                         crate::app_updater::remove_app_update_file(path);
                     }
-                    return Task::none();
+                    Task::none()
                 }
                 crate::app_updater::InstallKind::Deb => {
                     let path = path.unwrap_or_default();
@@ -1042,7 +1041,7 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                         );
                     }
                     crate::app_updater::remove_app_update_file(&path);
-                    return open_path_in_manager(download_dir);
+                    open_path_in_manager(download_dir)
                 }
             }
         }
@@ -1366,10 +1365,8 @@ fn kick_off_app_update(
             true,
         );
     }
-    let version = offer.latest.clone();
     let download_url = offer.download_url.clone();
     let offer_sha256 = offer.sha256.clone();
-    let asset_name_owned = asset_name.clone();
     let proxy = state.settings.aria2.all_proxy_value();
     let dest_for_task = dest.clone();
     let dest_for_msg = dest;
@@ -1379,9 +1376,7 @@ fn kick_off_app_update(
             dest_for_task,
             proxy,
             offer_sha256,
-            version,
             kind,
-            Some(asset_name_owned),
             dest_for_msg,
         ),
         |res| match res {

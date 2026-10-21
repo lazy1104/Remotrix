@@ -2092,7 +2092,6 @@ async fn poll_loop(poll_client: Client, poll_event_tx: EventTx) {
 }
 
 fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>> {
-    let _ = event_tx.send(EngineEvent::EngineReady);
     let _ = event_tx.send(EngineEvent::Aria2Version {
         version: installed_version(),
     });
@@ -2106,11 +2105,13 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
     });
 
     let boot_client = sidecar.client.clone();
+    let boot_event_tx = event_tx.clone();
     tokio::spawn(async move {
         let opts = crate::config::load().effective_task_options();
         if let Err(e) = apply_global_options(&boot_client, opts).await {
             tracing::warn!("boot apply global options: {e}");
         }
+        let _ = boot_event_tx.send(EngineEvent::EngineReady);
     });
 
     let mut handles = Vec::new();
@@ -2493,9 +2494,11 @@ mod tests {
             basename("https://example.com/%E4%B8%AD%E6%96%87.zip"),
             Some("中文.zip".to_string()),
         );
+        // A malformed escape (`%A-`) stays literal; the lone 0xE4 byte it
+        // leaves behind is not valid UTF-8 and decodes to U+FFFD.
         assert_eq!(
             basename("https://example.com/%E4%A-%E4%B8%AD.bin"),
-            Some("\u{fffd}\u{fffd}.bin".to_string()),
+            Some("\u{fffd}%A-中.bin".to_string()),
         );
         assert_eq!(
             basename("https://example.com/a+b.bin"),

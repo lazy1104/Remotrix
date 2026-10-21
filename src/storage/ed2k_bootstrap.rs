@@ -376,10 +376,11 @@ mod tests {
     }
 
     fn opts_with(server_list: &str, node_list: &str) -> Aria2Options {
-        let mut opts = Aria2Options::default();
-        opts.ed2k_server_list = server_list.into();
-        opts.ed2k_node_list = node_list.into();
-        opts
+        Aria2Options {
+            ed2k_server_list: server_list.into(),
+            ed2k_node_list: node_list.into(),
+            ..Default::default()
+        }
     }
 
     #[test]

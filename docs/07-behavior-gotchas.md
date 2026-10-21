@@ -117,6 +117,15 @@ Settings → Appearance → Font. Verify the binary shrank with
 `strings target/release/remotrix | grep -c HarmonyOSSansSC` — should be 0 (was nonzero before this
 change).
 
+## Engine ready timing
+`EngineReady` is emitted by `src/engine/mod.rs::on_sidecar_ready` **after** the
+boot-time `apply_global_options` completes (the `changeGlobalOption` spawned at
+sidecar start-up). Tests must wait for `EngineReady` before sending
+`ApplyAria2Options` or starting downloads that depend on global limits; applying
+options earlier may be reverted by the boot apply. The integration harness
+(`tests/common/mod.rs`) reflects this ordering and sends a single apply after
+ready.
+
 ## Path overrides: `aria2/` and `logs/` nest under the effective app data dir
 The effective path resolvers (`resolved_paths()` / `resolve_from_settings()` in
 `src/config/paths.rs`) default `aria2` and `logs` to sub-directories of the *effective*

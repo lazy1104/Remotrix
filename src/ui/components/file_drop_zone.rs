@@ -43,7 +43,7 @@ pub enum FileDropAction {
     Browse,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FileDropZone {
     /// Absolute path of the currently selected file, or empty when no file
     /// is loaded. Consumed by the parent to feed whatever downstream logic
@@ -107,11 +107,7 @@ impl<M> canvas::Program<M> for DashedBorder {
 
 impl FileDropZone {
     pub fn new() -> Self {
-        Self {
-            path: String::new(),
-            dragging: false,
-            hovered: false,
-        }
+        Self::default()
     }
 
     pub fn set_path(&mut self, path: impl Into<String>) {

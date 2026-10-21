@@ -591,8 +591,22 @@ mod tests {
 
     #[test]
     fn find_pending_newer_version_offered() {
+        // Derive the bump from the running version so a version bump in
+        // Cargo.toml can't silently turn this into "older is offered".
+        let current = current_app_version();
+        let core = current.split('-').next().unwrap_or(current);
+        let mut parts: Vec<u64> = core.split('.').filter_map(|p| p.parse().ok()).collect();
+        let last = parts.last_mut().expect("version has at least one segment");
+        *last += 1;
+        let next_core = parts
+            .iter()
+            .map(u64::to_string)
+            .collect::<Vec<_>>()
+            .join(".");
         // A genuinely newer final or later beta snapshot is offered.
-        assert!(run_pending_scan(&["remotrix_0.6.0_amd64.deb"]).is_some());
-        assert!(run_pending_scan(&["remotrix_0.6.0-beta.2_amd64.deb"]).is_some());
+        let final_deb = format!("remotrix_{next_core}_amd64.deb");
+        assert!(run_pending_scan(&[final_deb.as_str()]).is_some());
+        let beta_deb = format!("remotrix_{next_core}-beta.1_amd64.deb");
+        assert!(run_pending_scan(&[beta_deb.as_str()]).is_some());
     }
 }

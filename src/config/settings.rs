@@ -392,7 +392,7 @@ impl Default for ExtensionPrefs {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct UrlSchemePrefs {
     #[serde(default)]
     pub register_remotrix: bool,
@@ -400,16 +400,6 @@ pub struct UrlSchemePrefs {
     pub register_magnet: bool,
     #[serde(default)]
     pub register_ed2k: bool,
-}
-
-impl Default for UrlSchemePrefs {
-    fn default() -> Self {
-        Self {
-            register_remotrix: false,
-            register_magnet: false,
-            register_ed2k: false,
-        }
-    }
 }
 
 /// Attach a single HTTP/SOCKS proxy to a `reqwest::ClientBuilder`.
@@ -896,7 +886,7 @@ impl UpdateScope {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "app" => Some(Self::App),
             "engine" => Some(Self::Engine),
@@ -904,7 +894,6 @@ impl UpdateScope {
             _ => None,
         }
     }
-
     pub fn covers(self, component: &str) -> bool {
         matches!(
             (component, self),
@@ -936,7 +925,7 @@ impl SilentUpdateScope {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "off" => Some(Self::Off),
             "engine" => Some(Self::Engine),
@@ -947,11 +936,10 @@ impl SilentUpdateScope {
     }
 
     pub fn covers(self, component: &str) -> bool {
-        match (component, self) {
-            ("aria2-next", Self::Engine | Self::Both) => true,
-            ("remotrix", Self::App | Self::Both) => true,
-            _ => false,
-        }
+        matches!(
+            (component, self),
+            ("aria2-next", Self::Engine | Self::Both) | ("remotrix", Self::App | Self::Both)
+        )
     }
 }
 
@@ -1411,9 +1399,9 @@ mod tests {
             SilentUpdateScope::App,
             SilentUpdateScope::Both,
         ] {
-            assert_eq!(SilentUpdateScope::from_str(variant.as_str()), Some(variant));
+            assert_eq!(SilentUpdateScope::parse(variant.as_str()), Some(variant));
         }
-        assert_eq!(SilentUpdateScope::from_str("foo"), None);
+        assert_eq!(SilentUpdateScope::parse("foo"), None);
     }
 
     #[test]

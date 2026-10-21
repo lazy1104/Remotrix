@@ -22,20 +22,11 @@ pub type ProgressFn = Arc<dyn Fn(u64, u64) + Send + Sync>;
 
 /// Options that influence the download behaviour. Defaults to no proxy,
 /// no hash verification, no progress.
+#[derive(Default)]
 pub struct DownloadOpts {
     pub proxy: Option<String>,
     pub sha256: Option<String>,
     pub on_progress: Option<ProgressFn>,
-}
-
-impl Default for DownloadOpts {
-    fn default() -> Self {
-        Self {
-            proxy: None,
-            sha256: None,
-            on_progress: None,
-        }
-    }
 }
 
 /// Download `url` to `dest` via a sibling `{dest}.part`, returning once the
@@ -326,9 +317,7 @@ pub async fn perform_app_update_download(
     dest: PathBuf,
     proxy: Option<String>,
     sha256: Option<String>,
-    _version: String,
     kind: crate::app_updater::InstallKind,
-    _asset_name: Option<String>,
     dest_for_outcome: PathBuf,
 ) -> Result<crate::app_updater::AppUpdateOutcome, String> {
     let opts = DownloadOpts {

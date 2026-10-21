@@ -257,10 +257,8 @@ pub struct Dialog<'a, Message> {
     footer: Option<Element<'a, Message>>,
 }
 
-impl<'a, Message: Clone + 'a> Dialog<'a, Message> {
-    /// Build a default [`Dialog`]. Call `.title(…)`, `.body(…)`,
-    /// `.footer(…)` and finally `.build()` to render.
-    pub fn new() -> Self {
+impl<'a, Message: Clone + 'a> Default for Dialog<'a, Message> {
+    fn default() -> Self {
         Self {
             width: 420.0,
             spacing: 16.0,
@@ -269,6 +267,14 @@ impl<'a, Message: Clone + 'a> Dialog<'a, Message> {
             body: None,
             footer: None,
         }
+    }
+}
+
+impl<'a, Message: Clone + 'a> Dialog<'a, Message> {
+    /// Build a default [`Dialog`]. Call `.title(…)`, `.body(…)`,
+    /// `.footer(…)` and finally `.build()` to render.
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn width(mut self, width: f32) -> Self {

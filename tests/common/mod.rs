@@ -113,9 +113,16 @@ struct EventLogInner {
 pub struct ProgressSnapshot {
     pub downloaded: u64,
     pub total: u64,
+    /// Read by the `#[ignore]`d split/BT tests; kept so the fixture stays
+    /// complete when those land.
+    #[allow(dead_code)]
     pub speed: u64,
     pub status: String,
+    /// See `speed`.
+    #[allow(dead_code)]
     pub connections: u64,
+    /// See `speed`.
+    #[allow(dead_code)]
     pub is_seeding: bool,
     pub error_code: Option<String>,
     pub error_message: Option<String>,
@@ -195,6 +202,7 @@ impl EventLog {
     /// Block until an event matching `pred` arrives AND every event seen
     /// so far satisfies `progress` (used by tests that want to drain a
     /// stream of stale events before checking the new one).
+    #[allow(dead_code)]
     pub async fn last_status_for(&self, gid: &str) -> Option<String> {
         let inner = self.inner.lock().await;
         inner.last_status.get(gid).cloned()
@@ -214,6 +222,7 @@ impl EventLog {
         inner.events[start..].to_vec()
     }
 
+    #[allow(dead_code)]
     pub async fn event_count(&self) -> usize {
         let inner = self.inner.lock().await;
         inner.events.len()
@@ -269,10 +278,7 @@ impl Harness {
         // to BT fast-resume caches. Wipe the global state before each
         // test so a previous run's stale piece-bitfield can't reject
         // a fresh download with a "mismatching file size" warning.
-        // SAFETY: #[serial(aria2)] ensures no concurrent file ops.
-        unsafe {
-            wipe_aria2_state_for_test();
-        }
+        wipe_aria2_state_for_test();
         let prev_home = std::env::var_os("HOME");
         let temp = match TempDir::new() {
             Ok(t) => t,
@@ -405,32 +411,19 @@ impl Harness {
     }
 
     /// Send an `ApplyAria2Options` so tests can adjust global limits or
-    /// inject `ca-certificate` for the HTTPS fixture. Re-applies a few
-    /// times to defeat the boot-time apply task race: the engine
-    /// spawns a background `changeGlobalOption` (with default settings)
-    /// right after `EngineReady` is emitted, and if it lands between
-    /// our two apply calls the test's setting is reverted to defaults.
+    /// inject `ca-certificate` for the HTTPS fixture. `wait_for_ready`
+    /// must have returned first: the engine emits `EngineReady` only
+    /// after its boot-time apply has landed, so this single apply is not
+    /// reverted by a later boot apply.
     pub async fn apply_options(&self, extra: Map<String, serde_json::Value>) {
         let options = aria2_ws::TaskOptions {
-            extra_options: extra.clone(),
-            ..Default::default()
-        };
-        let _ = self
-            .handle
-            .cmd_tx
-            .send(EngineCmd::ApplyAria2Options { options });
-        // Wait for the boot-time apply to finish, then re-apply so our
-        // value lands LAST and is the one in effect for subsequent
-        // commands.
-        tokio::time::sleep(Duration::from_millis(400)).await;
-        let options2 = aria2_ws::TaskOptions {
             extra_options: extra,
             ..Default::default()
         };
         let _ = self
             .handle
             .cmd_tx
-            .send(EngineCmd::ApplyAria2Options { options: options2 });
+            .send(EngineCmd::ApplyAria2Options { options });
         tokio::time::sleep(Duration::from_millis(150)).await;
     }
 
@@ -490,6 +483,7 @@ impl Harness {
     /// Number of distinct `connections` values seen for `gid` so far.
     /// Tests assert on this to confirm `split=N` actually opened
     /// parallel connections (test 6).
+    #[allow(dead_code)]
     pub async fn max_connections(&self, gid: &str) -> u64 {
         let evs = self.events.recent_events(5000).await;
         evs.iter()
@@ -568,10 +562,11 @@ impl Harness {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         // Final belt-and-braces: nuke any straggler aria2 process.
-        // Cheap, no-op when nothing is left running.
-        let _ = std::process::Command::new("pkill")
-            .args(["-9", "-f", "aria2-next"])
-            .output();
+        // Match on the executable path, not `pkill -f <pattern>`: `-f`
+        // matches the whole command line, so a parent shell that merely
+        // mentions the aria2 path (e.g. `ARIA2_BIN=.../aria2-next`) would
+        // be killed too.
+        kill_straggler_aria2(&self.bin);
         let _ = std::process::Command::new("pkill")
             .args(["-9", "-x", "aria2c"])
             .output();
@@ -592,6 +587,51 @@ impl Harness {
         // Drop happens at end of fn: event_pump (already finished),
         // then temp (auto-removed).
     }
+}
+
+/// SIGKILL every process whose executable is exactly `bin` (the aria2
+/// sidecar this harness uses). Precise by construction so a shell whose
+/// command line merely mentions the path is never hit.
+#[cfg(target_os = "linux")]
+fn kill_straggler_aria2(bin: &Path) {
+    let bin = std::fs::canonicalize(bin).unwrap_or_else(|_| bin.to_path_buf());
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|s| s.parse::<i32>().ok())
+        else {
+            continue;
+        };
+        if pid == std::process::id() as i32 {
+            continue;
+        }
+        let exe = std::fs::read_link(entry.path().join("exe")).ok();
+        if exe.as_deref() == Some(bin.as_path()) {
+            // SAFETY: `pid` came from /proc and its exe matches the
+            // aria2 binary this harness started.
+            unsafe {
+                libc::kill(pid, libc::SIGKILL);
+            }
+        }
+    }
+}
+
+/// macOS has no `/proc`; `pkill -x` matches the process name only (never
+/// the command line), so it cannot hit the invoking shell.
+#[cfg(not(target_os = "linux"))]
+fn kill_straggler_aria2(bin: &Path) {
+    let comm = bin
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("aria2-next");
+    let comm: String = comm.chars().take(15).collect();
+    let _ = std::process::Command::new("pkill")
+        .args(["-9", "-x", &comm])
+        .output();
 }
 
 fn restore_home(prev: Option<OsString>) {

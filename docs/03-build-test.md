@@ -26,5 +26,10 @@ there, ignoring the `$HOME` redirect the harness uses for temp-dir
 isolation. Some tests are `#[ignore]`-d as follow-ups (BT seeder
 plumbing, hang-endpoint timeout, session-replay); see `tests/download_e2e.rs`
 for the per-test reasoning.
+
+The harness shuts aria2 down via `EngineCmd::Shutdown` and kills any
+remaining sidecar by matching the **executable path** (`/proc` exe link on
+Linux, or `pkill -x` on macOS/others). Never use `pkill -f <pattern>` that
+matches the command line — it can misidentify the parent shell/test runner.
 Run `/check-docs` (Kilo command) to audit README.md, AGENTS.md, and the
 `docs/*.md` files against the codebase.

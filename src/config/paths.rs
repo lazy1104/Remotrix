@@ -157,9 +157,7 @@ pub(crate) fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
         let to = dst.join(entry.file_name());
         if ty.is_dir() {
             copy_dir(&from, &to)?;
-        } else if ty.is_symlink() {
-            continue;
-        } else if to.exists() {
+        } else if ty.is_symlink() || to.exists() {
             continue;
         } else {
             copy_file(&from, &to)?;

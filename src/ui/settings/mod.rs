@@ -205,7 +205,7 @@ impl SettingsUiState {
 }
 
 #[derive(Debug, Clone)]
-struct Labeled<T> {
+pub(super) struct Labeled<T> {
     value: T,
     label: String,
 }
@@ -499,7 +499,7 @@ where
     )
 }
 
-trait ToSettingValue {
+pub(super) trait ToSettingValue {
     fn to_setting_value(self) -> SettingValue;
 }
 

@@ -98,27 +98,25 @@ pub fn install_desktop_file(prefs: &UrlSchemePrefs) {
             &schemes,
         )
     );
-    if path.exists() {
-        if let Ok(existing) = std::fs::read_to_string(&path) {
-            if existing == content {
-                #[cfg(target_os = "linux")]
-                {
-                    ensure_desktop_executable(&path);
-                    set_default_url_handlers(&schemes);
-                }
-                return;
-            }
+    let existing_matches = path.exists()
+        && std::fs::read_to_string(&path)
+            .map(|existing| existing == content)
+            .unwrap_or(false);
+    if existing_matches {
+        #[cfg(target_os = "linux")]
+        {
+            ensure_desktop_executable(&path);
+            set_default_url_handlers(&schemes);
         }
+        return;
     }
     let tmp = path.with_extension("desktop.tmp");
-    if std::fs::write(&tmp, &content).is_ok() {
-        if std::fs::rename(&tmp, &path).is_ok() {
-            #[cfg(target_os = "linux")]
-            ensure_desktop_executable(&path);
-            install_user_icon(&data_home);
-            #[cfg(target_os = "linux")]
-            refresh_desktop_database(&data_home);
-        }
+    if std::fs::write(&tmp, &content).is_ok() && std::fs::rename(&tmp, &path).is_ok() {
+        #[cfg(target_os = "linux")]
+        ensure_desktop_executable(&path);
+        install_user_icon(&data_home);
+        #[cfg(target_os = "linux")]
+        refresh_desktop_database(&data_home);
     }
     #[cfg(target_os = "linux")]
     set_default_url_handlers(&schemes);
