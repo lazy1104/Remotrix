@@ -41,7 +41,7 @@ app-single-instance = "0.1"
 palette = "0.7"
 notify-rust = { version = "4.17", features = ["tokio"] }
 ldtray = "=0.1.2"
-salvo = { version = "0.95", default-features = false, features = [
+salvo = { version = "1.0", default-features = false, features = [
     "cors",
     "server",
     "server-handle",
@@ -88,7 +88,7 @@ codegen-units = 16
 axum = "0.8"
 axum-server = { version = "0.8", features = ["tls-rustls"] }
 bytes = "1"
-rand = "0.9"
+rand = "0.10"
 rcgen = "0.14"
 serial_test = "4"
 sha1 = "0.11"

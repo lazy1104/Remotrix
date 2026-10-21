@@ -62,8 +62,8 @@ impl HttpFixture {
             flaky_hits: flaky_hits.clone(),
         };
         let app = Router::new()
-            .route("/file/:name", get(serve_file))
-            .route("/flaky/:name", get(serve_flaky))
+            .route("/file/{name}", get(serve_file))
+            .route("/flaky/{name}", get(serve_flaky))
             .route("/always500", get(always_500))
             .route("/hang", get(hang))
             .layer(middleware::from_fn(log_request))
@@ -273,7 +273,7 @@ impl HttpsFixture {
             flaky_hits: Arc::new(AtomicUsize::new(0)),
         };
         let app = Router::new()
-            .route("/file/:name", get(serve_file))
+            .route("/file/{name}", get(serve_file))
             .route("/always500", get(always_500))
             .route("/hang", get(hang))
             .with_state(state);
