@@ -2,6 +2,32 @@ use std::path::PathBuf;
 
 use super::settings::UrlSchemePrefs;
 
+/// UTF-16LE payload for a registry `REG_SZ` value: the NUL-terminated UTF-16
+/// encoding of `value`. `RegSetValueExW` takes raw bytes whose length is derived
+/// from the buffer, so callers must pass the trailing NUL along or the string
+/// gets truncated.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub(crate) fn utf16z_bytes(value: &str) -> Vec<u8> {
+    let payload = value
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect::<Vec<u16>>();
+    unsafe { std::slice::from_raw_parts(payload.as_ptr() as *const u8, payload.len() * 2) }.to_vec()
+}
+
+/// The three `HKCU` subkeys a registered scheme owns: its root, its icon and
+/// its `shell\open\command`. Shared by the write and the remove path so the two
+/// can never drift apart and leave a key behind.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub(crate) fn scheme_subkeys(scheme: &str) -> (String, String, String) {
+    let root = format!("Software\\Classes\\{scheme}");
+    (
+        root.clone(),
+        format!("{root}\\DefaultIcon"),
+        format!("{root}\\shell\\open\\command"),
+    )
+}
+
 /// The real, persistent launcher path: `$APPIMAGE` when running as an AppImage
 /// (the mount `current_exe()`/`/proc/self/exe` is temporary and read-only),
 /// otherwise the regular executable.
@@ -306,28 +332,12 @@ fn write_windows_scheme(scheme: &str, url_value: &str) {
 
     let Some(exe) = app_launch_exe() else { return };
     let command = format!("\"{}\" \"%1\"", exe.display());
-    let default_payload = url_value
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect::<Vec<u16>>();
-    let default_bytes = unsafe {
-        std::slice::from_raw_parts(
-            default_payload.as_ptr() as *const u8,
-            default_payload.len() * 2,
-        )
-    };
-    let command_payload = command
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect::<Vec<u16>>();
-    let command_bytes = unsafe {
-        std::slice::from_raw_parts(
-            command_payload.as_ptr() as *const u8,
-            command_payload.len() * 2,
-        )
-    };
+    let default_bytes = utf16z_bytes(url_value);
+    let command_bytes = utf16z_bytes(&command);
+    let icon_bytes = utf16z_bytes(&format!("\"{}\",1", exe.display()));
+    let marker_bytes = utf16z_bytes("");
 
-    let root_subkey = format!("Software\\Classes\\{scheme}");
+    let (root_subkey, icon_subkey, cmd_subkey) = scheme_subkeys(scheme);
     let mut key = HKEY::default();
     let mut disposition = REG_CREATE_KEY_DISPOSITION(0);
     let create_status = unsafe {
@@ -348,15 +358,63 @@ fn write_windows_scheme(scheme: &str, url_value: &str) {
         return;
     }
     let set_default =
-        unsafe { RegSetValueExW(key, &HSTRING::from(""), None, REG_SZ, Some(default_bytes)) };
+        unsafe { RegSetValueExW(key, &HSTRING::from(""), None, REG_SZ, Some(&default_bytes)) };
     if set_default != ERROR_SUCCESS {
         tracing::warn!(scheme, status = ?set_default, "failed to set HKCU scheme default value");
+    }
+    // Win10 1809+ / Win11 refuse to dispatch the scheme unless a value *named*
+    // `URL Protocol` exists, regardless of the `(default)` string being correct.
+    let set_url_protocol = unsafe {
+        RegSetValueExW(
+            key,
+            &HSTRING::from("URL Protocol"),
+            None,
+            REG_SZ,
+            Some(&marker_bytes),
+        )
+    };
+    if set_url_protocol != ERROR_SUCCESS {
+        tracing::warn!(scheme, status = ?set_url_protocol, "failed to set URL Protocol marker");
     }
     unsafe {
         let _ = RegCloseKey(key);
     }
 
-    let cmd_subkey = format!("Software\\Classes\\{scheme}\\shell\\open\\command");
+    let mut icon_key = HKEY::default();
+    let mut icon_disp = REG_CREATE_KEY_DISPOSITION(0);
+    let icon_create = unsafe {
+        RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            &HSTRING::from(icon_subkey.as_str()),
+            None,
+            None,
+            REG_OPTION_NON_VOLATILE,
+            KEY_SET_VALUE,
+            None,
+            &mut icon_key,
+            Some(&mut icon_disp),
+        )
+    };
+    if icon_create != ERROR_SUCCESS {
+        tracing::warn!(scheme, status = ?icon_create, "failed to open HKCU DefaultIcon subkey");
+    } else {
+        let set_icon = unsafe {
+            RegSetValueExW(
+                icon_key,
+                &HSTRING::from(""),
+                None,
+                REG_SZ,
+                Some(&icon_bytes),
+            )
+        };
+        if set_icon != ERROR_SUCCESS {
+            tracing::warn!(scheme, status = ?set_icon, "failed to set HKCU DefaultIcon value");
+        }
+        unsafe {
+            let _ = RegCloseKey(icon_key);
+        }
+    }
+
     let mut cmd_key = HKEY::default();
     let mut cmd_disp = REG_CREATE_KEY_DISPOSITION(0);
     let cmd_create = unsafe {
@@ -382,7 +440,7 @@ fn write_windows_scheme(scheme: &str, url_value: &str) {
             &HSTRING::from(""),
             None,
             REG_SZ,
-            Some(command_bytes),
+            Some(&command_bytes),
         )
     };
     if set_cmd != ERROR_SUCCESS {
@@ -402,7 +460,7 @@ fn remove_windows_scheme(scheme: &str, url_value: &str) {
         KEY_READ, KEY_WRITE,
     };
 
-    let root_subkey = format!("Software\\Classes\\{scheme}");
+    let (root_subkey, _, _) = scheme_subkeys(scheme);
     let mut key = HKEY::default();
     let open_status = unsafe {
         RegOpenKeyExW(
@@ -443,13 +501,23 @@ fn remove_windows_scheme(scheme: &str, url_value: &str) {
         return;
     }
 
-    let cmd_subkey = format!("Software\\Classes\\{scheme}\\shell\\open\\command");
+    let (root_subkey, icon_subkey, cmd_subkey) = scheme_subkeys(scheme);
+    // `RegDeleteKeyW` cannot remove a key that still has children, so every
+    // subkey must be gone before its parent. `DefaultIcon` is a leaf and goes
+    // first; a failure here is logged but must not abort, otherwise the root
+    // would never be removable again.
+    let icon_status =
+        unsafe { RegDeleteKeyW(HKEY_CURRENT_USER, &HSTRING::from(icon_subkey.as_str())) };
+    if icon_status != ERROR_SUCCESS {
+        tracing::warn!(scheme, status = ?icon_status, "failed to delete HKCU DefaultIcon subkey");
+    }
+
+    let shell_subkey = format!("Software\\Classes\\{scheme}\\shell\\open");
     let cmd_status =
         unsafe { RegDeleteKeyW(HKEY_CURRENT_USER, &HSTRING::from(cmd_subkey.as_str())) };
     if cmd_status != ERROR_SUCCESS {
         tracing::warn!(scheme, status = ?cmd_status, "failed to delete HKCU command subkey");
     }
-    let shell_subkey = format!("Software\\Classes\\{scheme}\\shell\\open");
     let shell_status =
         unsafe { RegDeleteKeyW(HKEY_CURRENT_USER, &HSTRING::from(shell_subkey.as_str())) };
     if shell_status != ERROR_SUCCESS {
@@ -541,5 +609,50 @@ mod tests {
             register_ed2k: true,
         };
         assert_eq!(enabled_schemes(&prefs), vec!["remotrix", "magnet", "ed2k"]);
+    }
+
+    #[test]
+    fn utf16z_bytes_empty_is_a_bare_terminator() {
+        assert_eq!(utf16z_bytes(""), vec![0, 0]);
+    }
+
+    #[test]
+    fn utf16z_bytes_appends_nul_and_uses_utf16le() {
+        let b = utf16z_bytes("ab");
+        assert_eq!(b.len(), 6, "two chars plus a NUL, two bytes each");
+        assert_eq!(b[0..2], [b'a', 0]);
+        assert_eq!(b[2..4], [b'b', 0]);
+        assert_eq!(b[4..6], [0, 0]);
+    }
+
+    #[test]
+    fn utf16z_bytes_handles_non_ascii() {
+        let b = utf16z_bytes("中");
+        assert_eq!(b.len(), 4, "one BMP char plus a NUL, two bytes each");
+        assert_eq!(b[2..4], [0, 0]);
+    }
+
+    #[test]
+    fn scheme_subkeys_layout() {
+        let (root, icon, cmd) = scheme_subkeys("remotrix");
+        assert_eq!(root, "Software\\Classes\\remotrix");
+        assert_eq!(icon, "Software\\Classes\\remotrix\\DefaultIcon");
+        assert_eq!(cmd, "Software\\Classes\\remotrix\\shell\\open\\command");
+    }
+
+    #[test]
+    fn scheme_subkeys_tracks_every_supported_scheme() {
+        for scheme in ["remotrix", "magnet", "ed2k"] {
+            let (root, icon, cmd) = scheme_subkeys(scheme);
+            assert!(root.ends_with(scheme), "{root} should end with {scheme}");
+            assert!(
+                icon.ends_with(&format!("{scheme}\\DefaultIcon")),
+                "{icon} should end with {scheme}\\DefaultIcon"
+            );
+            assert!(
+                cmd.ends_with(&format!("{scheme}\\shell\\open\\command")),
+                "{cmd} should end with {scheme}\\shell\\open\\command"
+            );
+        }
     }
 }

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复 Windows 上 `remotrix://` / `magnet:` / `ed2k:` 点击后提示「需要使用新应用以打开此链接」、应用根本不被调起的问题:协议注册补写 Windows 10 1809+ / Win11 派发协议时强制校验的 `URL Protocol` 空值标记,并新增 `DefaultIcon` 图标键;取消勾选注册时同步清理 `DefaultIcon`,避免注册表残留导致删不掉根键。三个协议此前共用同一处注册逻辑,均受影响,现已一并修复。
+
 ## [0.6.0-beta.4] - 2026-10-14
 
 ### Added
