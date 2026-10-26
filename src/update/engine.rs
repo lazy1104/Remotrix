@@ -252,9 +252,15 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
             info_hash,
             advanced,
             from_browser,
+            from_sync,
         } => {
-            tracing::info!(?gid, ?name, from_browser, "ui: task added");
+            tracing::info!(?gid, ?name, from_browser, from_sync, "ui: task added");
             state.tracking.synced_gids.insert(gid.clone());
+            if !from_sync {
+                // User-initiated in this session: remember it so a later
+                // completion raises the toast / system notification.
+                state.tracking.session_gids.insert(gid.clone());
+            }
             let task_name = name.clone();
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -524,55 +530,69 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
                     }
                 }
             }
+            // The transition into "download finished" is detected with
+            // `is_download_complete`, which also covers a BitTorrent task
+            // that switched to seeding (aria2 keeps reporting `active` for
+            // the whole seeding window, so the raw status never becomes
+            // `complete` there).
             if !is_download_complete {
                 state.tracking.completion_toasted.remove(&gid);
-            } else if !state.tracking.sync_done {
-                state.tracking.completion_toasted.insert(gid.clone());
             } else if !was_download_complete {
                 if let Some(t) = state.tasks.get(&gid) {
                     let name = t.name.clone();
                     let open_path = t.save_dir.join(&t.name);
                     state.tracking.completion_toasted.insert(gid.clone());
-                    let mut args = std::collections::HashMap::new();
-                    args.insert(
-                        std::borrow::Cow::from("name"),
-                        std::borrow::Cow::from(name).into(),
-                    );
-                    let toast = Toast::new(
-                        ToastKind::Success,
-                        state.fluent.get_args(Tr::DownloadComplete, &args),
-                    )
-                    .group(ToastGroup::Task)
-                    .close_after(Some(Duration::from_secs(4)))
-                    .action(
-                        crate::ui::components::toast::ToastAction::OpenFile(open_path.clone()),
-                        state.fluent.get(Tr::Open),
-                    )
-                    .action(
-                        crate::ui::components::toast::ToastAction::RevealDir(t.save_dir.clone()),
-                        state.fluent.get(Tr::ShowInFolder),
-                    );
-                    state.toasts.push(toast);
-                    if state.settings.notifications.download_complete {
-                        let title = state.fluent.get(Tr::DownloadCompleteTitle);
-                        let body = state.fluent.get_args(Tr::DownloadComplete, &args);
-                        let open_path_clone = open_path.clone();
-                        send_system_notification(
-                            state,
-                            title,
-                            body,
-                            vec![
-                                (
-                                    state.fluent.get(Tr::Open),
-                                    crate::notify::NotifyAction::OpenFile(open_path_clone.clone()),
-                                ),
-                                (
-                                    state.fluent.get(Tr::ShowInFolder),
-                                    crate::notify::NotifyAction::RevealDir(open_path_clone),
-                                ),
-                            ],
-                            crate::notify::NotifyAction::OpenFile(open_path),
+                    // A task carried over from a previous run — surfaced by
+                    // the startup sync rather than started here — must not
+                    // replay a stale completion notice. The shutdown check
+                    // below still applies to it.
+                    let notify = state.tracking.session_gids.contains(&gid);
+                    if notify {
+                        let mut args = std::collections::HashMap::new();
+                        args.insert(
+                            std::borrow::Cow::from("name"),
+                            std::borrow::Cow::from(name).into(),
                         );
+                        let toast = Toast::new(
+                            ToastKind::Success,
+                            state.fluent.get_args(Tr::DownloadComplete, &args),
+                        )
+                        .group(ToastGroup::Task)
+                        .close_after(Some(Duration::from_secs(4)))
+                        .action(
+                            crate::ui::components::toast::ToastAction::OpenFile(open_path.clone()),
+                            state.fluent.get(Tr::Open),
+                        )
+                        .action(
+                            crate::ui::components::toast::ToastAction::RevealDir(
+                                t.save_dir.clone(),
+                            ),
+                            state.fluent.get(Tr::ShowInFolder),
+                        );
+                        state.toasts.push(toast);
+                        if state.settings.notifications.download_complete {
+                            let title = state.fluent.get(Tr::DownloadCompleteTitle);
+                            let body = state.fluent.get_args(Tr::DownloadComplete, &args);
+                            let open_path_clone = open_path.clone();
+                            send_system_notification(
+                                state,
+                                title,
+                                body,
+                                vec![
+                                    (
+                                        state.fluent.get(Tr::Open),
+                                        crate::notify::NotifyAction::OpenFile(
+                                            open_path_clone.clone(),
+                                        ),
+                                    ),
+                                    (
+                                        state.fluent.get(Tr::ShowInFolder),
+                                        crate::notify::NotifyAction::RevealDir(open_path_clone),
+                                    ),
+                                ],
+                                crate::notify::NotifyAction::OpenFile(open_path),
+                            );
+                        }
                     }
                     if state.shutdown.after_complete
                         && !state.tasks.values().any(|t| t.is_download_active())
@@ -613,7 +633,7 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
                             Some(Duration::from_secs(4)),
                             false,
                         );
-                        if state.tracking.sync_done && state.settings.notifications.download_error {
+                        if state.settings.notifications.download_error {
                             let title = state.fluent.get(Tr::DownloadErrorTitle);
                             send_system_notification(
                                 state,

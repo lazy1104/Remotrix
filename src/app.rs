@@ -293,6 +293,11 @@ pub(crate) struct TaskTracking {
     pub(crate) dirty: HashSet<String>,
     pub(crate) completion_toasted: HashSet<String>,
     pub(crate) error_notified: HashSet<String>,
+    /// Tasks the user started in this session. Only these raise a
+    /// "download complete" toast / system notification — tasks surfaced by
+    /// the startup sync of pre-existing aria2 state are excluded so a
+    /// restart does not replay a flood of stale completion notices.
+    pub(crate) session_gids: HashSet<String>,
     pub(crate) torrent_files: HashMap<String, PathBuf>,
     pub(crate) torrent_followed: HashSet<String>,
 }
@@ -308,6 +313,7 @@ impl TaskTracking {
             dirty: HashSet::new(),
             completion_toasted: HashSet::new(),
             error_notified: HashSet::new(),
+            session_gids: HashSet::new(),
             torrent_files: HashMap::new(),
             torrent_followed: HashSet::new(),
         }
@@ -860,6 +866,7 @@ pub(crate) fn finalize_task_removal(state: &mut Remotrix, gid: &str) {
     state.tracking.torrent_followed.remove(gid);
     state.tracking.completion_toasted.remove(gid);
     state.tracking.error_notified.remove(gid);
+    state.tracking.session_gids.remove(gid);
     state.tracking.paused_gids.remove(gid);
     state.progress_anim.remove(gid);
     state.task_order.retain(|g| g != gid);

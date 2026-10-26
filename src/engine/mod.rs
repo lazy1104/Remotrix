@@ -136,6 +136,11 @@ pub enum EngineEvent {
         info_hash: Option<String>,
         advanced: TaskAdvancedOptions,
         from_browser: bool,
+        /// `true` when the task was surfaced by the startup sync of
+        /// pre-existing aria2 state rather than by a user-initiated add.
+        /// The UI uses this to decide whether a later completion belongs
+        /// to a task the user started in this session.
+        from_sync: bool,
     },
     Progress {
         gid: String,
@@ -820,6 +825,7 @@ async fn emit_added(
     event_tx: &EventTx,
     s: &aria2_ws::response::Status,
     advanced: TaskAdvancedOptions,
+    from_sync: bool,
 ) {
     let url = s
         .files
@@ -835,6 +841,7 @@ async fn emit_added(
         info_hash: s.info_hash.clone(),
         advanced,
         from_browser: false,
+        from_sync,
     });
 }
 
@@ -946,7 +953,7 @@ async fn sync_existing_tasks(client: &Client, event_tx: &EventTx) -> bool {
         }
     };
     for s in &all {
-        emit_added(event_tx, s, TaskAdvancedOptions::default()).await;
+        emit_added(event_tx, s, TaskAdvancedOptions::default(), true).await;
         emit_progress(event_tx, s).await;
     }
     if truncated {
@@ -1169,6 +1176,7 @@ async fn add_download_internal(
                     info_hash: None,
                     advanced: advanced.clone(),
                     from_browser,
+                    from_sync: false,
                 });
                 added += 1;
             }
@@ -1227,7 +1235,7 @@ async fn add_torrent_and_emit(
         .map_err(|e| format!("add_torrent: {e}"))?;
     match client.tell_status(&gid).await {
         Ok(status) => {
-            emit_added(event_tx, &status, advanced.clone()).await;
+            emit_added(event_tx, &status, advanced.clone(), false).await;
             emit_progress(event_tx, &status).await;
         }
         Err(e) => {
@@ -1246,6 +1254,7 @@ async fn add_torrent_and_emit(
                 info_hash: None,
                 advanced: advanced.clone(),
                 from_browser: false,
+                from_sync: false,
             });
         }
     }
@@ -1280,7 +1289,7 @@ async fn add_metalink_and_emit(
         .map_err(|e| format!("add_metalink: {e}"))?;
     match client.tell_status(&gid).await {
         Ok(status) => {
-            emit_added(event_tx, &status, advanced.clone()).await;
+            emit_added(event_tx, &status, advanced.clone(), false).await;
             emit_progress(event_tx, &status).await;
         }
         Err(e) => {
@@ -1299,6 +1308,7 @@ async fn add_metalink_and_emit(
                 info_hash: None,
                 advanced: advanced.clone(),
                 from_browser: false,
+                from_sync: false,
             });
         }
     }
@@ -1712,6 +1722,7 @@ async fn handle_client_cmd(
                         info_hash: None,
                         advanced: TaskAdvancedOptions::default(),
                         from_browser: false,
+                        from_sync: true,
                     });
                     if let Ok(status) = client.tell_status(&gid).await {
                         emit_progress(event_tx, &status).await;
@@ -1743,7 +1754,7 @@ async fn handle_client_cmd(
             {
                 Ok(_) => {
                     if let Ok(status) = client.tell_status(&gid).await {
-                        emit_added(event_tx, &status, TaskAdvancedOptions::default()).await;
+                        emit_added(event_tx, &status, TaskAdvancedOptions::default(), false).await;
                         emit_progress(event_tx, &status).await;
                     }
                 }
@@ -2033,7 +2044,7 @@ async fn poll_loop(poll_client: Client, poll_event_tx: EventTx) {
                 for s in &all {
                     current.insert(s.gid.as_str());
                     if seen.insert(s.gid.clone()) {
-                        emit_added(&poll_event_tx, s, TaskAdvancedOptions::default()).await;
+                        emit_added(&poll_event_tx, s, TaskAdvancedOptions::default(), true).await;
                     }
                     let is_terminal = matches!(
                         s.status,
@@ -2096,14 +2107,15 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
         version: installed_version(),
     });
 
+    // `EngineReady` and `SyncComplete` are emitted from a single task so the
+    // UI always observes them in the same order. The UI resets `sync_done` on
+    // `EngineReady` and sets it on `SyncComplete`, so `EngineReady` must come
+    // first — emitting them from separate tasks let either land last and undo
+    // the other, which permanently disabled the ghost-task reconciliation.
+    // `SyncComplete` is sent even when the sync itself failed: a failed sync
+    // means "nothing to reconcile", not "still reconciling", so the UI never
+    // waits forever.
     let sync_client = sidecar.client.clone();
-    let sync_event_tx = event_tx.clone();
-    tokio::spawn(async move {
-        if sync_existing_tasks(&sync_client, &sync_event_tx).await {
-            let _ = sync_event_tx.send(EngineEvent::SyncComplete);
-        }
-    });
-
     let boot_client = sidecar.client.clone();
     let boot_event_tx = event_tx.clone();
     tokio::spawn(async move {
@@ -2112,6 +2124,11 @@ fn on_sidecar_ready(sidecar: &Sidecar, event_tx: &EventTx) -> Vec<JoinHandle<()>
             tracing::warn!("boot apply global options: {e}");
         }
         let _ = boot_event_tx.send(EngineEvent::EngineReady);
+        let synced = sync_existing_tasks(&sync_client, &boot_event_tx).await;
+        if !synced {
+            tracing::warn!("startup sync incomplete; skipping ghost-task reconciliation");
+        }
+        let _ = boot_event_tx.send(EngineEvent::SyncComplete);
     });
 
     let mut handles = Vec::new();

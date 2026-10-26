@@ -34,6 +34,10 @@ pub(crate) fn handle(state: &mut Remotrix, msg: TaskMsg) -> Task<Message> {
         TaskMsg::RedownloadTask(gid) => {
             state.tracking.paused_gids.remove(&gid);
             state.tracking.torrent_followed.remove(&gid);
+            // A re-download reuses the original gid, so the task is already
+            // known to the UI. Tag it as a session task explicitly — the
+            // completion notice for the fresh download must still fire.
+            state.tracking.session_gids.insert(gid.clone());
             let bt_metadata_only = !state.settings.aria2.bt_auto_download;
             let (url, save_dir, split) = match state.tasks.get(&gid) {
                 Some(t) => {

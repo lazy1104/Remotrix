@@ -345,3 +345,61 @@ use `notify::NotifyAction::OpenFile` / `::RevealDir`. The notification's "定位
 the path picker. The toast still auto-dismisses after 4 s (hovering pauses the countdown), and
 because `ToastManager::push` evicts same-position/same-group toasts that have a `close_after`,
 only the most recent completion toast stays actionable.
+
+## `sync_done` gates ghost-task reconciliation, NOT download notifications
+`state.tracking.sync_done` exists for one purpose: the startup sync of pre-existing aria2 state
+finished, so the UI may re-submit tasks that the DB knows about but aria2 lost
+(`EngineEvent::SyncComplete` → `src/update/engine.rs`). It was **never** a "the app is ready to
+notify" signal, yet it was used as one from commit `e4c1fbc` onward, and `db846fd` moved the gate
+from the notification call down to the toast call and added a branch that swallowed the completion
+silently:
+
+```rust
+} else if !state.tracking.sync_done {
+    state.tracking.completion_toasted.insert(gid.clone());   // marked, never notified
+}
+```
+
+Because `SyncComplete` was only sent when `sync_existing_tasks` returned `Ok`, a single failed RPC
+(`fetch_all_tasks_strict` fails if any of `tell_active` / `tell_waiting` / `tell_stopped` fails) left
+`sync_done == false` **forever** — every later download lost its completion toast *and* its system
+notification until the app was restarted. Keep `sync_done` for reconciliation; do not gate
+notifications on it.
+
+Two independent races fed the same failure:
+
+- `EngineReady` and `SyncComplete` were emitted from two separate `tokio::spawn` tasks with no
+  ordering guarantee. `EngineReady` sets `sync_done = false` and `SyncComplete` sets it to `true`,
+  so a late `EngineReady` undid an earlier `SyncComplete` (and vice versa). They are now emitted
+  from **one** task in a fixed order — `EngineReady` first, then the sync, then `SyncComplete` — and
+  `SyncComplete` is sent unconditionally (a failed sync means "nothing to reconcile", not "still
+  reconciling").
+- The completion was detected via `is_download_complete` (which includes `active` + `is_seeding`),
+  so a seeding BitTorrent task — aria2 reports `active` for the whole seeding window and never
+  reports `complete` — was judged "not complete" forever and the `completion_toasted` flag could
+  never be cleared. The transition is still detected with `is_download_complete`, but the flag is
+  now cleared by a session-scoped rule instead of a global one.
+
+## Download-completion notices are scoped to the current session
+`TaskTracking.session_gids` holds the gids the user started **in this session**. Only those raise
+the "download complete" toast and system notification; a task surfaced by the startup sync of
+pre-existing aria2 state is skipped so a restart does not replay a flood of stale notices.
+
+`EngineEvent::Added` carries `from_sync: bool` to make that distinction at the source:
+
+| `from_sync` | Emitted by | Session task? |
+|---|---|---|
+| `true` | `sync_existing_tasks` (startup sync), `poll_loop` slow scan, `EngineCmd::ReaddTask` (ghost re-add) | no |
+| `false` | `add_download_internal` (add dialog / browser extension), `add_torrent_and_emit`, `add_metalink_and_emit`, `EngineCmd::Redownload` | yes |
+
+Do not infer this from "is the gid already in `state.tasks`" — a re-download reuses the original gid
+and the task is already known, so `TaskMsg::RedownloadTask` tags `session_gids` explicitly.
+
+`poll_loop` and `sync_existing_tasks` keep separate `seen` sets, so the same gid can produce two
+`Added` events (one per path). That is harmless, but it means "the first `Added` for this gid" is
+not a reliable signal — use the `from_sync` flag, which is set per emitting path.
+
+The completion transition is judged by `is_download_complete` (not the raw `status` string): aria2
+keeps reporting `active` for a seeding BitTorrent task, so keying on `status == "complete"` alone
+would delay the notice until seeding stops. The `shutdown.after_complete` check still runs for
+non-session tasks — only the *notices* are session-scoped.
