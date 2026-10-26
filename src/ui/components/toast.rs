@@ -1,9 +1,13 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use iced::advanced::layout::{Limits, Node};
+use iced::advanced::renderer;
+use iced::advanced::widget::{self, Widget};
+use iced::advanced::{mouse, Clipboard, Layout, Shell};
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{button, column, container, mouse_area, row, stack, text, tooltip};
-use iced::{Element, Length};
+use iced::{Element, Length, Point, Rectangle, Size, Vector};
 
 use crate::message::{Message, ToastMsg};
 use crate::ui::animation::{
@@ -30,7 +34,7 @@ pub enum ToastAction {
 }
 
 const CARD_MAX_WIDTH: f32 = 440.0;
-const MSG_MAX_WIDTH: f32 = 140.0;
+const CARD_CONTENT_MAX_WIDTH: f32 = CARD_MAX_WIDTH - PADDING_TOAST.left - PADDING_TOAST.right;
 const OVERLAY_PADDING: u16 = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -234,21 +238,16 @@ fn card<'a>(theme: &'a iced::Theme, toast: &'a Toast) -> Element<'a, Message> {
     .color(kind_color(theme, toast.kind));
 
     let icon_col = container(icon).align_y(Vertical::Center);
-    let message_col = container(tip::standard(
+    let message = tip::standard(
         truncated_text(toast.message.clone())
             .size(FONT_MEDIUM)
             .max_lines(1)
             .width(Length::Fill),
         text(toast.message.clone()).size(FONT_SMALL),
         tooltip::Position::Bottom,
-    ))
-    .width(Length::Fill)
-    .max_width(MSG_MAX_WIDTH);
+    );
 
-    let mut content = row![icon_col, message_col]
-        .spacing(SPACE_LG)
-        .align_y(Vertical::Center);
-
+    let mut trailing = row![].spacing(SPACE_LG).align_y(Vertical::Center);
     for (index, (_, label)) in toast.actions.iter().enumerate() {
         let msg = Message::Toast(ToastMsg::ToastActionPressed(toast.id, index));
         let btn = if index == 0 {
@@ -262,7 +261,7 @@ fn card<'a>(theme: &'a iced::Theme, toast: &'a Toast) -> Element<'a, Message> {
                 .padding(PADDING_TOOLBAR_CAPSULE)
                 .style(theme::style::button::secondary())
         };
-        content = content.push(btn);
+        trailing = trailing.push(btn);
     }
 
     if toast.show_close {
@@ -270,11 +269,19 @@ fn card<'a>(theme: &'a iced::Theme, toast: &'a Toast) -> Element<'a, Message> {
             .on_press(Message::Toast(ToastMsg::DismissToast(toast.id)))
             .padding(PADDING_TOAST_CLOSE)
             .style(theme::style::button::text());
-        content = content.push(close_btn);
+        trailing = trailing.push(close_btn);
     }
 
+    let body = ToastBody::new(
+        icon_col.into(),
+        message,
+        trailing.into(),
+        CARD_CONTENT_MAX_WIDTH,
+        SPACE_LG,
+    );
+
     let card = mouse_area(
-        container(content)
+        container(body)
             .width(Length::Shrink)
             .max_width(CARD_MAX_WIDTH)
             .padding(PADDING_TOAST)
@@ -296,5 +303,284 @@ fn kind_color(theme: &iced::Theme, kind: ToastKind) -> iced::Color {
         ToastKind::Warning => theme::warning(theme),
         ToastKind::Error => theme::danger(theme),
         ToastKind::Success => theme::success(theme),
+    }
+}
+
+/// Width left for the message once the leading icon and the trailing
+/// controls took their share of the card.
+fn message_budget(content_max: f32, leading: f32, trailing: f32, gaps: f32) -> f32 {
+    (content_max - leading - trailing - gaps).max(0.0)
+}
+
+/// Toast card body laid out in two passes: the trailing controls are
+/// measured first, so the message only receives the space they left over
+/// and the whole card stays within `max_width`.
+///
+/// A `Length::Fill` message cannot be used directly here. The card is a
+/// `Length::Shrink` container, which marks the whole subtree as
+/// compressed, and iced then measures the row children in order — the
+/// message would take the full width and starve the buttons that follow
+/// it.
+struct ToastBody<'a, Message> {
+    /// Leading icon, message and trailing controls, in that order.
+    elements: Vec<Element<'a, Message>>,
+    max_width: f32,
+    spacing: f32,
+}
+
+impl<'a, Message> ToastBody<'a, Message> {
+    const LEADING: usize = 0;
+    const MESSAGE: usize = 1;
+    const TRAILING: usize = 2;
+
+    fn new(
+        leading: Element<'a, Message>,
+        message: Element<'a, Message>,
+        trailing: Element<'a, Message>,
+        max_width: f32,
+        spacing: f32,
+    ) -> Self {
+        Self {
+            elements: vec![leading, message, trailing],
+            max_width,
+            spacing,
+        }
+    }
+}
+
+impl<'a, Message> Widget<Message, iced::Theme, iced::Renderer> for ToastBody<'a, Message> {
+    fn children(&self) -> Vec<widget::Tree> {
+        self.elements
+            .iter()
+            .map(widget::Tree::new)
+            .collect::<Vec<_>>()
+    }
+
+    fn diff(&self, tree: &mut widget::Tree) {
+        tree.diff_children(&self.elements);
+    }
+
+    fn size(&self) -> Size<Length> {
+        Size::new(Length::Shrink, Length::Shrink)
+    }
+
+    fn layout(
+        &mut self,
+        tree: &mut widget::Tree,
+        renderer: &iced::Renderer,
+        limits: &Limits,
+    ) -> Node {
+        let loose = limits.loose();
+
+        let leading = self.elements[Self::LEADING].as_widget_mut().layout(
+            &mut tree.children[Self::LEADING],
+            renderer,
+            &loose,
+        );
+        let trailing = self.elements[Self::TRAILING].as_widget_mut().layout(
+            &mut tree.children[Self::TRAILING],
+            renderer,
+            &loose,
+        );
+
+        let leading_size = leading.size();
+        let trailing_size = trailing.size();
+
+        let trailing_gap = if trailing_size.width > 0.0 {
+            self.spacing
+        } else {
+            0.0
+        };
+        let gaps = self.spacing + trailing_gap;
+
+        let content_max = self.max_width.min(limits.max().width);
+        let budget = message_budget(content_max, leading_size.width, trailing_size.width, gaps);
+
+        // `compression.width = true` keeps `Length::Fill` resolving to the
+        // intrinsic text width, so a short message hugs its content while a
+        // long one is truncated to the budget.
+        let message_limits = Limits::with_compression(
+            Size::ZERO,
+            Size::new(budget, limits.max().height),
+            Size::new(true, false),
+        );
+        let message = self.elements[Self::MESSAGE].as_widget_mut().layout(
+            &mut tree.children[Self::MESSAGE],
+            renderer,
+            &message_limits,
+        );
+        let message_size = message.size();
+
+        let width = leading_size.width
+            + self.spacing
+            + message_size.width
+            + trailing_gap
+            + trailing_size.width;
+        let height = leading_size
+            .height
+            .max(message_size.height)
+            .max(trailing_size.height);
+
+        let leading = leading.move_to(Point::new(0.0, (height - leading_size.height) / 2.0));
+        let message = message.move_to(Point::new(
+            leading_size.width + self.spacing,
+            (height - message_size.height) / 2.0,
+        ));
+        let trailing = trailing.move_to(Point::new(
+            leading_size.width + self.spacing + message_size.width + trailing_gap,
+            (height - trailing_size.height) / 2.0,
+        ));
+
+        Node::with_children(Size::new(width, height), vec![leading, message, trailing])
+    }
+
+    fn draw(
+        &self,
+        tree: &widget::Tree,
+        renderer: &mut iced::Renderer,
+        theme: &iced::Theme,
+        style: &renderer::Style,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+    ) {
+        for ((child, child_tree), child_layout) in self
+            .elements
+            .iter()
+            .zip(&tree.children)
+            .zip(layout.children())
+        {
+            child.as_widget().draw(
+                child_tree,
+                renderer,
+                theme,
+                style,
+                child_layout,
+                cursor,
+                viewport,
+            );
+        }
+    }
+
+    fn update(
+        &mut self,
+        tree: &mut widget::Tree,
+        event: &iced::Event,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        renderer: &iced::Renderer,
+        clipboard: &mut dyn Clipboard,
+        shell: &mut Shell<'_, Message>,
+        viewport: &Rectangle,
+    ) {
+        for ((child, child_tree), child_layout) in self
+            .elements
+            .iter_mut()
+            .zip(&mut tree.children)
+            .zip(layout.children())
+        {
+            child.as_widget_mut().update(
+                child_tree,
+                event,
+                child_layout,
+                cursor,
+                renderer,
+                clipboard,
+                shell,
+                viewport,
+            );
+        }
+    }
+
+    fn operate(
+        &mut self,
+        tree: &mut widget::Tree,
+        layout: Layout<'_>,
+        renderer: &iced::Renderer,
+        operation: &mut dyn widget::Operation<()>,
+    ) {
+        for ((child, child_tree), child_layout) in self
+            .elements
+            .iter_mut()
+            .zip(&mut tree.children)
+            .zip(layout.children())
+        {
+            operation.container(None, child_layout.bounds());
+            child
+                .as_widget_mut()
+                .operate(child_tree, child_layout, renderer, operation);
+        }
+    }
+
+    fn mouse_interaction(
+        &self,
+        tree: &widget::Tree,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+        renderer: &iced::Renderer,
+    ) -> mouse::Interaction {
+        self.elements
+            .iter()
+            .zip(&tree.children)
+            .zip(layout.children())
+            .map(|((child, child_tree), child_layout)| {
+                child.as_widget().mouse_interaction(
+                    child_tree,
+                    child_layout,
+                    cursor,
+                    viewport,
+                    renderer,
+                )
+            })
+            .max()
+            .unwrap_or_default()
+    }
+
+    fn overlay<'b>(
+        &'b mut self,
+        tree: &'b mut widget::Tree,
+        layout: Layout<'b>,
+        renderer: &iced::Renderer,
+        viewport: &Rectangle,
+        translation: Vector,
+    ) -> Option<iced::overlay::Element<'b, Message, iced::Theme, iced::Renderer>> {
+        iced::advanced::overlay::from_children(
+            &mut self.elements,
+            tree,
+            layout,
+            renderer,
+            viewport,
+            translation,
+        )
+    }
+}
+
+impl<'a, Message: 'a> From<ToastBody<'a, Message>> for Element<'a, Message> {
+    fn from(body: ToastBody<'a, Message>) -> Self {
+        Element::new(body)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn budget_leaves_room_for_the_fixed_parts() {
+        assert_eq!(message_budget(416.0, 16.0, 0.0, 8.0), 392.0);
+        assert_eq!(message_budget(416.0, 16.0, 150.0, 16.0), 234.0);
+    }
+
+    #[test]
+    fn budget_never_goes_negative() {
+        assert_eq!(message_budget(416.0, 16.0, 500.0, 16.0), 0.0);
+        assert_eq!(message_budget(10.0, 16.0, 0.0, 8.0), 0.0);
+    }
+
+    #[test]
+    fn budget_is_bounded_by_the_content_width() {
+        assert_eq!(CARD_CONTENT_MAX_WIDTH, 416.0);
+        assert!(CARD_CONTENT_MAX_WIDTH < CARD_MAX_WIDTH);
     }
 }

@@ -332,11 +332,33 @@ and `::secondary()` return **distinct opaque types** (`impl Fn(..)`), so they ca
 selected through an `if`/`else` on the style value — build the whole `button(..)` inside each
 branch instead.
 
-The card is a single row (icon + message + buttons + close). Adding buttons widens it, so the
-message is capped by `MSG_MAX_WIDTH` and rendered through `truncated_text` with a tooltip that
-carries the full text — a long file name in "下载完成：{name}" would otherwise push the card past
-`CARD_MAX_WIDTH`. Card geometry lives in `CARD_MAX_WIDTH` / `MSG_MAX_WIDTH` at the top of
-`src/ui/components/toast.rs`; adjust both together.
+The card is a single row (icon + message + buttons + close) and has **one** width cap:
+`CARD_MAX_WIDTH` (440 px, padding included). The card still shrinks to its content, and the
+message is the only flexible part — it takes whatever the icon and the trailing controls left
+over and is rendered through `truncated_text` (ellipsis) with a tooltip that carries the full
+text, so a long file name in "下载完成：{name}" cannot push the card past the cap.
+
+The layout is **not** a plain `row![..]`, it goes through the private `ToastBody` widget
+(`src/ui/components/toast.rs`) because iced cannot express this with stock widgets:
+
+- The card is a `Length::Shrink` container. `Limits::width(Shrink)` sets `compression.width =
+  true` on the whole subtree (`iced_core/src/layout/limits.rs`), and a compressed `Length::Fill`
+  resolves to the *intrinsic* width instead of the leftover space
+  (`Limits::resolve`) while iced's flex skips its third pass, which is the one that hands the
+  remaining space to the fluid child (`iced_core/src/layout/flex.rs`).
+- With compression on, the flex first pass measures the row children **in order**. A `Fill`
+  message sitting before the buttons takes the whole width and squeezes them — measured on a
+  real toast card the buttons dropped from 188 px to 29 px, i.e. they stop being usable. That is
+  why a message cap on its own (the old `MSG_MAX_WIDTH = 140`) produced a different card width
+  with and without buttons.
+
+`ToastBody` therefore measures in two passes: it lays out the leading icon and the trailing
+controls first, then gives the message exactly the remaining budget with
+`Limits::with_compression(.., Size::new(true, false))` so the message still hugs a short text and
+only truncates when it has to. Card geometry lives in `CARD_MAX_WIDTH` /
+`CARD_CONTENT_MAX_WIDTH` (440 minus the card padding) at the top of
+`src/ui/components/toast.rs`; adjust both together. `message_budget` is the pure helper that
+computes the leftover width and is covered by unit tests.
 
 The download-complete toast carries "打开" (`OpenFile` → `Message::OpenFile`) and "在文件夹中显示"
 (`RevealDir` → `Message::RevealDir`) — the same semantics as the system notification buttons, which
