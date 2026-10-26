@@ -347,6 +347,7 @@ pub fn view<'a>(
             .height(Length::Fixed(120.0))
             .padding(PADDING_EDITOR)
             .size(FONT_BODY)
+            .wrapping(iced::widget::text::Wrapping::WordOrGlyph)
             .style(theme::style::text_editor::standard),
     )
     .on_right_press(Message::CtxOpen(CtxTarget::AddUrl));

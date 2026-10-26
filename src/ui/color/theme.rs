@@ -276,13 +276,20 @@ pub fn grouped_input_layout<'a, Message: Clone>(
 
 /// Apply the app-standard padding and font size to a `TextEditor`
 /// (multi-line URL box).
+///
+/// `WordOrGlyph` is required because the default `Word` strategy never breaks
+/// a single token that is wider than the widget, so long URLs / tracker
+/// addresses would overflow horizontally instead of wrapping.
 pub fn editor_layout<'a, H, Message>(
     editor: iced::widget::TextEditor<'a, H, Message>,
 ) -> iced::widget::TextEditor<'a, H, Message>
 where
     H: iced::advanced::text::Highlighter,
 {
-    editor.padding(INPUT_PADDING).size(dims::FONT_MEDIUM)
+    editor
+        .padding(INPUT_PADDING)
+        .size(dims::FONT_MEDIUM)
+        .wrapping(iced::widget::text::Wrapping::WordOrGlyph)
 }
 
 /// Default accent colour (`#5865F2`) used for first-launch themes.

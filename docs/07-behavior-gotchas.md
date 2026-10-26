@@ -287,6 +287,28 @@ Operator-visible side-effects of trusting the extension:
   a toast containing the aria2 `error_code` / `error_message`, so the
   diagnostic no longer lives only in the system notification / engine log.
 
+## Multi-line text boxes need `Wrapping::WordOrGlyph`
+The multi-line editors (Add dialog URL box, Settings → Network → User-Agent, Settings → BT →
+Tracker list) are `iced::widget::text_editor` widgets. iced's default wrapping strategy is
+`Wrapping::Word` (`iced_core::text::Wrapping`), which only breaks at **word** boundaries — a single
+token wider than the widget (a long URL, a magnet link, a tracker address) is *not* split and
+overflows horizontally instead of wrapping. The underlying cosmic-text `Wrap::Word` path
+(`cosmic-text/src/shape.rs`) only falls back to glyph-level breaking for `Wrap::Glyph` /
+`Wrap::WordOrGlyph`.
+
+Every `text_editor` in this repo therefore sets `.wrapping(Wrapping::WordOrGlyph)`:
+
+- `theme::editor_layout()` (`src/ui/color/theme.rs`) — shared helper used by `labeled_editor`
+  (`src/ui/settings/mod.rs`), which covers the User-Agent and BT Tracker boxes.
+- The Add dialog URL box (`src/ui/add_dialog.rs`) — it does **not** go through `editor_layout()`
+  because it uses its own `PADDING_EDITOR` / `FONT_BODY` metrics, so it sets the wrapping inline.
+
+Gotcha: `TextEditor::width()` takes `impl Into<Pixels>`, **not** `Length` — passing
+`Length::Fill` fails to compile. The editor's default width is already `Length::Fill`.
+
+If a new multi-line box is added, route it through `theme::editor_layout()` or set `.wrapping(..)`
+explicitly, otherwise long URLs will overflow again.
+
 ## Anchored popovers toggle via their anchor button only when closed
 The speed-limit / shutdown / custom-color popovers (`src/ui/components/popover.rs`) are
 `Length::Fill` layers above the UI. Clicking their anchor button while open fires both the
