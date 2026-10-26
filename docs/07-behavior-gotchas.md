@@ -318,3 +318,30 @@ while their popover is open (`src/ui/components/speed_hud.rs`, `src/ui/sidebar.r
 `src/ui/settings/general.rs`); closing is handled by the popover's outside-click handler. Keep
 this contract: an open popover's anchor button must not publish a toggle. The right-click context
 menu has no persistent anchor button and is unaffected.
+
+## Toast action buttons: `Toast.actions` is a list, and the card truncates its message
+`Toast` (`src/ui/components/toast.rs`) carries `actions: Vec<(ToastAction, String)>` — a **list**,
+not a single optional action. `Toast::action(..)` *appends*; calling it twice renders two buttons.
+`ToastMsg::ToastActionPressed(u64, usize)` therefore carries the toast id **and** the action
+index, and the handler (`src/update/misc.rs`) looks the action up by index — it must not assume
+`actions[0]`.
+
+The first action renders with `button::primary()`, the rest with `button::secondary()` so a
+multi-button toast does not show two competing filled buttons. `theme::style::button::primary()`
+and `::secondary()` return **distinct opaque types** (`impl Fn(..)`), so they cannot be
+selected through an `if`/`else` on the style value — build the whole `button(..)` inside each
+branch instead.
+
+The card is a single row (icon + message + buttons + close). Adding buttons widens it, so the
+message is capped by `MSG_MAX_WIDTH` and rendered through `truncated_text` with a tooltip that
+carries the full text — a long file name in "下载完成：{name}" would otherwise push the card past
+`CARD_MAX_WIDTH`. Card geometry lives in `CARD_MAX_WIDTH` / `MSG_MAX_WIDTH` at the top of
+`src/ui/components/toast.rs`; adjust both together.
+
+The download-complete toast carries "打开" (`OpenFile` → `Message::OpenFile`) and "在文件夹中显示"
+(`RevealDir` → `Message::RevealDir`) — the same semantics as the system notification buttons, which
+use `notify::NotifyAction::OpenFile` / `::RevealDir`. The notification's "定位" label was renamed to
+"在文件夹中显示" (`Tr::ShowInFolder`) to match the wording already used by the task-card toolbar and
+the path picker. The toast still auto-dismisses after 4 s (hovering pauses the countdown), and
+because `ToastManager::push` evicts same-position/same-group toasts that have a `close_after`,
+only the most recent completion toast stays actionable.

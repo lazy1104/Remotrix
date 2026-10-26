@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- 下载完成的应用内 toast 新增「打开」与「在文件夹中显示」两个动作按钮:前者用系统默认程序打开下载文件,后者打开下载所在目录,行为与系统通知完全一致。
+- 系统通知上的「定位」按钮改名为「在文件夹中显示」,与应用内任务卡片工具栏的既有措辞统一。
+
 ### Fixed
 
 - 多行文本框现在会正确自动换行:此前 iced `text_editor` 的默认换行策略是「按单词换行」,遇到单个比输入框还宽的词(典型就是长 URL、磁力链接、BT Tracker 地址)不会从中间断开,导致内容横向溢出、被裁切。现在改为「按单词换行,放不下时回退到按字符换行」,受影响的「新建任务 → URL」「设置 → 网络 → User-Agent」「设置 → BT → Tracker 列表」三处均已修复。

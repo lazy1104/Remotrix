@@ -1033,7 +1033,7 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
                                     crate::notify::NotifyAction::OpenFile(path_clone),
                                 ),
                                 (
-                                    state.fluent.get(Tr::Locate),
+                                    state.fluent.get(Tr::ShowInFolder),
                                     crate::notify::NotifyAction::RevealDir(download_dir.clone()),
                                 ),
                             ],
@@ -1283,10 +1283,9 @@ pub(crate) fn handle(state: &mut Remotrix, msg: SettingsMsg) -> Task<Message> {
 
 fn push_pending_engine_toast(state: &mut Remotrix) {
     let already = state.toasts.toasts.iter().any(|t| {
-        matches!(
-            t.action,
-            Some(crate::ui::components::toast::ToastAction::RestartEngine)
-        )
+        t.actions
+            .iter()
+            .any(|(a, _)| matches!(a, crate::ui::components::toast::ToastAction::RestartEngine))
     });
     if already {
         return;
@@ -1305,10 +1304,12 @@ fn push_pending_engine_toast(state: &mut Remotrix) {
 
 fn push_pending_app_toast(state: &mut Remotrix, outcome: crate::app_updater::AppUpdateOutcome) {
     let already = state.toasts.toasts.iter().any(|t| {
-        matches!(
-            &t.action,
-            Some(crate::ui::components::toast::ToastAction::ApplyAppUpdate(_))
-        )
+        t.actions.iter().any(|(a, _)| {
+            matches!(
+                a,
+                crate::ui::components::toast::ToastAction::ApplyAppUpdate(_)
+            )
+        })
     });
     if already {
         return;

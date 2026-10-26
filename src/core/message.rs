@@ -378,7 +378,7 @@ pub enum ToastMsg {
     DismissToast(u64),
     ToastHovered(u64),
     ToastUnhovered(u64),
-    ToastActionPressed(u64),
+    ToastActionPressed(u64, usize),
     ToastTick,
     ToastAnim(u64, crate::ui::animation::Event<f32>),
 }

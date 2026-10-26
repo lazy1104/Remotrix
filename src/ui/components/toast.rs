@@ -1,7 +1,8 @@
+use std::path::PathBuf;
 use std::time::Duration;
 
 use iced::alignment::{Horizontal, Vertical};
-use iced::widget::{button, column, container, mouse_area, row, stack, text};
+use iced::widget::{button, column, container, mouse_area, row, stack, text, tooltip};
 use iced::{Element, Length};
 
 use crate::message::{Message, ToastMsg};
@@ -9,21 +10,27 @@ use crate::ui::animation::{
     ease_out_cubic, scale_factor_from_value, Animated, Easing, Event, ANIM_STANDARD_ENTER_MS,
     ANIM_STANDARD_EXIT_MS,
 };
+use crate::ui::components::tooltip as tip;
+use crate::ui::components::truncated_text::truncated_text;
 use crate::ui::dims::*;
 use crate::ui::icon;
 use crate::ui::theme;
 
-/// Optional action attached to a toast. Rendered as a labelled button on
-/// the trailing edge of the toast card; clicking it dispatches the
+/// Action attached to a toast. Rendered as a labelled button on the
+/// trailing edge of the toast card; clicking it dispatches the
 /// corresponding engine message and dismisses the toast.
 #[derive(Debug, Clone)]
 pub enum ToastAction {
     RestartEngine,
     ApplyAppUpdate(crate::app_updater::AppUpdateOutcome),
+    /// Open the given file with the system default application.
+    OpenFile(PathBuf),
+    /// Open the containing directory of the given path in the file manager.
+    RevealDir(PathBuf),
 }
 
-const CARD_MAX_WIDTH: f32 = 320.0;
-const MSG_MAX_WIDTH: f32 = 200.0;
+const CARD_MAX_WIDTH: f32 = 440.0;
+const MSG_MAX_WIDTH: f32 = 140.0;
 const OVERLAY_PADDING: u16 = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -94,8 +101,7 @@ pub struct Toast {
     pub show_close: bool,
     pub close_after: Option<Duration>,
     pub remaining: Option<Duration>,
-    pub action: Option<ToastAction>,
-    pub action_label: Option<String>,
+    pub actions: Vec<(ToastAction, String)>,
     pub anim: Animated<f32>,
     pub dismissing: bool,
 }
@@ -111,8 +117,7 @@ impl Toast {
             show_close: false,
             close_after: Some(Duration::from_secs(3)),
             remaining: None,
-            action: None,
-            action_label: None,
+            actions: Vec::new(),
             anim: Animated::transition(0.0, toast_enter_easing()),
             dismissing: false,
         }
@@ -133,9 +138,10 @@ impl Toast {
         self
     }
 
+    /// Attach a labelled action button. Calling this more than once
+    /// appends additional buttons to the toast's trailing edge.
     pub fn action(mut self, action: ToastAction, label: impl Into<String>) -> Self {
-        self.action = Some(action);
-        self.action_label = Some(label.into());
+        self.actions.push((action, label.into()));
         self
     }
 
@@ -228,11 +234,14 @@ fn card<'a>(theme: &'a iced::Theme, toast: &'a Toast) -> Element<'a, Message> {
     .color(kind_color(theme, toast.kind));
 
     let icon_col = container(icon).align_y(Vertical::Center);
-    let message_col = container(
-        text(&toast.message)
+    let message_col = container(tip::standard(
+        truncated_text(toast.message.clone())
             .size(FONT_MEDIUM)
-            .wrapping(text::Wrapping::Glyph),
-    )
+            .max_lines(1)
+            .width(Length::Fill),
+        text(toast.message.clone()).size(FONT_SMALL),
+        tooltip::Position::Bottom,
+    ))
     .width(Length::Fill)
     .max_width(MSG_MAX_WIDTH);
 
@@ -240,15 +249,20 @@ fn card<'a>(theme: &'a iced::Theme, toast: &'a Toast) -> Element<'a, Message> {
         .spacing(SPACE_LG)
         .align_y(Vertical::Center);
 
-    if let Some(action) = &toast.action {
-        if let Some(label) = toast.action_label.as_deref() {
-            let btn = button(text(label).size(FONT_MEDIUM))
-                .on_press(Message::Toast(ToastMsg::ToastActionPressed(toast.id)))
+    for (index, (_, label)) in toast.actions.iter().enumerate() {
+        let msg = Message::Toast(ToastMsg::ToastActionPressed(toast.id, index));
+        let btn = if index == 0 {
+            button(text(label.as_str()).size(FONT_MEDIUM))
+                .on_press(msg)
                 .padding(PADDING_TOOLBAR_CAPSULE)
-                .style(theme::style::button::primary());
-            content = content.push(btn);
-        }
-        let _ = action;
+                .style(theme::style::button::primary())
+        } else {
+            button(text(label.as_str()).size(FONT_MEDIUM))
+                .on_press(msg)
+                .padding(PADDING_TOOLBAR_CAPSULE)
+                .style(theme::style::button::secondary())
+        };
+        content = content.push(btn);
     }
 
     if toast.show_close {

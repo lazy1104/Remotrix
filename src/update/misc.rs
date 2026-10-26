@@ -108,10 +108,10 @@ pub(crate) fn handle_toast(state: &mut Remotrix, msg: ToastMsg) -> Task<Message>
             state.toasts.unhover(id);
             Task::none()
         }
-        ToastMsg::ToastActionPressed(id) => {
+        ToastMsg::ToastActionPressed(id, index) => {
             let action = state.toasts.toasts.iter().find_map(|t| {
                 if t.id == id {
-                    t.action.clone()
+                    t.actions.get(index).map(|(a, _)| a.clone())
                 } else {
                     None
                 }
@@ -123,6 +123,12 @@ pub(crate) fn handle_toast(state: &mut Remotrix, msg: ToastMsg) -> Task<Message>
                 }
                 Some(crate::ui::components::toast::ToastAction::ApplyAppUpdate(outcome)) => {
                     Task::done(Message::Settings(SettingsMsg::ApplyAppUpdate { outcome }))
+                }
+                Some(crate::ui::components::toast::ToastAction::OpenFile(path)) => {
+                    Task::done(Message::OpenFile(path))
+                }
+                Some(crate::ui::components::toast::ToastAction::RevealDir(path)) => {
+                    Task::done(Message::RevealDir(path))
                 }
                 None => Task::none(),
             }

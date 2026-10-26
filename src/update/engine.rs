@@ -538,14 +538,21 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
                         std::borrow::Cow::from("name"),
                         std::borrow::Cow::from(name).into(),
                     );
-                    spawn_toast(
-                        state,
-                        ToastGroup::Task,
+                    let toast = Toast::new(
                         ToastKind::Success,
                         state.fluent.get_args(Tr::DownloadComplete, &args),
-                        Some(Duration::from_secs(4)),
-                        false,
+                    )
+                    .group(ToastGroup::Task)
+                    .close_after(Some(Duration::from_secs(4)))
+                    .action(
+                        crate::ui::components::toast::ToastAction::OpenFile(open_path.clone()),
+                        state.fluent.get(Tr::Open),
+                    )
+                    .action(
+                        crate::ui::components::toast::ToastAction::RevealDir(t.save_dir.clone()),
+                        state.fluent.get(Tr::ShowInFolder),
                     );
+                    state.toasts.push(toast);
                     if state.settings.notifications.download_complete {
                         let title = state.fluent.get(Tr::DownloadCompleteTitle);
                         let body = state.fluent.get_args(Tr::DownloadComplete, &args);
@@ -560,7 +567,7 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
                                     crate::notify::NotifyAction::OpenFile(open_path_clone.clone()),
                                 ),
                                 (
-                                    state.fluent.get(Tr::Locate),
+                                    state.fluent.get(Tr::ShowInFolder),
                                     crate::notify::NotifyAction::RevealDir(open_path_clone),
                                 ),
                             ],
