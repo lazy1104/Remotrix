@@ -90,6 +90,7 @@ impl Db {
             "proxy_server",
             "proxy_username",
             "proxy_password",
+            "out",
         ];
         for col in advanced_cols {
             let has: bool = conn
@@ -115,7 +116,7 @@ impl Db {
         let conn = self.conn.lock().expect("db lock");
         let mut stmt = match conn.prepare(
             "SELECT gid, name, url, dir, downloaded, total, speed, upload_speed, connections, status, added_at, info_hash, metadata_only,
-                   user_agent, http_user, http_passwd, referer, cookie, proxy_server, proxy_username, proxy_password
+                   user_agent, http_user, http_passwd, referer, cookie, proxy_server, proxy_username, proxy_password, out
              FROM tasks ORDER BY added_at DESC",
         ) {
             Ok(s) => s,
@@ -137,7 +138,7 @@ impl Db {
             };
             let info_hash: String = row.get(11)?;
             let advanced = crate::task::TaskAdvancedOptions {
-                out: String::new(),
+                out: row.get(21)?,
                 user_agent: row.get(13)?,
                 http_user: row.get(14)?,
                 http_passwd: row.get(15)?,
@@ -204,6 +205,7 @@ impl Db {
     ) {
         let conn = self.conn.lock().expect("db lock");
         let (
+            out,
             user_agent,
             http_user,
             http_passwd,
@@ -214,6 +216,7 @@ impl Db {
             proxy_password,
         ) = match advanced {
             Some(a) => (
+                a.out.as_str(),
                 a.user_agent.as_str(),
                 a.http_user.as_str(),
                 a.http_passwd.as_str(),
@@ -223,21 +226,21 @@ impl Db {
                 a.proxy_username.as_str(),
                 a.proxy_password.as_str(),
             ),
-            None => ("", "", "", "", "", "", "", ""),
+            None => ("", "", "", "", "", "", "", "", ""),
         };
         if let Err(e) = conn.execute(
             "INSERT INTO tasks (gid, name, url, dir, downloaded, total, speed, connections, status, added_at, info_hash,
-                                user_agent, http_user, http_passwd, referer, cookie, proxy_server, proxy_username, proxy_password)
-             VALUES (?1, ?2, ?3, ?4, 0, 0, 0, 0, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                                user_agent, http_user, http_passwd, referer, cookie, proxy_server, proxy_username, proxy_password, out)
+             VALUES (?1, ?2, ?3, ?4, 0, 0, 0, 0, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
              ON CONFLICT(gid) DO UPDATE SET
                 name=excluded.name, url=excluded.url, dir=excluded.dir, status=excluded.status, info_hash=excluded.info_hash,
                 user_agent=excluded.user_agent, http_user=excluded.http_user, http_passwd=excluded.http_passwd,
                 referer=excluded.referer, cookie=excluded.cookie, proxy_server=excluded.proxy_server,
-                proxy_username=excluded.proxy_username, proxy_password=excluded.proxy_password",
+                proxy_username=excluded.proxy_username, proxy_password=excluded.proxy_password, out=excluded.out",
             rusqlite::params![
                 gid, name, url, dir, status, added_at, info_hash,
                 user_agent, http_user, http_passwd, referer, cookie,
-                proxy_server, proxy_username, proxy_password
+                proxy_server, proxy_username, proxy_password, out
             ],
         ) {
             tracing::error!(?gid, error = %e, "db upsert_meta failed");
@@ -270,6 +273,19 @@ impl Db {
             rusqlite::params![name, metadata_only, gid],
         ) {
             tracing::error!(?gid, error = %e, "db update_name failed");
+        }
+    }
+
+    /// Persist the output file name (`out`) resolved for a task so a
+    /// re-download keeps using the same base name instead of drifting to
+    /// `foo.zip.1.1`.
+    pub fn update_out(&self, gid: &str, out: &str) {
+        let conn = self.conn.lock().expect("db lock");
+        if let Err(e) = conn.execute(
+            "UPDATE tasks SET out=?1 WHERE gid=?2",
+            rusqlite::params![out, gid],
+        ) {
+            tracing::error!(?gid, error = %e, "db update_out failed");
         }
     }
 
@@ -469,5 +485,78 @@ mod tests {
         p.push("definitely_does_not_exist_xyz_gids.db");
         let _ = std::fs::remove_file(&p);
         assert!(error_gids(&p).is_empty());
+    }
+
+    #[test]
+    fn out_column_round_trips() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("tasks.db");
+        let db = Db::open(&path).expect("open db");
+        let advanced = crate::task::TaskAdvancedOptions {
+            out: "custom.zip".to_string(),
+            user_agent: "ua".to_string(),
+            ..Default::default()
+        };
+        db.upsert_meta(
+            "gid1",
+            "custom.zip",
+            "https://example.com/a.bin",
+            "/tmp",
+            "complete",
+            1,
+            "",
+            Some(&advanced),
+        );
+
+        let loaded = db.load_all();
+        assert_eq!(loaded.len(), 1);
+        let adv = loaded[0].advanced.as_ref().expect("advanced");
+        assert_eq!(adv.out, "custom.zip");
+        assert_eq!(adv.user_agent, "ua");
+
+        db.update_out("gid1", "renamed.bin");
+        let loaded = db.load_all();
+        let adv = loaded[0].advanced.as_ref().expect("advanced");
+        assert_eq!(adv.out, "renamed.bin");
+    }
+
+    #[test]
+    fn out_column_added_to_existing_table() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("legacy.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE tasks (
+                    gid TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    url TEXT NOT NULL DEFAULT '',
+                    dir TEXT NOT NULL DEFAULT '',
+                    downloaded INTEGER NOT NULL DEFAULT 0,
+                    total INTEGER NOT NULL DEFAULT 0,
+                    speed INTEGER NOT NULL DEFAULT 0,
+                    connections INTEGER NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL,
+                    added_at INTEGER NOT NULL
+                );",
+            )
+            .unwrap();
+        }
+        let db = Db::open(&path).expect("open db");
+        let loaded = db.load_all();
+        assert!(loaded.is_empty());
+        db.upsert_meta(
+            "gid1",
+            "a.bin",
+            "https://example.com/a.bin",
+            "/tmp",
+            "complete",
+            1,
+            "",
+            None,
+        );
+        let loaded = db.load_all();
+        assert_eq!(loaded.len(), 1);
+        assert!(loaded[0].advanced.is_none());
     }
 }

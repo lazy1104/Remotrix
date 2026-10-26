@@ -12,7 +12,7 @@ use tokio::task::JoinHandle;
 use tokio::time::{interval, timeout, Duration};
 
 use crate::aria2_fetcher;
-use crate::task::TaskAdvancedOptions;
+use crate::task::{is_safe_out, TaskAdvancedOptions};
 
 pub mod ed2k;
 pub mod install;
@@ -94,6 +94,7 @@ pub enum EngineCmd {
         url: String,
         save_dir: PathBuf,
         split: u16,
+        advanced: TaskAdvancedOptions,
         bt_metadata_only: bool,
     },
     Shutdown,
@@ -714,14 +715,6 @@ fn hex_val(b: u8) -> u8 {
         b'A'..=b'F' => b - b'A' + 10,
         _ => 0,
     }
-}
-
-fn is_safe_out(s: &str) -> bool {
-    !s.is_empty()
-        && s != "."
-        && s != ".."
-        && !s.contains(['/', '\\', '\0'])
-        && !s.bytes().any(|b| b.is_ascii_control())
 }
 
 /// Returns `true` when `url` points to a `.torrent` file (case-insensitive,
@@ -1739,6 +1732,7 @@ async fn handle_client_cmd(
             url,
             save_dir,
             split,
+            advanced,
             bt_metadata_only,
         } => {
             tracing::info!(?gid, ?url, ?save_dir, split, "re-download task");
@@ -1747,6 +1741,7 @@ async fn handle_client_cmd(
             options.gid = Some(gid.clone());
             options.r#continue = Some(false);
             options.auto_file_renaming = Some(true);
+            advanced.apply(&mut options);
             apply_bt_url_options(&mut options, &url, bt_metadata_only);
             match client
                 .add_uri(vec![url.clone()], Some(options), None, None)

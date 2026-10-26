@@ -9,7 +9,7 @@ use crate::app::{
 use crate::engine::EngineCmd;
 use crate::i18n::Tr;
 use crate::message::{AddField, AddTab, ConfirmAction, Message, TaskFilter, TaskMsg};
-use crate::task::TaskStatus;
+use crate::task::{TaskAdvancedOptions, TaskStatus};
 use crate::ui::components::toast::{ToastGroup, ToastKind};
 
 pub(crate) fn handle(state: &mut Remotrix, msg: TaskMsg) -> Task<Message> {
@@ -39,7 +39,7 @@ pub(crate) fn handle(state: &mut Remotrix, msg: TaskMsg) -> Task<Message> {
             // completion notice for the fresh download must still fire.
             state.tracking.session_gids.insert(gid.clone());
             let bt_metadata_only = !state.settings.aria2.bt_auto_download;
-            let (url, save_dir, split) = match state.tasks.get(&gid) {
+            let (url, save_dir, split, advanced) = match state.tasks.get(&gid) {
                 Some(t) => {
                     let url = if !t.url.is_empty() {
                         t.url.clone()
@@ -51,7 +51,12 @@ pub(crate) fn handle(state: &mut Remotrix, msg: TaskMsg) -> Task<Message> {
                         }
                         format!("magnet:?xt=urn:btih:{hash}")
                     };
-                    (url, t.save_dir.clone(), state.settings.split)
+                    (
+                        url,
+                        t.save_dir.clone(),
+                        state.settings.split,
+                        t.redownload_advanced(),
+                    )
                 }
                 None => return Task::none(),
             };
@@ -63,11 +68,33 @@ pub(crate) fn handle(state: &mut Remotrix, msg: TaskMsg) -> Task<Message> {
                     url,
                     save_dir,
                     split,
+                    advanced: advanced.clone(),
                     bt_metadata_only,
                 })
                 .is_err()
             {
                 tracing::warn!("ui: redownload cmd send failed");
+            }
+            // Pin the resolved output name so repeated re-downloads keep
+            // using the same base name instead of drifting to
+            // `foo.1.1.zip`.
+            if !advanced.out.is_empty() {
+                let stored_out = state
+                    .tasks
+                    .get(&gid)
+                    .and_then(|t| t.advanced.as_ref())
+                    .map(|a| a.out.clone())
+                    .unwrap_or_default();
+                if stored_out.is_empty() {
+                    if let Some(ref db) = state.db {
+                        db.update_out(&gid, &advanced.out);
+                    }
+                    if let Some(t) = state.tasks.get_mut(&gid) {
+                        t.advanced
+                            .get_or_insert_with(TaskAdvancedOptions::default)
+                            .out = advanced.out.clone();
+                    }
+                }
             }
             if let Some(t) = state.tasks.get_mut(&gid) {
                 t.downloaded = 0;

@@ -38,7 +38,8 @@ fills. Together the cross-restart retry loop is closed for every `Error`-state t
 ever recorded, plus any error tasks the DB hadn't yet flushed when the previous process died.
 
 The DB row is intentionally kept (the UI still shows the task as `Error`, so the user can
-right-click → Delete or hit "重新下载", which issues a fresh `aria2.addUri` and a brand-new GID).
+right-click → Delete or hit "重新下载", which issues a fresh `aria2.addUri` **reusing the original
+GID** via `options.gid`).
 Any failure in either prune path (DB read/parse glitch, RPC error, individual `force_remove` /
 `remove_download_result` failure) logs `warn!` and is a no-op, so neither path can block engine
 spawn.
@@ -425,3 +426,36 @@ The completion transition is judged by `is_download_complete` (not the raw `stat
 keeps reporting `active` for a seeding BitTorrent task, so keying on `status == "complete"` alone
 would delay the notice until seeding stops. The `shutdown.after_complete` check still runs for
 non-session tasks — only the *notices* are session-scoped.
+
+## Re-download reuses the task's rename and advanced options
+"重新下载" (`TaskMsg::RedownloadTask` → `EngineCmd::Redownload`) re-issues the task **with the
+original GID** (`options.gid = Some(gid)`), after `remove_download_result` drops the finished
+result. The command now carries a `TaskAdvancedOptions` bag so the re-download reuses what the
+user configured for the task:
+
+- `out` (the Add dialog's "重命名") — the explicit rename wins. If the task has no rename, the
+  file name produced by the **previous** download is reused (e.g. a server-driven
+  `Content-Disposition` name). The fallback only applies to single-file, non-BitTorrent tasks:
+  BT (`info_hash.is_some()`), magnet URLs and the `[METADATA]` / `magnet:` / gid placeholder
+  names are rejected, because aria2's `out` is meaningless for them and a placeholder would
+  otherwise be written to disk as a file name.
+- User-Agent / HTTP basic auth / Referer / Cookie / proxy — copied verbatim, so a
+  referer-protected site can be re-downloaded.
+
+Consequences to keep in mind:
+
+- The output file name is **not** overwritten. `auto_file_renaming` stays `true` and
+  `allow_overwrite` is untouched, so an existing `custom.zip` becomes `custom.1.zip` — the same
+  behaviour a non-renamed task has always had (aria2 inserts the counter *before* the extension).
+- The rename survives restarts: `out` is a real column in the `tasks` table (added through the
+  existing `ALTER TABLE` migration loop) and is loaded back into `TaskAdvancedOptions.out`.
+- The resolved name is **pinned** on the first re-download (`Db::update_out` + the in-memory
+  `advanced.out`), so repeated re-downloads produce `foo.1.zip`, `foo.2.zip` instead of drifting
+  to `foo.1.1.zip`.
+- The details panel has no rename field, so `TaskAdvancedApplied` merges an empty `out` from the
+  panel with the task's existing `out` instead of wiping it. The panel still never sends `out` to
+  aria2, so a running task's file name cannot be changed from the UI.
+- `is_safe_out` (in `src/core/task.rs`) is applied on the re-download path only. The Add dialog
+  keeps its historic behaviour of forwarding the raw "重命名" value, so a value that is accepted
+  when creating a task may be dropped when re-downloading — deliberate, since the re-download
+  value can come from a server-provided file name.

@@ -769,6 +769,128 @@ async fn http_hang_endpoint_triggers_retry_until_timeout() -> Result<(), String>
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[serial(aria2)]
+async fn http_redownload_reuses_renamed_output() -> Result<(), String> {
+    common::init_tracing();
+    let harness = match Harness::new().await {
+        Some(h) => h,
+        None => return Ok(()),
+    };
+    if !harness.wait_for_ready(Duration::from_secs(20)).await {
+        harness.shutdown().await;
+        return Err("engine not ready".into());
+    }
+
+    let http = HttpFixture::start(harness.fixture_dir.clone()).await;
+    let name = "redownload_rename_src.bin";
+    write_random_fixture(&harness.fixture_dir.join(name), 256 * 1024);
+    let expected_sha = common::sha256_file_sync(&harness.fixture_dir.join(name));
+
+    let url = http.file_url(name);
+    let save_dir = harness.download_dir.clone();
+    let renamed = "renamed.bin";
+
+    // The Add dialog's "rename" maps to aria2's per-task `out` option;
+    // `Harness::add_download` does not map `out`, so send the command
+    // directly.
+    let _ = harness
+        .handle
+        .cmd_tx
+        .send(remotrix::engine::EngineCmd::AddDownload {
+            urls: vec![url.clone()],
+            save_dir: save_dir.clone(),
+            split: 1,
+            advanced: remotrix::task::TaskAdvancedOptions {
+                out: renamed.to_string(),
+                ..Default::default()
+            },
+            bt_metadata_only: false,
+        });
+
+    let gid = wait_for_added_gid(&harness.events, name, DEFAULT_TEST_TIMEOUT).await?;
+    let status = wait_for_terminal(&harness.events, &gid, DEFAULT_TEST_TIMEOUT).await?;
+    if status != "complete" {
+        dump_events_on_failure(&harness.events, "redownload initial status").await;
+        http.shutdown().await;
+        harness.shutdown().await;
+        return Err(format!("initial download did not complete: {status}"));
+    }
+
+    let first = save_dir.join(renamed);
+    if !first.exists() {
+        http.shutdown().await;
+        harness.shutdown().await;
+        return Err(format!("expected renamed output at {}", first.display()));
+    }
+
+    // Re-download must reuse the rename instead of falling back to the
+    // URL-derived file name.
+    let _ = harness
+        .handle
+        .cmd_tx
+        .send(remotrix::engine::EngineCmd::Redownload {
+            gid,
+            url: url.clone(),
+            save_dir: save_dir.clone(),
+            split: 1,
+            advanced: remotrix::task::TaskAdvancedOptions {
+                out: renamed.to_string(),
+                ..Default::default()
+            },
+            bt_metadata_only: false,
+        });
+
+    // aria2 keeps the existing file and appends `.1` before the
+    // extension (`renamed.bin` -> `renamed.1.bin`).
+    let second = save_dir.join("renamed.1.bin");
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while Instant::now() < deadline {
+        if second.exists()
+            && std::fs::metadata(&second)
+                .map(|m| m.len() == 256 * 1024)
+                .unwrap_or(false)
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    if !second.exists() {
+        dump_events_on_failure(&harness.events, "redownload produced no .1 output").await;
+        http.shutdown().await;
+        harness.shutdown().await;
+        return Err(format!(
+            "expected re-download output at {}, dir listing: {:?}",
+            second.display(),
+            std::fs::read_dir(&save_dir)
+                .map(|entries| {
+                    entries
+                        .flatten()
+                        .map(|e| e.file_name().to_string_lossy().into_owned())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        ));
+    }
+    if !first.exists() {
+        http.shutdown().await;
+        harness.shutdown().await;
+        return Err("re-download overwrote the original file".into());
+    }
+    let actual = common::sha256_file_sync(&second);
+    if actual != expected_sha {
+        http.shutdown().await;
+        harness.shutdown().await;
+        return Err(format!(
+            "sha256 mismatch for re-downloaded file: expected {expected_sha}, got {actual}"
+        ));
+    }
+
+    http.shutdown().await;
+    harness.shutdown().await;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[serial(aria2)]
 #[ignore = "graceful restart of a partial download requires engine \
             source changes to expose the second-engine spawn path through \
             the public Harness API; tracked as a follow-up. The \

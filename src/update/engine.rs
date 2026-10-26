@@ -726,10 +726,18 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
                 state.details.advanced_saving = false;
             }
             if let Some(t) = state.tasks.get_mut(&gid) {
-                t.advanced = if options.is_empty() {
+                // The details panel has no rename field, so an empty `out`
+                // must not wipe the name the task was created with.
+                let mut merged = options.clone();
+                if merged.out.is_empty() {
+                    if let Some(existing) = t.advanced.as_ref() {
+                        merged.out = existing.out.clone();
+                    }
+                }
+                t.advanced = if merged.is_empty() {
                     None
                 } else {
-                    Some(options.clone())
+                    Some(merged.clone())
                 };
                 if let Some(ref db) = state.db {
                     db.upsert_meta(
@@ -740,7 +748,7 @@ fn handle_event(state: &mut Remotrix, event: EngineEvent) -> Task<Message> {
                         crate::task::TaskStatus::to_str(t.status),
                         t.added_at,
                         t.info_hash.clone().unwrap_or_default().as_str(),
-                        Some(&options),
+                        Some(&merged),
                     );
                 }
             }

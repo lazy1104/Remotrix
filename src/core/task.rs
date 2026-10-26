@@ -6,6 +6,21 @@ fn cookie_value_has_control_chars(value: &str) -> bool {
     value.chars().any(|c| matches!(c, '\r' | '\n' | '\0'))
 }
 
+/// Returns `true` when `s` is acceptable as an aria2 `out` (output file
+/// name) value: a plain file name without path separators, `.` / `..`
+/// markers or control characters.
+///
+/// The check guards the URL-derived file name on the add path and the
+/// resolved rename on the re-download path. The Add dialog's explicit
+/// rename keeps its historic behaviour of being forwarded verbatim.
+pub(crate) fn is_safe_out(s: &str) -> bool {
+    !s.is_empty()
+        && s != "."
+        && s != ".."
+        && !s.contains(['/', '\\', '\0'])
+        && !s.bytes().any(|b| b.is_ascii_control())
+}
+
 fn push_cookie_header(opts: &mut TaskOptions, value: &str) {
     if value.is_empty() || cookie_value_has_control_chars(value) {
         return;
@@ -189,6 +204,62 @@ impl DownloadTask {
     /// aria2 but should be rendered as complete by the UI.
     pub fn is_download_complete(&self) -> bool {
         is_download_complete(self.status.to_str(), self.is_seeding)
+    }
+
+    /// The per-task overrides to reuse when this task is re-downloaded.
+    ///
+    /// User-Agent / Referer / Cookie / proxy are carried over verbatim.
+    /// The output file name (`out`) is resolved in this order:
+    ///
+    /// 1. an explicit rename recorded for the task wins;
+    /// 2. otherwise the file name produced by the previous download is
+    ///    reused (single-file, non-BitTorrent tasks only);
+    /// 3. otherwise `out` stays empty and aria2 picks the name itself.
+    pub fn redownload_advanced(&self) -> TaskAdvancedOptions {
+        let mut advanced = self.advanced.clone().unwrap_or_default();
+        if !advanced.out.is_empty() {
+            if is_safe_out(&advanced.out) {
+                return advanced;
+            }
+            advanced.out.clear();
+        }
+        if self.info_hash.is_none() && !self.is_magnet() {
+            if let Some(name) = self.usable_output_name() {
+                advanced.out = name.to_string();
+            }
+        }
+        advanced
+    }
+
+    /// Returns `true` when the task's source is a magnet link.
+    fn is_magnet(&self) -> bool {
+        self.url
+            .trim_start()
+            .to_ascii_lowercase()
+            .starts_with("magnet:")
+    }
+
+    /// The file name produced by the previous download, if it may be reused
+    /// as an aria2 `out` value.
+    ///
+    /// Placeholder names written before a torrent's metadata is resolved
+    /// (`[METADATA]…`, `magnet:`) and the gid fallback emitted by
+    /// `name_from_status` when aria2 reports no usable name are rejected.
+    fn usable_output_name(&self) -> Option<&str> {
+        let name = self.name.as_str();
+        if name.is_empty() || name == self.gid {
+            return None;
+        }
+        if name.starts_with("[METADATA]") || name.starts_with("magnet:") {
+            return None;
+        }
+        if name.contains("://") {
+            return None;
+        }
+        if !is_safe_out(name) {
+            return None;
+        }
+        Some(name)
     }
 }
 
@@ -786,5 +857,121 @@ mod tests {
         adv.apply_change(&mut opts);
         assert!(opts.header.is_none());
         assert!(opts.extra_options.get("cookie").is_none());
+    }
+
+    #[test]
+    fn is_safe_out_accepts_plain_file_names() {
+        assert!(is_safe_out("name.bin"));
+        assert!(is_safe_out("a b.zip"));
+        assert!(is_safe_out("中文名.zip"));
+    }
+
+    #[test]
+    fn is_safe_out_rejects_paths_and_control_chars() {
+        assert!(!is_safe_out(""));
+        assert!(!is_safe_out("."));
+        assert!(!is_safe_out(".."));
+        assert!(!is_safe_out("a/b.zip"));
+        assert!(!is_safe_out("a\\b.zip"));
+        assert!(!is_safe_out("a\0b"));
+        assert!(!is_safe_out("a\nb"));
+    }
+
+    #[test]
+    fn redownload_advanced_prefers_explicit_rename() {
+        let mut t = blank_task(TaskStatus::Completed);
+        t.name = "server-name.zip".to_string();
+        t.advanced = Some(TaskAdvancedOptions {
+            out: "custom.zip".to_string(),
+            user_agent: "ua".to_string(),
+            ..Default::default()
+        });
+        let adv = t.redownload_advanced();
+        assert_eq!(adv.out, "custom.zip");
+        assert_eq!(adv.user_agent, "ua");
+    }
+
+    #[test]
+    fn redownload_advanced_falls_back_to_last_file_name() {
+        let mut t = blank_task(TaskStatus::Completed);
+        t.gid = "abc123".to_string();
+        t.name = "server-name.zip".to_string();
+        t.url = "https://example.com/download?id=1".to_string();
+        let adv = t.redownload_advanced();
+        assert_eq!(adv.out, "server-name.zip");
+    }
+
+    #[test]
+    fn redownload_advanced_skips_bt_and_magnet() {
+        let mut t = blank_task(TaskStatus::Completed);
+        t.gid = "abc123".to_string();
+        t.name = "payload.bin".to_string();
+        t.url = "https://example.com/payload.bin".to_string();
+        t.info_hash = Some("0123456789abcdef".to_string());
+        assert_eq!(t.redownload_advanced().out, "");
+
+        let mut t = blank_task(TaskStatus::Completed);
+        t.gid = "abc123".to_string();
+        t.name = "payload.bin".to_string();
+        t.url = "magnet:?xt=urn:btih:0123456789abcdef".to_string();
+        assert_eq!(t.redownload_advanced().out, "");
+    }
+
+    #[test]
+    fn redownload_advanced_rejects_placeholder_names() {
+        for name in [
+            "[METADATA]0123456789abcdef",
+            "magnet:?xt=urn:btih:0123456789abcdef",
+            "https://example.com/a.zip",
+        ] {
+            let mut t = blank_task(TaskStatus::Completed);
+            t.gid = "abc123".to_string();
+            t.name = name.to_string();
+            t.url = "https://example.com/download".to_string();
+            assert_eq!(t.redownload_advanced().out, "", "name: {name}");
+        }
+    }
+
+    #[test]
+    fn redownload_advanced_rejects_gid_placeholder() {
+        let mut t = blank_task(TaskStatus::Completed);
+        t.gid = "abc123".to_string();
+        t.name = "abc123".to_string();
+        t.url = "https://example.com/download".to_string();
+        assert_eq!(t.redownload_advanced().out, "");
+    }
+
+    #[test]
+    fn redownload_advanced_drops_unsafe_explicit_rename() {
+        let mut t = blank_task(TaskStatus::Completed);
+        t.gid = "abc123".to_string();
+        t.name = "server-name.zip".to_string();
+        t.url = "https://example.com/download".to_string();
+        t.advanced = Some(TaskAdvancedOptions {
+            out: "sub/dir.zip".to_string(),
+            ..Default::default()
+        });
+        assert_eq!(t.redownload_advanced().out, "server-name.zip");
+    }
+
+    #[test]
+    fn redownload_advanced_keeps_other_overrides() {
+        let mut t = blank_task(TaskStatus::Completed);
+        t.gid = "abc123".to_string();
+        t.name = "server-name.zip".to_string();
+        t.url = "https://example.com/download".to_string();
+        t.advanced = Some(TaskAdvancedOptions {
+            user_agent: "ua".to_string(),
+            referer: "https://example.com/".to_string(),
+            cookie: "a=b".to_string(),
+            proxy_server: "http://127.0.0.1:1080".to_string(),
+            ..Default::default()
+        });
+        let adv = t.redownload_advanced();
+        assert_eq!(adv.user_agent, "ua");
+        assert_eq!(adv.referer, "https://example.com/");
+        assert_eq!(adv.cookie, "a=b");
+        assert_eq!(adv.proxy_server, "http://127.0.0.1:1080");
+        assert_eq!(adv.out, "server-name.zip");
     }
 }

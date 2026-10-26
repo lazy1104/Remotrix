@@ -35,7 +35,7 @@ enum EngineCmd {
     SelectFiles { gid: String, files: Vec<u64> },
     FetchTaskDetails(String),
     ReaddTask { gid: String, url: String, save_dir: PathBuf, split: u16, paused: bool, bt_metadata_only: bool },
-    Redownload { gid: String, url: String, save_dir: PathBuf, split: u16, bt_metadata_only: bool },
+    Redownload { gid: String, url: String, save_dir: PathBuf, split: u16, advanced: TaskAdvancedOptions, bt_metadata_only: bool },
     Shutdown,
     ForceKill,
     DownloadAria2Update { version: String, asset_name: String, download_url: String, sha256: Option<String> },
