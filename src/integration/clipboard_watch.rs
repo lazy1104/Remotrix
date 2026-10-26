@@ -212,44 +212,92 @@ struct LinkMatch {
     value: String,
 }
 
-fn extract_links(text: &str, prefs: ClipboardLinkTypes) -> Vec<String> {
-    let mut matches: Vec<LinkMatch> = Vec::new();
+/// A recognised link prefix paired with the transform that turns a raw token
+/// into the URL to download.
+type PrefixTransform = (&'static str, fn(&str) -> String);
 
+/// The byte offset where a link starts inside a line, with the transform to
+/// apply to it.
+type LinkBoundary = (usize, fn(&str) -> String);
+
+/// Identity transform for link prefixes that need no decoding.
+fn plain_url(s: &str) -> String {
+    s.to_string()
+}
+
+/// The link prefixes that are enabled by the user's preferences, each paired
+/// with the transform that turns a raw token into the URL to download.
+fn enabled_prefixes(prefs: &ClipboardLinkTypes) -> Vec<PrefixTransform> {
+    let mut out: Vec<PrefixTransform> = Vec::new();
     if prefs.http {
-        scan_prefixes(
-            text,
-            &["http://", "https://"],
-            |s| s.to_string(),
-            &mut matches,
-        );
+        out.push(("http://", plain_url as fn(&str) -> String));
+        out.push(("https://", plain_url as fn(&str) -> String));
     }
     if prefs.ftp {
-        scan_prefixes(
-            text,
-            &["ftp://", "ftps://"],
-            |s| s.to_string(),
-            &mut matches,
-        );
+        out.push(("ftp://", plain_url as fn(&str) -> String));
+        out.push(("ftps://", plain_url as fn(&str) -> String));
     }
     if prefs.magnet {
-        scan_prefixes(text, &["magnet:?"], |s| s.to_string(), &mut matches);
+        out.push(("magnet:?", plain_url as fn(&str) -> String));
     }
     if prefs.ed2k {
-        scan_prefixes(text, &["ed2k://"], |s| s.to_string(), &mut matches);
+        out.push(("ed2k://", plain_url as fn(&str) -> String));
     }
     if prefs.thunder {
-        scan_prefixes(text, &["thunder://"], thunder_url, &mut matches);
-    }
-    if prefs.bt_infohash {
-        matches.extend(extract_infohashes(text));
+        out.push(("thunder://", thunder_url as fn(&str) -> String));
     }
     if prefs.metalink {
-        scan_prefixes(
-            text,
-            &["metalink://", "meta4://"],
-            |s| s.to_string(),
-            &mut matches,
-        );
+        out.push(("metalink://", plain_url as fn(&str) -> String));
+        out.push(("meta4://", plain_url as fn(&str) -> String));
+    }
+    out
+}
+
+/// Extract every link from `text`, line by line.
+///
+/// A line that *starts* with a known scheme is taken as a link list: the
+/// whole segment up to the next scheme belongs to the link, so spaces inside
+/// a file name (`/down/w ww`) are preserved. Any other line is scanned
+/// character by character, where whitespace separates links embedded in
+/// prose.
+fn extract_links(text: &str, prefs: ClipboardLinkTypes) -> Vec<String> {
+    let prefixes = enabled_prefixes(&prefs);
+    let mut matches: Vec<LinkMatch> = Vec::new();
+
+    let mut line_start = 0usize;
+    for raw_line in text.split('\n') {
+        let line = raw_line.trim_end_matches('\r');
+        let trimmed = line.trim();
+        if !trimmed.is_empty() {
+            match leading_prefix(trimmed, &prefixes) {
+                Some((prefix, transform)) => {
+                    let lead = line.len() - line.trim_start().len();
+                    whole_line_matches(
+                        trimmed,
+                        prefix,
+                        transform,
+                        &prefixes,
+                        line_start + lead,
+                        &mut matches,
+                    );
+                }
+                None => {
+                    for (prefix, transform) in &prefixes {
+                        scan_prefixes(line, prefix, *transform, line_start, &mut matches);
+                    }
+                    if prefs.bt_infohash {
+                        for m in extract_infohashes(line) {
+                            matches.push(LinkMatch {
+                                start: line_start + m.start,
+                                end: line_start + m.end,
+                                value: m.value,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        line_start += raw_line.len() + 1;
     }
 
     matches.sort_by(|a, b| a.start.cmp(&b.start).then(b.end.cmp(&a.end)));
@@ -277,26 +325,112 @@ fn extract_links(text: &str, prefs: ClipboardLinkTypes) -> Vec<String> {
 
 fn scan_prefixes(
     text: &str,
-    prefixes: &[&str],
-    transform: impl Fn(&str) -> String,
+    prefix: &str,
+    transform: fn(&str) -> String,
+    base: usize,
     out: &mut Vec<LinkMatch>,
 ) {
-    for prefix in prefixes {
-        let mut search_from = 0;
-        while let Some(rel) = text[search_from..].find(prefix) {
-            let start = search_from + rel;
-            let end = token_end(text, start);
-            let token = trim_trailing_punct(&text[start..end]);
-            if !token.is_empty() {
-                out.push(LinkMatch {
-                    start,
-                    end: start + token.len(),
-                    value: transform(token),
-                });
-            }
-            search_from = start + prefix.len();
+    let mut search_from = 0;
+    while let Some(rel) = text[search_from..].find(prefix) {
+        let start = search_from + rel;
+        let end = token_end(text, start);
+        let token = trim_trailing_punct(&text[start..end]);
+        if !token.is_empty() {
+            out.push(LinkMatch {
+                start: base + start,
+                end: base + start + token.len(),
+                value: transform(token),
+            });
+        }
+        search_from = start + prefix.len();
+    }
+}
+
+/// The enabled prefix that `line` starts with, if any.
+fn leading_prefix(line: &str, prefixes: &[PrefixTransform]) -> Option<PrefixTransform> {
+    prefixes
+        .iter()
+        .find(|(prefix, _)| line.starts_with(*prefix))
+        .map(|(prefix, transform)| (*prefix, *transform))
+}
+
+/// Split a line that starts with a link into one link per scheme occurrence
+/// and record each of them.
+///
+/// The whole segment between two schemes belongs to the preceding link, so a
+/// file name containing spaces (`/down/w ww`) survives intact. The segment
+/// ends at the first character that cannot appear in a URL — CJK text, a
+/// quote, or a parenthesis that starts a new word (prose such as
+/// `(see …)`) — whichever comes first.
+fn whole_line_matches(
+    line: &str,
+    first_prefix: &str,
+    first_transform: fn(&str) -> String,
+    prefixes: &[PrefixTransform],
+    base: usize,
+    out: &mut Vec<LinkMatch>,
+) {
+    let mut boundaries: Vec<LinkBoundary> = vec![(0, first_transform)];
+    for (prefix, transform) in prefixes {
+        let mut search_from = first_prefix.len();
+        while let Some(rel) = line[search_from..].find(prefix) {
+            let at = search_from + rel;
+            boundaries.push((at, *transform));
+            search_from = at + prefix.len();
         }
     }
+    boundaries.sort_by_key(|(at, _)| *at);
+
+    for (idx, (start, transform)) in boundaries.iter().enumerate() {
+        let seg_end = boundaries
+            .get(idx + 1)
+            .map(|(at, _)| *at)
+            .unwrap_or(line.len());
+        let segment = line[*start..seg_end].trim_end();
+        let cut = segment_end(segment);
+        let token = trim_trailing_punct(segment[..cut].trim_end());
+        if token.is_empty() {
+            continue;
+        }
+        out.push(LinkMatch {
+            start: base + start,
+            end: base + start + token.len(),
+            value: transform(token),
+        });
+    }
+}
+
+/// Where a whole-line link segment ends: at the first character that cannot
+/// be part of a URL.
+fn segment_end(segment: &str) -> usize {
+    for (i, ch) in segment.char_indices() {
+        if is_url_foreign(ch) {
+            return i;
+        }
+        if ch == '(' && preceded_by_space(segment, i) {
+            return i;
+        }
+    }
+    segment.len()
+}
+
+/// Whether the character before `i` is whitespace. A parenthesis glued to
+/// the file name (`Screens%20(NSFW)`) belongs to the URL, while one that
+/// starts a new word (`… /a.zip (mirror)`) belongs to the surrounding prose.
+fn preceded_by_space(s: &str, i: usize) -> bool {
+    s[..i].chars().next_back().is_some_and(char::is_whitespace)
+}
+
+/// Characters that never occur inside a URL: CJK text, CJK punctuation and
+/// the quote / angle-bracket wrappers. `)` `]` `}` are deliberately absent —
+/// RFC 3986 allows them in a path segment.
+fn is_url_foreign(ch: char) -> bool {
+    matches!(ch, '"' | '<' | '>')
+        || matches!(
+            ch,
+            '，' | '。' | '；' | '：' | '！' | '？' | '、' | '）' | '】'
+        )
+        || ('\u{4e00}'..='\u{9fff}').contains(&ch)
 }
 
 fn token_end(text: &str, start: usize) -> usize {
@@ -312,7 +446,7 @@ fn token_end(text: &str, start: usize) -> usize {
 
 fn is_link_terminator(ch: char) -> bool {
     ch.is_whitespace()
-        || matches!(ch, '"' | '\'' | '<' | '>' | ')' | ']' | '}')
+        || matches!(ch, '"' | '\'' | '<' | '>')
         || matches!(
             ch,
             '，' | '。' | '；' | '：' | '！' | '？' | '、' | '）' | '】'
@@ -320,18 +454,50 @@ fn is_link_terminator(ch: char) -> bool {
         || ('\u{4e00}'..='\u{9fff}').contains(&ch)
 }
 
+/// Strip trailing punctuation from a link token.
+///
+/// Closing brackets are only removed when they are not matched by an opening
+/// bracket inside the token, so `…/file(1)` keeps its parenthesis while a
+/// stray `)` from surrounding prose is dropped.
 fn trim_trailing_punct(mut s: &str) -> &str {
     while let Some(ch) = s.chars().next_back() {
-        if matches!(
-            ch,
-            '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}' | '>' | '"' | '\''
-        ) {
+        let strip = match ch {
+            '.' | ',' | ';' | ':' | '!' | '?' | '>' | '"' | '\'' => true,
+            ')' | ']' | '}' => trailing_closer_unmatched(s, ch),
+            _ => false,
+        };
+        if strip {
             s = &s[..s.len() - ch.len_utf8()];
         } else {
             break;
         }
     }
     s
+}
+
+/// Whether the last closing bracket in `s` has no matching opening bracket.
+fn trailing_closer_unmatched(s: &str, close: char) -> bool {
+    let open = match close {
+        ')' => '(',
+        ']' => '[',
+        '}' => '{',
+        _ => return false,
+    };
+    let mut depth = 0i32;
+    let mut unmatched = false;
+    for ch in s.chars() {
+        if ch == open {
+            depth += 1;
+        } else if ch == close {
+            if depth == 0 {
+                unmatched = true;
+            } else {
+                depth -= 1;
+                unmatched = false;
+            }
+        }
+    }
+    unmatched
 }
 
 fn extract_infohashes(text: &str) -> Vec<LinkMatch> {
@@ -1066,6 +1232,113 @@ mod tests {
             urls_of(p),
             vec!["http://example.com/a.zip", "https://example.com/b.zip"]
         );
+    }
+
+    const NEXUS_7Z: &str = "https://supporter-files.nexus-cdn.com/5195/6331/All%20Loading%20Screens%20(NSFW)%20%20%20GOONER%20Edition-6331-1-1778064106.7z?md5=97kCttV1mUMwW43BzjRsjw&expires=1792938927&user_id=114087413";
+    const NEXUS_RAR: &str = "https://supporter-files.nexus-cdn.com/5195/2807/Skimpy%20Armor%20Ashley%20(Underwear)-2807-1-1-1718705496.rar?md5=6oXZEmdFJxAAuqNrMQ3rKg&expires=1792940190&user_id=114087413";
+
+    #[test]
+    fn nexus_signed_7z_url_is_extracted_whole() {
+        let p = parse_clipboard(NEXUS_7Z, prefs());
+        assert_eq!(urls_of(p), vec![NEXUS_7Z.to_string()]);
+    }
+
+    #[test]
+    fn nexus_signed_rar_url_is_extracted_whole() {
+        let p = parse_clipboard(NEXUS_RAR, prefs());
+        assert_eq!(urls_of(p), vec![NEXUS_RAR.to_string()]);
+    }
+
+    #[test]
+    fn nexus_urls_are_recognized_as_downloads_offline() {
+        assert!(looks_like_download(NEXUS_7Z));
+        assert!(looks_like_download(NEXUS_RAR));
+    }
+
+    #[test]
+    fn bracket_in_path_is_not_a_terminator() {
+        let link = "http://xxx.com/down/asd]zxc";
+        let p = parse_clipboard(link, prefs());
+        assert_eq!(urls_of(p), vec![link.to_string()]);
+    }
+
+    #[test]
+    fn stray_closing_paren_inside_path_is_kept() {
+        let link = "http://xxx.com/down/asd)zxc";
+        let p = parse_clipboard(link, prefs());
+        assert_eq!(urls_of(p), vec![link.to_string()]);
+    }
+
+    #[test]
+    fn multiline_list_keeps_space_in_url() {
+        let p = parse_clipboard("http://xxx.com/down/w ww\nhttp://xxx.com/down/pp", prefs());
+        assert_eq!(
+            urls_of(p),
+            vec![
+                "http://xxx.com/down/w ww".to_string(),
+                "http://xxx.com/down/pp".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn single_line_two_links_split_at_second_prefix() {
+        let p = parse_clipboard("http://xxx.com/down/w ww http://xxx.com/down/pp", prefs());
+        assert_eq!(
+            urls_of(p),
+            vec![
+                "http://xxx.com/down/w ww".to_string(),
+                "http://xxx.com/down/pp".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn url_embedded_in_chinese_prose_keeps_brackets() {
+        let link = "https://cdn.example.com/x/(NSFW)/a.zip";
+        let p = parse_clipboard(&format!("下载地址 {link} 谢谢"), prefs());
+        assert_eq!(urls_of(p), vec![link.to_string()]);
+    }
+
+    #[test]
+    fn unmatched_open_paren_ends_line_mode_url() {
+        let p = parse_clipboard("http://example.com/a.zip. (mirror)", prefs());
+        assert_eq!(urls_of(p), vec!["http://example.com/a.zip".to_string()]);
+    }
+
+    #[test]
+    fn balanced_trailing_paren_is_kept() {
+        let p = parse_clipboard("http://x.com/a(1).zip", prefs());
+        assert_eq!(urls_of(p), vec!["http://x.com/a(1).zip".to_string()]);
+        let p = parse_clipboard("http://x.com/file(1)", prefs());
+        assert_eq!(urls_of(p), vec!["http://x.com/file(1)".to_string()]);
+    }
+
+    #[test]
+    fn unmatched_trailing_paren_is_stripped() {
+        let p = parse_clipboard("see http://x.com/a.zip)", prefs());
+        assert_eq!(urls_of(p), vec!["http://x.com/a.zip".to_string()]);
+    }
+
+    #[test]
+    fn apostrophe_in_url_is_kept() {
+        let link = "https://x.com/Artist's%20Album.zip";
+        let p = parse_clipboard(link, prefs());
+        assert_eq!(urls_of(p), vec![link.to_string()]);
+    }
+
+    #[test]
+    fn line_mode_stops_at_chinese_text() {
+        let p = parse_clipboard("https://x.com/a.zip 下载地址", prefs());
+        assert_eq!(urls_of(p), vec!["https://x.com/a.zip".to_string()]);
+    }
+
+    #[test]
+    fn line_mode_respects_disabled_type_pref() {
+        let mut p = prefs();
+        p.ftp = false;
+        let line = "ftp://mirror.example.com/a.iso ftp://mirror.example.com/b.iso";
+        assert_eq!(parse_clipboard(line, p), None);
     }
 
     #[test]

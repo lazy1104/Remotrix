@@ -75,6 +75,43 @@ Existing installs upgrade silently into `Smart`; users who don't want probing ca
 `debug!`; timeouts at `warn!`. Raise verbosity with `RUST_LOG=remotrix=debug` (or `=trace`) when
 troubleshooting "why was my clipboard dialog slow / empty".
 
+## Clipboard link extraction rules
+`src/integration/clipboard_watch.rs::extract_links` extracts links **line by line**, with two
+modes per line:
+
+- **Whole-line mode** — the trimmed line *starts* with a known scheme (`http://` `https://`
+  `ftp://` `ftps://` `magnet:?` `ed2k://` `thunder://` `metalink://` `meta4://`, filtered by
+  `ClipboardLinkTypes`). The line is then split at every *subsequent* scheme occurrence, and
+  each segment is one link. **Whitespace inside a segment belongs to the link**, so a file name
+  with spaces (`/down/w ww`) survives. The segment ends at the first character that cannot be
+  part of a URL: CJK text / CJK punctuation, `"` `<` `>`, or a `(` that starts a new word
+  (prose such as `… /a.zip (mirror)`). A `(` glued to the file name (`Screens%20(NSFW)`) is
+  part of the link.
+- **Embedded mode** — any other line is scanned character by character; whitespace, quotes and
+  CJK text separate links, so a link inside a sentence is still found.
+
+`)` `]` `}` are **never** link terminators: RFC 3986 `pchar ⊃ sub-delims` allows them in a path
+segment and real CDNs put them in file names. They used to be terminators
+(`is_link_terminator`), which truncated every such URL at its first `)` — a regression
+introduced in `0e280f5` when the parser moved from line-based to character-based scanning.
+The same commit's `trim_trailing_punct` also stripped a trailing `)` unconditionally, so
+`…/file(1)` lost its parenthesis; trailing brackets are now removed **only when they are not
+matched** by an opening bracket inside the token (`trailing_closer_unmatched`).
+
+Gotchas that follow from this:
+
+- Losing the file extension also breaks the offline "is this a download?" check
+  (`looks_like_download`), so the Smart webpage filter falls back to a HEAD probe instead of
+  recognising the link statically.
+- Losing the query string is worse than a wrong file name: signed CDN URLs
+  (`?md5=…&expires=…&user_id=…`) are rejected by the server even when the path is correct.
+- A line that starts with a link and continues with English prose is taken as one link
+  ("one link per line"). The Add dialog shows the URL in an editable field, so the user can
+  correct it; narrowing this would need a stop-word heuristic and is deliberately not done.
+- `'` is still a terminator in embedded mode (but not in whole-line mode), and a magnet link
+  whose `dn=` parameter contains raw spaces is still cut at the space — proper magnet links
+  percent-encode it.
+
 ## Toolbar bulk actions are filter-scoped
 The `All` / `Downloading` toolbar's `StartAll` / `PauseAll` / `DeleteAll` / `RemoveAllRecords`
 handlers in `src/update/task.rs` no longer call aria2's `*All` RPC variants (which are truly global
