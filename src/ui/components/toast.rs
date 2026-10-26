@@ -581,6 +581,8 @@ mod tests {
     #[test]
     fn budget_is_bounded_by_the_content_width() {
         assert_eq!(CARD_CONTENT_MAX_WIDTH, 416.0);
-        assert!(CARD_CONTENT_MAX_WIDTH < CARD_MAX_WIDTH);
+        const {
+            assert!(CARD_CONTENT_MAX_WIDTH < CARD_MAX_WIDTH);
+        }
     }
 }
